@@ -1,0 +1,172 @@
+# Findings
+
+What the client's own source says about the player's attribute bars, and why the add-on is built
+the way it is. Everything here is **from source** (`esoui/esoui`, tag 12.0.8, API 101050) unless
+it says it was measured; the list at the end is what still has to be looked at on a PS5.
+
+## 1. Three controls in one top-level
+
+`ZO_PlayerAttribute` (`playerattributebars.xml`) is the top-level, 64 high and hidden until the
+HUD shows it. Inside it are six controls: the three the player knows —
+
+| | anchor in the XML |
+| --- | --- |
+| `ZO_PlayerAttributeHealth` | `CENTER` of the group |
+| `ZO_PlayerAttributeMagicka` | `RIGHT` on the group's `LEFT`, +237 |
+| `ZO_PlayerAttributeStamina` | `LEFT` on the group's `RIGHT`, -237 |
+
+— and three small companions, each anchored to the bar it belongs to: `Werewolf` under magicka,
+`MountStamina` under stamina, `SiegeHealth` under health. All six are `ZO_PlayerAttributeContainer`
+(237 × 23) or `...ContainerSmall` (228 × 12), and everything visible — background, frame, the
+status bars, the warner, the resource numbers — is anchored inside its container. So a container's
+anchor and scale are the whole bar's position and size.
+
+The group itself is placed by `ZO_PlayerAttribute_Gamepad_Template`: `BOTTOM` of `GuiRoot`,
+105 up. Its width comes from `ResizeToFitScreen`:
+
+```lua
+local barAreaWidth = screenWidth - BAR_OFFSET_FROM_SCREEN_EDGE * 2   -- 502
+barAreaWidth = zo_clamp(barAreaWidth, MIN_BAR_AREA_WIDTH, MAX_BAR_AREA_WIDTH)  -- 1014, 1600
+```
+
+At 1920 wide that is 1014 — the minimum, not the screen — which is why the bars sit where they do
+regardless of the TV. The middles work out at 137 up from the bottom, and 0 / -388 / +389 from the
+middle of the screen. The add-on measures all six numbers off the controls anyway; those are only
+the fallback.
+
+## 2. What the client writes to these controls, and when
+
+- `ResizeToFitScreen`, on `EVENT_SCREEN_RESIZED` and once at startup: the **group's width**. With
+  the three containers anchored to the group, that moves magicka and stamina. Once they are
+  anchored to `GuiRoot` instead, it does not reach them.
+- `ZO_PlayerAttributeBars:ApplyStyle`, on `EVENT_GAMEPAD_PREFERRED_MODE_CHANGED`: templates for
+  the group, the textures and the sub-bars. It re-anchors the **sub-bars inside** each container
+  and the **group**, but never a container itself.
+- `ZO_UnitVisualizer_ShrinkExpandModule`: the **container's width**, and its background's, as
+  buffs and debuffs move a maximum:
+
+```lua
+ATTRIBUTE_BAR_STATE_EXPANDED -> 323
+ATTRIBUTE_BAR_STATE_SHRUNK   -> 141
+ATTRIBUTE_BAR_STATE_NORMAL   -> 237
+```
+
+  instantly on `EVENT_PLAYER_ACTIVATED`, and through a 750 ms `SizeAnimation` the rest of the time.
+
+Nothing in the client writes a container's **anchor** or its **scale** after the UI is built.
+
+## 3. Why scale, and not `SetDimensions`
+
+§2 is the whole argument. A width written by an add-on survives until the player eats a meal,
+takes a debuff, or zones — and then the visualiser animates the bar to 141, 237 or 323 and leaves
+it there. Fighting that would mean rewriting the width on every one of those changes, which is a
+loop with the client's own animation. Scale is never touched by the client, needs no upkeep, and
+takes the frame textures, the background, the status bar and the resource numbers with it in
+proportion — a stretched-width bar keeps its 64-pixel arrow ends and looks wrong.
+
+The cost is that size is one number rather than two. For a HUD bar that reads as the right trade:
+nobody wants a health bar three times as tall as it is wide.
+
+## 4. Why the middle, and `GuiRoot`
+
+Each container is anchored `CENTER` → `GuiRoot` `BOTTOM`, at (x, -y). Two reasons for the middle
+rather than a corner: the width is not ours (§2), so a bar held by an edge would slide as buffs
+come and go; and whatever ESO's scaling pivot turns out to be, a control whose anchor point is its
+own centre stays put when it is scaled.
+
+`GuiRoot` rather than the group, because three bars anchored to a 1014-wide group cannot be placed
+apart from each other, and because the group's width moves on `EVENT_SCREEN_RESIZED`. The
+containers stay **children** of `ZO_PlayerAttribute` — only the anchor changes — so
+`PLAYER_ATTRIBUTE_BARS_FRAGMENT` (a `ZO_HUDFadeSceneFragment` over the group) still fades and
+hides them exactly as before, and the game's own "fade out of combat" setting still works.
+
+The companions keep their own anchors, which are relative to their partner, so they follow it.
+They are given the same scale, or the pair no longer meets.
+
+## 5. Measuring the game's own position
+
+Taken once per session per bar, before anything is written, off `GetLeft` / `GetTop` /
+`GetDimensions` — and **only while the container is its normal 237 wide**. The middle of a
+stretched bar is not where the middle of a normal one is: the game holds magicka by its right edge
+and stamina by its left, so at 323 the middle has moved 43 in. A bar that is not at its normal
+width is left for the next HUD show to measure, and the worked-out fallback stands in meanwhile.
+The two agree exactly at 1920 × 1080, which the tests check.
+
+## 6. Why nothing is hooked
+
+The rule from PB's MailerExtension (measured on PS5): a client closure created while an add-on
+frame is on the stack is permanently untrusted, and fails the moment it reaches a private
+function. These controls run combat code — `EVENT_POWER_UPDATE` several times a second in a fight,
+the attribute visualiser's modules, the warners, the fade timeline — so a tainted closure here
+would surface in the middle of a fight.
+
+So the add-on never wraps an attribute bar method and never calls one. Everything is a write to a
+control:
+
+| | written | the game's own equivalent |
+| --- | --- | --- |
+| position | `ClearAnchors` / `SetAnchor` on each container | the XML anchors |
+| size | `SetScale` on each container and its companion | (nothing — the client never scales them) |
+
+The one registration is a `"StateChange"` callback on `HUD_FRAGMENT`: our function is stored
+beside the client's, nothing of theirs is wrapped. The preview is built entirely from controls of
+the add-on's own — showing the real bars in a menu would mean driving the group's fragment from
+add-on code.
+
+## 7. When the settings panel is actually open
+
+Carried over from PB's ChatWindowCustomizer 1.0.1, found on PS5 and confirmed in the library's
+source (`votan73/ESO`, `LibHarvensAddonSettings/Console/Settings.lua`): the console add-on list
+opens a panel in two steps —
+
+```lua
+addon:Select()                                      -- fires AddonSelected, then sets .selected
+SCENE_MANAGER:Push("LibHarvensAddonSettingsScene")  -- and only then shows the panel
+```
+
+— so `AddonSelected` arrives while the *list* is still the current scene, and `Select()` returns
+early for the add-on already selected, firing nothing at all on a second visit. The preview
+follows the library's own panel scene instead. The test harness opens panels in that same order.
+
+## 8. Cost on console
+
+Moving and scaling a control costs nothing lasting, and no font or texture is built: the preview
+uses `ZoFontGamepad22`, which the gamepad UI has already, and plain colour textures. Nothing is
+written at all while the settings still equal the game's own, so an installed-but-unset add-on is
+indistinguishable from not having it.
+
+---
+
+## Still to measure on a PS5
+
+1. **Does writing the anchor work?** `SetAnchor` and `ClearAnchors` are marked
+   `protected-attributes` in the API dump. PC add-ons re-anchor client controls routinely, and PB's
+   ChatWindowCustomizer re-anchors a client top-level, but this is the first PB's add-on to
+   re-anchor a client control *away from its own parent*. Move one slider, go back to the HUD and
+   run `/pbhud status`: the bar's `anchor:` line must read `CENTER -> GuiRoot BOTTOM` with the new
+   offsets, its `middle=` must match the settings, and there must be no `refused` line. If there
+   is one, it names what was refused and why.
+2. **Where does `SetScale` scale from?** `status` prints each bar's on-screen rectangle and the
+   middle worked back out of it. At 150% the `middle=` must still equal the settings; if it has
+   drifted by a quarter of the bar, the pivot is the control's top left and the anchor needs an
+   offset of `(scale - 1) * size / 2`.
+3. **Is the size really the whole bar?** At 200%, the frame arrows, the background and the
+   resource numbers must all grow with the bar — nothing left at its old size, nothing clipped.
+4. **Does the fade still work?** With "fade out of combat" on in Settings > Interface, a moved bar
+   must still fade out with the other two, and still come back on damage. That is the check that
+   re-anchoring did not take the container out of the HUD fragment's reach.
+5. **Do the companions still line up?** Mount up (mount stamina under stamina), and at a scale
+   other than 100%: the small bar must sit against its partner, not overlap it or float away.
+6. **Does a buff still look right?** Eat a meal that raises maximum health. The bar must grow
+   evenly both ways from where it was put and stay there, and `status` must still show the
+   settings' `middle=`.
+7. **Does the measurement come out right?** On a fresh install, before touching anything,
+   `status` must show `game's: x=0 y=137 (measured)` for health and ±388/389 for the other two,
+   and `differs=false written=false` on all three.
+8. **Is the preview drawn above the settings panel?** It is `DL_OVERLAY` / `DT_HIGH`. If it is
+   hidden behind the panel, that is the only thing to change.
+9. **Does the preview come and go with the panel?** Open the panel (the three outlines must
+   appear straight away), back out to the list and open it again (they must appear again), open
+   another add-on's panel (they must not), and leave with the menu button straight to the HUD
+   (they must go). `/pbhud preview` on the HUD draws them over the real bars, which is the
+   quickest way to see that the two agree.
