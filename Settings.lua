@@ -130,7 +130,7 @@ function addon:InitSettings()
 	)
 
 	-- ---- One section per bar, all three the same three rows --------------------------------
-	for _, bar in ipairs(self.bars) do
+	for _, bar in ipairs(self.elements) do
 		local barName = GetString(_G[bar.stringId])
 		AddHeading(settings, LibHarvensAddonSettings, barName)
 
@@ -181,6 +181,206 @@ function addon:InitSettings()
 			}
 		)
 	end
+
+	-- ---- The other weapon set ----------------------------------------------------------------
+	AddHeading(settings, LibHarvensAddonSettings, GetString(SI_PBSCHC_SECTION_BACKBAR))
+	AddLabel(settings, LibHarvensAddonSettings, "SI_PBSCHC_BACKBAR_EXPLANATION")
+
+	settings:AddSetting(
+		{
+			type = LibHarvensAddonSettings.ST_CHECKBOX,
+			label = GetString(SI_PBSCHC_BACKBAR_ENABLED),
+			tooltip = GetString(SI_PBSCHC_BACKBAR_ENABLED_TOOLTIP),
+			default = true,
+			getFunction = function()
+				return self:BackBar().enabled ~= false
+			end,
+			setFunction = function(value)
+				self:BackBar().enabled = value
+				self:Account().enabled = true
+				self:Refresh()
+			end
+		}
+	)
+
+	settings:AddSetting(
+		{
+			type = LibHarvensAddonSettings.ST_CHECKBOX,
+			label = GetString(SI_PBSCHC_BACKBAR_EMPTY),
+			tooltip = GetString(SI_PBSCHC_BACKBAR_EMPTY_TOOLTIP),
+			default = true,
+			getFunction = function()
+				return self:BackBar().showEmpty ~= false
+			end,
+			setFunction = function(value)
+				self:BackBar().showEmpty = value
+				self:Refresh()
+			end
+		}
+	)
+
+	settings:AddSetting(
+		{
+			type = LibHarvensAddonSettings.ST_SLIDER,
+			label = GetString(SI_PBSCHC_BACKBAR_SCALE),
+			tooltip = GetString(SI_PBSCHC_BACKBAR_SCALE_TOOLTIP),
+			min = self.MIN_SCALE,
+			max = self.MAX_SCALE,
+			step = SCALE_STEP,
+			default = self.DEFAULT_SCALE,
+			format = "%d",
+			unit = "%",
+			getFunction = function()
+				return self:BackBarScale()
+			end,
+			setFunction = function(value)
+				self:SetBackBarScale(value)
+				self:Refresh()
+			end
+		}
+	)
+
+	settings:AddSetting(
+		{
+			type = LibHarvensAddonSettings.ST_SLIDER,
+			label = GetString(SI_PBSCHC_BACKBAR_GAP),
+			tooltip = GetString(SI_PBSCHC_BACKBAR_GAP_TOOLTIP),
+			min = 0,
+			max = 200,
+			step = 2,
+			default = 4,
+			format = "%d",
+			unit = "",
+			getFunction = function()
+				local gap = self:BackBar().gap
+				return type(gap) == "number" and gap or 4
+			end,
+			setFunction = function(value)
+				self:BackBar().gap = addon.Round(value)
+				self:Refresh()
+			end
+		}
+	)
+
+	-- ---- The text on the icons ---------------------------------------------------------------
+	AddHeading(settings, LibHarvensAddonSettings, GetString(SI_PBSCHC_SECTION_TEXT))
+	AddLabel(settings, LibHarvensAddonSettings, "SI_PBSCHC_TEXT_EXPLANATION")
+
+	local timerModeItems = {}
+	local timerModeByKey = {}
+	for _, mode in ipairs(self.TIMER_MODES) do
+		local item = { name = GetString(_G["SI_PBSCHC_TIMER_MODE_" .. mode:upper()]), data = mode }
+		timerModeItems[#timerModeItems + 1] = item
+		timerModeByKey[mode] = item
+	end
+
+	settings:AddSetting(
+		{
+			type = LibHarvensAddonSettings.ST_DROPDOWN,
+			label = GetString(SI_PBSCHC_TIMER_MODE),
+			tooltip = GetString(SI_PBSCHC_TIMER_MODE_TOOLTIP),
+			items = timerModeItems,
+			default = timerModeByKey.auto.name,
+			getFunction = function()
+				local item = timerModeByKey[self:Text().timerMode] or timerModeByKey.auto
+				return item.name
+			end,
+			setFunction = function(combobox, name, item)
+				self:Text().timerMode = item.data
+				self:Refresh()
+			end
+		}
+	)
+
+	settings:AddSetting(
+		{
+			type = LibHarvensAddonSettings.ST_SLIDER,
+			label = GetString(SI_PBSCHC_TIMER_SIZE),
+			tooltip = GetString(SI_PBSCHC_TIMER_SIZE_TOOLTIP),
+			min = self.MIN_TEXT_SIZE,
+			max = self.MAX_TEXT_SIZE,
+			step = 1,
+			default = self.DEFAULT_TIMER_SIZE,
+			format = "%d",
+			unit = "",
+			getFunction = function()
+				return self:TextSize("timer")
+			end,
+			setFunction = function(value)
+				self:SetTextSize("timer", value)
+				self:Refresh()
+			end
+		}
+	)
+
+	settings:AddSetting(
+		{
+			type = LibHarvensAddonSettings.ST_CHECKBOX,
+			label = GetString(SI_PBSCHC_TIMER_DECIMALS),
+			tooltip = GetString(SI_PBSCHC_TIMER_DECIMALS_TOOLTIP),
+			default = true,
+			getFunction = function()
+				return self:Text().decimals ~= false
+			end,
+			setFunction = function(value)
+				self:Text().decimals = value
+				self:Refresh()
+			end
+		}
+	)
+
+	settings:AddSetting(
+		{
+			type = LibHarvensAddonSettings.ST_CHECKBOX,
+			label = GetString(SI_PBSCHC_COUNT_ENABLED),
+			tooltip = GetString(SI_PBSCHC_COUNT_ENABLED_TOOLTIP),
+			default = true,
+			getFunction = function()
+				return self:Text().showCounts ~= false
+			end,
+			setFunction = function(value)
+				self:Text().showCounts = value
+				self:Refresh()
+			end
+		}
+	)
+
+	settings:AddSetting(
+		{
+			type = LibHarvensAddonSettings.ST_SLIDER,
+			label = GetString(SI_PBSCHC_COUNT_SIZE),
+			tooltip = GetString(SI_PBSCHC_COUNT_SIZE_TOOLTIP),
+			min = self.MIN_TEXT_SIZE,
+			max = self.MAX_TEXT_SIZE,
+			step = 1,
+			default = self.DEFAULT_COUNT_SIZE,
+			format = "%d",
+			unit = "",
+			getFunction = function()
+				return self:TextSize("count")
+			end,
+			setFunction = function(value)
+				self:SetTextSize("count", value)
+				self:Refresh()
+			end
+		}
+	)
+
+	settings:AddSetting(
+		{
+			type = LibHarvensAddonSettings.ST_CHECKBOX,
+			label = GetString(SI_PBSCHC_COUNT_FROM_ONE),
+			tooltip = GetString(SI_PBSCHC_COUNT_FROM_ONE_TOOLTIP),
+			default = false,
+			getFunction = function()
+				return self:Text().countFromOne == true
+			end,
+			setFunction = function(value)
+				self:Text().countFromOne = value
+				self:Refresh()
+			end
+		}
+	)
 
 	-- ---- Everything ------------------------------------------------------------------------
 	AddHeading(settings, LibHarvensAddonSettings, GetString(SI_PBSCHC_SECTION_GENERAL))

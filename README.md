@@ -1,17 +1,18 @@
 # PB's ConsoleHudCustomizer
 
-Moves and resizes the health, magicka and stamina bars on the HUD, in The Elder Scrolls Online on
-console.
+Moves and resizes the health, magicka, stamina and skill bars on the HUD, shows the weapon set you
+are not on, and writes how long is left on each ability and how many targets are under it -- in
+The Elder Scrolls Online on console.
 
 - **Author:** PinkBanther
-- **Version:** 1.0.0
+- **Version:** 1.1.0
 - **Optional:** `LibHarvensAddonSettings` >= 20106 (for the settings panel; the chat commands work
   without it)
 
 ## What it does
 
-The game pins all three resource bars to the bottom of the screen, side by side, at one fixed
-size, and offers no setting for any of it. This add-on gives each bar three of its own:
+The game pins the three resource bars and the skill bar to the bottom of the screen at one fixed
+size, and offers no setting for any of it. This add-on gives each of the four three of its own:
 
 | | |
 | --- | --- |
@@ -19,8 +20,8 @@ size, and offers no setting for any of it. This add-on gives each bar three of i
 | **Height** | How far the middle of the bar is up from the bottom edge. The game's own bars sit 137 up. |
 | **Size** | 50% to 200% of the game's own size. Frame, background, bar and numbers all together. |
 
-The three are independent, so health can sit in the middle of the screen with magicka and stamina
-low in the corners, or all three can be stacked, or moved out of the way of a minimap.
+The four are independent, so health can sit in the middle of the screen with magicka and stamina
+low in the corners, the skill bar higher up, or the whole lot moved out of the way of a minimap.
 
 Every setting starts at the game's own value, **measured off the real bars** rather than assumed,
 and nothing is changed until you move something. Installed and left alone, the add-on is
@@ -43,11 +44,49 @@ The werewolf bar lives under magicka, mount stamina under stamina and siege heal
 Each one is anchored to its partner in the game's own XML, so it moves with it, and this add-on
 gives it the same size so the pair still lines up.
 
+### The weapon set you are not on
+
+With **Show the other weapon set** on, a row of that set's abilities is drawn above the skill bar,
+in the game's own back row frame. It follows the skill bar wherever you put it, swaps over when
+you swap weapons, and has its own size and gap.
+
+The game has a row of its own (Settings > Interface, *Action Bar Timers* and *Back Row*), but it
+only appears for a slot whose effect is still running and disappears again when it ends. This one
+is always there, so both sets can be read at a glance. If you want only this one, turn the game's
+Back Row setting off.
+
+### Countdown and target count
+
+On **both** sets, each icon can carry:
+
+| | |
+| --- | --- |
+| **Countdown** | How long is left on that ability's effect. Gold, at the bottom of the icon. A minute or more reads as `1m`, the last ten seconds as `9.4` (optional). |
+| **Target count** | How many targets are under the effect. White, in the top corner. From two targets by default, or from one if you prefer. |
+
+Both have their own text size, 12 to 48.
+
+The countdown is **the game's own number** — `GetActionSlotEffectTimeRemaining`, the same value
+the game's own action bar timers use, and it answers for the set you are not on as well. Nothing
+is guessed at.
+
+The target count has no API behind it: it is counted from the effects you apply, matched to the
+slot by the ability's name. A morph that applies its effect under a different name will not be
+counted — the countdown is unaffected, because that comes from the client.
+
+**Countdown on the bar you are on** decides what happens when the game is already writing its own
+numbers there (Settings > Interface > Action Bar Timers):
+
+- **Automatic** (the default) — draw ours only while the game's is off, so there are never two.
+- **Always** — draw ours as well.
+- **Never** — leave the front bar to the game. The other set still gets ours; the game never
+  writes there.
+
 ### Preview
 
 The bars are only drawn on the HUD, so they cannot be seen from the settings menu. While this
 add-on's panel is open, an **outline the size of each bar**, in that bar's colour, is drawn where
-it will sit. It follows every slider as you move it, and goes away when you leave the panel. It
+it will sit — the three resource bars, the skill bar, and the other set's row above it. It follows every slider as you move it, and goes away when you leave the panel. It
 can be switched off in the panel.
 
 `/pbhud preview` shows the same outlines anywhere — on the HUD they sit on top of the real bars,
@@ -56,28 +95,36 @@ which is the quickest way to check the two agree.
 ## Chat commands
 
 ```
-/pbhud                        this list
-/pbhud status                 settings, and where the bars really are on screen
-/pbhud pos <bar> <x> <y>      x from the middle of the screen, y up from the bottom
-/pbhud scale <bar> <n>        size in per cent (50-200)
-/pbhud on | off               switch every change on or off
-/pbhud preview                show or hide the preview outlines
-/pbhud reset [bar]            back to the game's own
+/pbhud                             this list
+/pbhud status                      settings, and where the bars really are on screen
+/pbhud pos <bar> <x> <y>           x from the middle of the screen, y up from the bottom
+/pbhud scale <bar> <n>             size in per cent (50-200)
+/pbhud text timer|count <n>        size of the text on the skill bar (12-48)
+/pbhud timers auto|always|never    the countdown on the game's own bar
+/pbhud backbar [on|off|empty|<n>]  the other weapon set's row
+/pbhud on | off                    switch every change on or off
+/pbhud preview                     show or hide the preview outlines
+/pbhud reset [bar]                 back to the game's own
 ```
 
-`<bar>` is `health`, `magicka` or `stamina` (`hp`, `mag`, `stam` also work). `/pbhc` is the same
-command.
+`<bar>` is `health`, `magicka`, `stamina` or `skillbar` (`hp`, `mag`, `stam`, `bar` also work).
+`/pbhc` is the same command.
 
 ## How it works
 
 Nothing in the attribute bars is hooked, wrapped or called. The add-on only **writes to
 controls**, and lets the bars carry on running their own code:
 
-- **Position** is the anchor of each container — `ZO_PlayerAttributeHealth`, `...Magicka`,
-  `...Stamina` — re-pointed from the group they were built in to `GuiRoot`: `CENTER` of the bar on
-  `BOTTOM` of the screen. They stay children of `ZO_PlayerAttribute`, so the HUD fragment still
+- **Position** is the anchor of each control — `ZO_PlayerAttributeHealth`, `...Magicka`,
+  `...Stamina` and `ZO_ActionBar1` — re-pointed to `GuiRoot`: `CENTER` of the bar on `BOTTOM` of
+  the screen. The attribute bars stay children of `ZO_PlayerAttribute`, so the HUD fragment still
   fades and hides them, and the game's "fade out of combat" setting still works.
-- **Size** is `SetScale` on that container, and on its small companion.
+- **Size** is `SetScale` on that control, and on its small companion.
+- **The countdown** is read from the client: `GetActionSlotEffectTimeRemaining(slot, hotbar)`,
+  which answers for either weapon set.
+- **The other set's row and the text** are controls of this add-on's own, laid out in
+  `Controls.xml` and parented to the `ActionButton` they belong to, so the action bar fades and
+  hides them with itself.
 
 These controls run combat code — power updates, the attribute visualiser, the warners — on every
 frame of a fight, and an add-on frame near client code is how private-function errors start. See
@@ -90,6 +137,9 @@ back.
 ## What it does not touch
 
 - **The bar's own width** — the game's, see above.
+- **The game's own back row and action bar timers** — its controls are left exactly as they are;
+  turn them off under Settings > Interface if you want only this add-on's.
+- **What is slotted, the abilities, the cooldowns and the ultimate meter.**
 - **Whether the numbers are shown on the bars**, and **whether the bars fade out of combat** —
   the game's settings under Settings > Interface.
 - **The order or the colours of the bars**, the werewolf / mount / siege bars' own positions, and
@@ -103,9 +153,11 @@ lua test/run.lua
 
 from the add-on folder, with any Lua 5.1 or later. `test/harness.lua` stubs the three attribute
 bar containers with the game's own anchors, a layout resolver that turns an anchor into a
-rectangle, and the attribute visualiser's habit of writing 141 / 237 / 323 onto a bar's width —
-so a build that measured the game's position off a stretched bar, or that fought the visualiser
-for the width, would fail here rather than on a PS5.
+rectangle, the attribute visualiser's habit of writing 141 / 237 / 323 onto a bar's width, the
+action bar with its buttons, the action slot API for both hotbars, and `EVENT_EFFECT_CHANGED` —
+so a build that measured the game's position off a stretched bar, that fought the visualiser for
+the width, that counted a group member's copy of a buff as another target, or that drew a second
+countdown next to the game's own, would fail here rather than on a PS5.
 
 ## Licence
 

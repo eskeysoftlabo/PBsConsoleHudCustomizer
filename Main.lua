@@ -122,12 +122,20 @@ addon.Round = Round
 addon.Clamp = Clamp
 
 -- ---------------------------------------------------------------------------------------
--- The three bars
+-- The elements
 --
--- Each one is a container control with its own companion: the small bar the game anchors to it
--- and shows in its place (werewolf over magicka, mount stamina under stamina, siege health under
--- health). The companion keeps its own anchor -- it is relative to the bar, so it moves with it
--- -- and is given the same scale, or the pair would no longer meet.
+-- Four controls are placed and scaled, and all four work the same way: an anchor of
+-- CENTER -> GuiRoot BOTTOM, and a scale.
+--
+-- The three attribute bars are container controls with a companion each: the small bar the game
+-- anchors to them and shows in their place (werewolf over magicka, mount stamina under stamina,
+-- siege health under health). The companion keeps its own anchor -- it is relative to the bar,
+-- so it moves with it -- and is given the same scale, or the pair would no longer meet.
+--
+-- The skill bar is the action bar's top-level, ZO_ActionBar1. Every button, the ultimate, the
+-- quickslot and the weapon swap marker are anchored inside it, so its anchor and scale are the
+-- whole bar's. normalWidth is what the control is when the game has just laid it out; a
+-- measurement is only taken while it reads that (see CaptureGame).
 -- ---------------------------------------------------------------------------------------
 
 addon.bars = {
@@ -137,6 +145,7 @@ addon.bars = {
 		companionName = "ZO_PlayerAttributeSiegeHealth",
 		commands = { "health", "hp", "h" },
 		stringId = "SI_PBSCHC_BAR_HEALTH",
+		normalWidth = 237,
 		colour = { 0.77, 0.20, 0.20 },
 	},
 	{
@@ -145,6 +154,7 @@ addon.bars = {
 		companionName = "ZO_PlayerAttributeWerewolf",
 		commands = { "magicka", "mag", "m" },
 		stringId = "SI_PBSCHC_BAR_MAGICKA",
+		normalWidth = 237,
 		colour = { 0.24, 0.44, 0.85 },
 	},
 	{
@@ -153,13 +163,32 @@ addon.bars = {
 		companionName = "ZO_PlayerAttributeMountStamina",
 		commands = { "stamina", "stam", "s" },
 		stringId = "SI_PBSCHC_BAR_STAMINA",
+		normalWidth = 237,
 		colour = { 0.31, 0.62, 0.24 },
 	},
 }
 
+-- The skill bar. No companion, and no colour of its own in the preview -- it is drawn in the
+-- add-on's pink, because unlike the three attribute bars it is not a resource.
+addon.actionBar = {
+	key = "skillbar",
+	controlName = "ZO_ActionBar1",
+	commands = { "skillbar", "skills", "bar", "action" },
+	stringId = "SI_PBSCHC_BAR_SKILLBAR",
+	colour = { 1, 0.41, 0.71 },
+	isActionBar = true,
+	normalWidth = 606,
+}
+
+addon.elements = {}
+for _, bar in ipairs(addon.bars) do
+	addon.elements[#addon.elements + 1] = bar
+end
+addon.elements[#addon.elements + 1] = addon.actionBar
+
 addon.barByKey = {}
 addon.barByCommand = {}
-for _, bar in ipairs(addon.bars) do
+for _, bar in ipairs(addon.elements) do
 	addon.barByKey[bar.key] = bar
 	for _, command in ipairs(bar.commands) do
 		addon.barByCommand[command] = bar
@@ -186,6 +215,11 @@ addon.GAME = {
 	maxGroupWidth = 1600,
 	-- The inset of magicka's right edge from the group's left, and stamina's left from its right.
 	inset = 237,
+	-- ZO_ActionBar1: 70 high from the XML, 606 wide and BOTTOM of GuiRoot at -25 from
+	-- GAMEPAD_CONSTANTS in actionbar.lua.
+	actionBarWidth = 606,
+	actionBarHeight = 70,
+	actionBarBottom = 25,
 }
 
 addon.MIN_SCALE = 50
@@ -204,6 +238,23 @@ addon.accountDefaults = {
 	preview = true,
 	bars = {},
 	measured = {},
+	-- The text on the skill bar's icons, and the back bar. Defaults rather than "unset": these
+	-- draw something the game does not draw at all, so there is no game value to fall back to.
+	text = {
+		timerMode = "auto",
+		timerSize = 27,
+		countSize = 22,
+		showCounts = true,
+		countFromOne = false,
+		decimals = true,
+	},
+	backBar = {
+		enabled = true,
+		showEmpty = true,
+		offsetX = 0,
+		gap = 4,
+		scale = 100,
+	},
 }
 
 -- ---------------------------------------------------------------------------------------
@@ -230,7 +281,17 @@ function addon:Account()
 	if type(account.measured) ~= "table" then
 		account.measured = {}
 	end
-	for _, bar in ipairs(self.bars) do
+	for _, group in ipairs({ "text", "backBar" }) do
+		if type(account[group]) ~= "table" then
+			account[group] = {}
+		end
+		for key, value in pairs(self.accountDefaults[group]) do
+			if account[group][key] == nil then
+				account[group][key] = value
+			end
+		end
+	end
+	for _, bar in ipairs(self.elements) do
 		if type(account.bars[bar.key]) ~= "table" then
 			account.bars[bar.key] = {}
 		end
@@ -283,6 +344,9 @@ end
 function addon:FallbackPosition(bar)
 	local game = self.GAME
 	local rootWidth, rootHeight = self:RootSize()
+	if bar.isActionBar then
+		return { x = 0, y = Round(game.actionBarBottom + game.actionBarHeight / 2) }
+	end
 	local groupWidth = Clamp(rootWidth - game.edgeOffset * 2, game.minGroupWidth, game.maxGroupWidth)
 	local y = game.groupBottom + game.groupHeight / 2
 	if bar.key == "health" then
@@ -367,8 +431,8 @@ function addon:RectOf(bar)
 	local rootWidth, rootHeight = self:RootSize()
 	local position = self:EffectivePosition(bar)
 	local scale = self:EffectiveScalePercent(bar) / 100
-	local width = self.GAME.barWidth * scale
-	local height = self.GAME.barHeight * scale
+	local width = (bar.normalWidth or self.GAME.barWidth) * scale
+	local height = (bar.isActionBar and self.GAME.actionBarHeight or self.GAME.barHeight) * scale
 	local centreX = rootWidth / 2 + position.x
 	local centreY = rootHeight - position.y
 	return centreX - width / 2, centreY - height / 2, width, height
@@ -388,7 +452,7 @@ function addon:BarDiffers(bar)
 end
 
 function addon:AnythingDiffers()
-	for _, bar in ipairs(self.bars) do
+	for _, bar in ipairs(self.elements) do
 		if self:BarDiffers(bar) then
 			return true
 		end
@@ -428,12 +492,13 @@ end
 
 -- The bars are built from XML when the UI loads, and ZO_PlayerAttribute_OnInitialized makes
 -- PLAYER_ATTRIBUTE_BARS out of them. Both are checked: the controls are what is written to, and
--- the object's existence is what says the game has finished putting them together.
+-- the object's existence is what says the game has finished putting them together. The skill
+-- bar's control is checked the same way, in the same loop.
 function addon:BarsReady()
 	if type(PLAYER_ATTRIBUTE_BARS) ~= "table" then
 		return false
 	end
-	for _, bar in ipairs(self.bars) do
+	for _, bar in ipairs(self.elements) do
 		if not self:Control(bar) then
 			return false
 		end
@@ -536,7 +601,7 @@ function addon:CaptureGame(bar)
 	if not left then
 		return false
 	end
-	if Round(width) ~= self.GAME.barWidth then
+	if Round(width) ~= (bar.normalWidth or self.GAME.barWidth) then
 		self.measureNote = "waiting for the bars to be their normal width"
 		return true
 	end
@@ -549,7 +614,7 @@ end
 
 function addon:CaptureAll()
 	local captured = true
-	for _, bar in ipairs(self.bars) do
+	for _, bar in ipairs(self.elements) do
 		if not self:CaptureGame(bar) then
 			captured = false
 		end
@@ -660,7 +725,7 @@ function addon:Apply()
 	if not self:BarsReady() then
 		return false
 	end
-	for _, bar in ipairs(self.bars) do
+	for _, bar in ipairs(self.elements) do
 		self:ApplyBar(bar)
 	end
 	return true
@@ -668,6 +733,9 @@ end
 
 function addon:Refresh()
 	self:Apply()
+	if self.timers then
+		self.timers:Refresh()
+	end
 	if self.preview then
 		self.preview:Update()
 	end
@@ -678,7 +746,7 @@ function addon:ResetBar(bar)
 end
 
 function addon:ResetAll()
-	for _, bar in ipairs(self.bars) do
+	for _, bar in ipairs(self.elements) do
 		self:ResetBar(bar)
 	end
 	self:Refresh()
@@ -693,6 +761,15 @@ function addon:OnHudShowing()
 		return
 	end
 	self:Apply()
+	if self.timers then
+		self.timers:OnHudStateChange(true)
+	end
+end
+
+function addon:OnHudHidden()
+	if self.timers then
+		self.timers:OnHudStateChange(false)
+	end
 end
 
 -- ---------------------------------------------------------------------------------------
@@ -736,7 +813,7 @@ function addon:PrintStatus()
 		Line("  %s", self.measureNote)
 	end
 
-	for _, bar in ipairs(self.bars) do
+	for _, bar in ipairs(self.elements) do
 		local position = self:ClampedPosition(self:Position(bar))
 		local game = self:GamePosition(bar)
 		local measured = self:Measured(bar)
@@ -764,6 +841,19 @@ function addon:PrintStatus()
 		end
 	end
 
+	if self.timers then
+	local text = self:Text()
+	local back = self:BackBar()
+	Line("|cFF69B4  skill bar text|r  timer=%s (%d) count=%s (%d)  the game's own bar numbers: %s",
+		tostring(text.timerMode), self:TextSize("timer"), tostring(text.showCounts ~= false), self:TextSize("count"),
+		tostring(self:GameShowsBarTimers()))
+	Line("|cFF69B4  back bar|r  on=%s empty=%s scale=%d%% gap=%d  running=%s",
+		tostring(back.enabled ~= false), tostring(back.showEmpty ~= false), self:BackBarScale(),
+		Round(back.gap or 4), tostring(self.timers ~= nil and self.timers.running == true))
+	local backHotbar, activeHotbar = self.timers:BackHotbar()
+	Line("    hotbar: active=%s other=%s", tostring(activeHotbar), tostring(backHotbar))
+	end
+
 	if self.writeErrors then
 		for what, err in pairs(self.writeErrors) do
 			Line("  |cFF4040refused|r %s: %s", what, err)
@@ -781,6 +871,9 @@ local function Usage()
 	Line("  %s status                 -- settings, and where the bars really are", SLASH)
 	Line("  %s pos <bar> <x> <y>      -- x from the middle of the screen, y up from the bottom", SLASH)
 	Line("  %s scale <bar> <n>        -- size in per cent (%d-%d)", SLASH, addon.MIN_SCALE, addon.MAX_SCALE)
+	Line("  %s text timer|count <n>   -- size of the text on the skill bar (%d-%d)", SLASH, addon.MIN_TEXT_SIZE or 12, addon.MAX_TEXT_SIZE or 48)
+	Line("  %s timers auto|always|never -- the countdown on the game's own bar", SLASH)
+	Line("  %s backbar [on|off|empty|<scale>] -- the other weapon set's row", SLASH)
 	Line("  %s on | off               -- switch every change on or off", SLASH)
 	Line("  %s preview                -- show or hide the preview frames", SLASH)
 	Line("  %s reset [bar]            -- back to the game's own", SLASH)
@@ -822,6 +915,55 @@ local function OnSlash(argumentString)
 		account.enabled = true
 		addon:Refresh()
 		Line("%s: scale=%d%%", bar.key, addon:ScalePercent(bar))
+	elseif command == "text" then
+		local which = (args[2] or ""):lower()
+		local value = tonumber(args[3])
+		if which == "count" or which == "targets" then
+			which = "count"
+		elseif which == "timer" or which == "time" then
+			which = "timer"
+		else
+			which = nil
+		end
+		if not which or not value then
+			Line("usage: %s text timer|count <%d-%d>", SLASH, addon.MIN_TEXT_SIZE, addon.MAX_TEXT_SIZE)
+			return
+		end
+		addon:SetTextSize(which, value)
+		account.enabled = true
+		addon:Refresh()
+		Line("%s text size: %d", which, addon:TextSize(which))
+	elseif command == "timers" then
+		local mode = (args[2] or ""):lower()
+		if mode ~= "auto" and mode ~= "always" and mode ~= "never" then
+			Line("usage: %s timers auto|always|never", SLASH)
+			return
+		end
+		addon:Text().timerMode = mode
+		addon:Refresh()
+		Line("countdown on the game's own bar: %s", mode)
+	elseif command == "backbar" or command == "back" then
+		local what = (args[2] or ""):lower()
+		local back = addon:BackBar()
+		local scale = tonumber(what)
+		if what == "on" or what == "off" then
+			back.enabled = what == "on"
+			account.enabled = true
+		elseif what == "empty" then
+			back.showEmpty = not (back.showEmpty ~= false)
+		elseif scale then
+			addon:SetBackBarScale(scale)
+			account.enabled = true
+		elseif what ~= "" then
+			Line("usage: %s backbar [on|off|empty|<%d-%d>]", SLASH, addon.MIN_SCALE, addon.MAX_SCALE)
+			return
+		else
+			back.enabled = not (back.enabled ~= false)
+			account.enabled = true
+		end
+		addon:Refresh()
+		Line("back bar: on=%s empty=%s scale=%d%%", tostring(back.enabled ~= false),
+			tostring(back.showEmpty ~= false), addon:BackBarScale())
 	elseif command == "on" or command == "off" then
 		account.enabled = command == "on"
 		addon:Refresh()
@@ -912,6 +1054,8 @@ local function RegisterHud()
 	fragment:RegisterCallback("StateChange", function(_, newState)
 		if newState == SCENE_FRAGMENT_SHOWN then
 			addon:OnHudShowing()
+		elseif newState == SCENE_FRAGMENT_HIDDEN then
+			addon:OnHudHidden()
 		end
 	end)
 	return true
@@ -930,6 +1074,10 @@ local function OnAddOnLoaded(_, loadedName)
 	SLASH_COMMANDS[SHORT_SLASH] = OnSlash
 
 	addon.hudRegistered = RegisterHud()
+
+	if addon.timers then
+		addon.timers:Register()
+	end
 
 	if addon.InitSettings then
 		addon:InitSettings()

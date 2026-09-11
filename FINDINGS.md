@@ -135,6 +135,100 @@ uses `ZoFontGamepad22`, which the gamepad UI has already, and plain colour textu
 written at all while the settings still equal the game's own, so an installed-but-unset add-on is
 indistinguishable from not having it.
 
+## 9. The skill bar is one top-level too
+
+`ZO_ActionBar1` (`actionbar.xml`) is 70 high and, on the gamepad, 606 wide and `BOTTOM` of
+`GuiRoot` at -25 (`GAMEPAD_CONSTANTS` in `actionbar.lua`). Every button hangs inside it: the five
+abilities and the ultimate are `ActionButton3` to `ActionButton8`, chained off
+`ZO_ActionBar1WeaponSwap`, with the quickslot and the companion ultimate anchored to those. So
+its anchor and its scale are the whole bar's, and it is placed and sized exactly like the three
+attribute bars -- the same `CENTER` → `GuiRoot` `BOTTOM` anchor, the same scale, the same
+measurement before the first write.
+
+The one client write to watch is `ApplyStyle`, through `ZO_PlatformStyle`: on
+`EVENT_GAMEPAD_PREFERRED_MODE_CHANGED` it does `ZO_ActionBar1:ClearAnchors()`, re-anchors and
+sets the width back to 606. That is the same case the attribute bars have, and the same answer:
+every HUD show compares and rewrites only what no longer matches.
+
+The buttons are named controls (`CreateControlFromVirtual("ActionButton"..slotNum, ...)`), so
+they are reached with a plain `_G` lookup. `ZO_ActionBar_GetButton` is never called -- not
+because that function is dangerous in itself, but because a name lookup cannot be.
+
+## 10. The client has a back row, and it is not the one the player wants
+
+`ZO_ActionBarTimer` (`actionbutton.lua`) is a real back row: `ActionBarTimer3` to
+`ActionBarTimer8`, anchored `CENTER` on each main button at `backRowSlotOffsetY` = -17, with the
+other set's icon and a fill bar. But:
+
+- it is gated on two settings, `UI_SETTING_SHOW_ACTION_BAR_TIMERS` and
+  `UI_SETTING_SHOW_ACTION_BAR_BACK_ROW`, and
+- `UpdateFillBar` hides a slot the moment it has no running effect
+  (`self.slot:SetHidden(true)` whenever `HasValidDuration()` is false).
+
+So it shows a slot while a timer runs on it and nothing the rest of the time -- it is a timer
+display, not a second bar. Forcing those controls to stay visible would mean fighting an
+`OnUpdate` handler of the client's on every frame, so this add-on draws a row of its own instead
+and leaves the client's alone. If the player has the game's own row on, both are drawn; that is
+the game's setting to turn off, and status prints what it is set to.
+
+## 11. The countdown is the client's own number
+
+`HandleSlotEffectUpdated` in `actionbar.lua`:
+
+```lua
+local timeRemainingMS = GetActionSlotEffectTimeRemaining(slotNum, g_backHotbar)
+local durationMS = GetActionSlotEffectDuration(slotNum, g_backHotbar)
+...
+local stackCount = GetActionSlotEffectStackCount(slotNum, hotbarCategory)
+```
+
+Three functions, and the crucial part is the second argument: **they answer for the hotbar you
+are not on**. That is the whole countdown for both weapon sets, straight from the client, with no
+need to work out which effect came from which cast -- the problem that makes Action Duration
+Reminder two thousand lines of heuristics. This add-on reads them for slots 3-8 of both
+categories, every 100 ms, and writes the number on the icon.
+
+`MINIMUM_ACTION_BAR_TIMER_DISPLAYED_TIME_MS` is 1000 in the client, and the same floor is used
+here: a number that flashes up for half a second as an ability is cast is noise.
+
+## 12. Counting targets is the one part with no API
+
+There is no `GetActionSlotEffectTargetCount`, and nothing else in the client answers it. So it is
+counted from `EVENT_EFFECT_CHANGED`, filtered with the client's own
+`REGISTER_FILTER_SOURCE_COMBAT_UNIT_TYPE` / `COMBAT_UNIT_TYPE_PLAYER` so only what the player
+applied is seen: one entry per effect name, holding the units under it and when each expires.
+Effects on `group*` unit tags are skipped -- a group member's copy of a buff would otherwise turn
+a self-buff into "12".
+
+A slot is matched to an entry by **name**, with the ability id as a second chance. That is a
+heuristic, and an honest one: an effect usually carries the name of the ability that applied it,
+but a morph that applies something under another name will not line up. The countdown does not
+depend on it, so the worst case is a missing count, never a wrong time.
+
+The table is bounded: expired units are dropped as they are read and again every 3 s, and at 96
+effect names the least recently touched is dropped. On console that cap is the point -- a long
+fight in a crowd must not grow a table for ever against the 100 MB pool.
+
+## 13. Where the add-on's own controls live
+
+`Controls.xml` holds two virtual templates -- one back bar slot (52 x 68 with a 44 x 44 icon, the
+sizes and texture coordinates of `ZO_ActionBarTimer_BackBarSlot_Gamepad`, drawn in the game's own
+back row art) and one pair of labels. They are laid out in XML rather than assembled with
+`SetAnchor` from Lua, after PB's MailerExtension ran into anchor limits and zero-height rows
+doing the latter on the console gamepad UI.
+
+Only the parent is chosen at runtime, with `CreateControlFromVirtual`, because the controls they
+hang on do not exist until the UI has loaded. Each one is parented to the `ActionButton` it
+belongs to, which is what makes the action bar's own `ZO_HUDFadeSceneFragment` fade and hide
+them with the bar, and what makes them inherit the scale this add-on puts on the bar.
+
+## 14. What the update costs
+
+One `RegisterForUpdate` at 100 ms, reading three numbers for each of twelve slots and writing at
+most twenty-four short strings. It runs only while the HUD is up and only while something it
+draws is switched on: `SCENE_FRAGMENT_HIDDEN` unregisters it, and so does the master switch. Two
+fonts are built, one per text size in use.
+
 ---
 
 ## Still to measure on a PS5
@@ -165,7 +259,25 @@ indistinguishable from not having it.
    and `differs=false written=false` on all three.
 8. **Is the preview drawn above the settings panel?** It is `DL_OVERLAY` / `DT_HIGH`. If it is
    hidden behind the panel, that is the only thing to change.
-9. **Does the preview come and go with the panel?** Open the panel (the three outlines must
+9. **Does the skill bar move and scale?** Same two questions as 1 and 2, for `ZO_ActionBar1`:
+   `/pbhud status` must show `CENTER -> GuiRoot BOTTOM` with the new offsets and no `refused`
+   line, and at 80% the ultimate, the quickslot and the weapon swap marker must all come with it.
+10. **Does the back row line up?** It is anchored `BOTTOM` on each button's `TOP`. Check the
+    ultimate (slot 8, a taller button) sits level with the other five, that the row follows the
+    bar when the bar is moved and scaled, and that swapping weapons swaps what it shows.
+11. **Are the countdowns the same number the game shows?** Turn the game's own action bar timers
+    on, set this add-on's countdown to Always, and cast a damage-over-time ability: the two
+    numbers on the front bar must agree. Then swap weapons -- the number must carry on counting
+    down on the row, which is the half the game does not draw.
+12. **Is the target count right?** Hit three enemies with one damage-over-time ability: the icon
+    must read 3, and fall to 2 as the first one dies or the effect drops. A self-buff must read
+    1 (with "show it for a single target" on) and not the size of the group.
+13. **Is the text legible over the icons?** The labels are `thick-outline` at the chosen size,
+    the countdown gold and the count white, over the game's own icon art.
+14. **Does the whole lot still fade out of combat?** The labels and the row are children of the
+    action bar's buttons, so they should fade with it. If they stay solid over a faded bar, the
+    parenting is wrong.
+15. **Does the preview come and go with the panel?** Open the panel (the three outlines must
    appear straight away), back out to the list and open it again (they must appear again), open
    another add-on's panel (they must not), and leave with the menu button straight to the HUD
    (they must go). `/pbhud preview` on the HUD draws them over the real bars, which is the

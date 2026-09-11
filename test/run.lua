@@ -34,7 +34,10 @@ check("short slash command registered", type(SLASH_COMMANDS["/pbhc"]), "function
 check("HUD fragment callback registered", addon.hudRegistered, true)
 -- explanation, 2 checkboxes, then per bar: heading + 2 sliders + scale + reset, then
 -- heading + reset + hint
-check("settings rows", #PanelRows, 3 + 3 * 5 + 3)
+-- explanation, 2 checkboxes, then per element: heading + 2 sliders + scale + reset, then the
+-- back bar section (heading, label, 2 checkboxes, 2 sliders), the text section (heading, label,
+-- dropdown, 3 sliders, 3 checkboxes) and the general one (heading, button, hint)
+check("settings rows", #PanelRows, 3 + 4 * 5 + 6 + 8 + 3)
 
 print("\n== 2. the first apply waits for the bars ==")
 Fire(EVENT_PLAYER_ACTIVATED)
@@ -192,6 +195,159 @@ check("magicka's game position on a small screen", addon:GamePosition(magicka).x
 check("height above the bottom is the same", addon:GamePosition(magicka).y, 137)
 check("the slider range follows the screen", addon:ClampedPosition({ x = 5000, y = 0 }).x, 640)
 SetRootSize(1920, 1080)
+
+-- =========================================================================================
+-- The skill bar, the back bar and the text on the icons
+-- =========================================================================================
+
+local SKILLBAR = "ZO_ActionBar1"
+local skillbar = addon.barByKey.skillbar
+local timers = addon.timers
+
+print("\n== 16. the skill bar is placed the same way the other three are ==")
+SavedStore.PBsConsoleHudCustomizer_Data = nil
+addon.account = ZO_SavedVars:NewAccountWide("PBsConsoleHudCustomizer_Data", 1, nil, addon.accountDefaults)
+addon:Account()
+addon.written, addon.original = {}, {}
+BuildAttributeBars()
+SetAllSlots()
+addon:CaptureAll()
+check("the game's own place is measured", addon:GamePosition(skillbar).y, 60)
+check("centred", addon:GamePosition(skillbar).x, 0)
+check("nothing written while it is untouched", WriteCount(SKILLBAR, "anchor"), 0)
+Row(GetString(SI_PBSCHC_POSITION_Y):gsub("<<1>>", GetString(SI_PBSCHC_BAR_SKILLBAR))).setFunction(300)
+check("moved", BarAnchor(SKILLBAR), "128->GuiRoot 4 (0,-300)")
+Row(GetString(SI_PBSCHC_SCALE):gsub("<<1>>", GetString(SI_PBSCHC_BAR_SKILLBAR))).setFunction(80)
+check("scaled", _G[SKILLBAR]:GetScale(), 0.8)
+check("the attribute bars are not touched by it", WriteCount(HEALTH, "anchor"), 0)
+
+print("\n== 17. the other weapon set's row ==")
+FireHud(SCENE_FRAGMENT_SHOWN)
+check("the update loop is running", UpdateRegistered("PBsConsoleHudCustomizerTimers"), true)
+local back3 = CreatedControls["PBsConsoleHudCustomizerBack3"]
+check("a row control was built per slot", back3 ~= nil, true)
+check("it hangs on the game's own button", back3:GetParent():GetName(), "ActionButton3")
+check("above it", string.format("%d", back3.anchors[1].offsetY), "-4")
+check("it shows the other set's ability", back3.namedChildren.Icon.texture, "back3.dds")
+check("the ultimate too", CreatedControls["PBsConsoleHudCustomizerBack8"].namedChildren.Icon.texture, "back8.dds")
+-- Swapping weapons swaps which set is the other one.
+ActiveHotbar = HOTBAR_CATEGORY_BACKUP
+RunUpdates()
+check("after a weapon swap it shows the first set", back3.namedChildren.Icon.texture, "front3.dds")
+ActiveHotbar = HOTBAR_CATEGORY_PRIMARY
+-- A werewolf / siege / mount bar is not one of the two weapon sets.
+ActiveHotbar = 42
+RunUpdates()
+check("hidden on a bar that has no other set", back3:IsHidden(), true)
+ActiveHotbar = HOTBAR_CATEGORY_PRIMARY
+RunUpdates()
+check("back again afterwards", back3:IsHidden(), false)
+-- An empty slot.
+SetSlot(HOTBAR_CATEGORY_BACKUP, 5, nil)
+RunUpdates()
+check("an empty slot keeps its frame by default", CreatedControls["PBsConsoleHudCustomizerBack5"]:IsHidden(), false)
+Row(GetString(SI_PBSCHC_BACKBAR_EMPTY)).setFunction(false)
+RunUpdates()
+check("and goes away when that is switched off", CreatedControls["PBsConsoleHudCustomizerBack5"]:IsHidden(), true)
+Row(GetString(SI_PBSCHC_BACKBAR_EMPTY)).setFunction(true)
+SetAllSlots()
+RunUpdates()
+
+print("\n== 18. the countdown comes from the client, for both sets ==")
+SetSlot(HOTBAR_CATEGORY_PRIMARY, 3, { name = "Front 3", icon = "front3.dds", id = 103, remaining = 8400, duration = 20000 })
+SetSlot(HOTBAR_CATEGORY_BACKUP, 4, { name = "Back 4", icon = "back4.dds", id = 204, remaining = 74000, duration = 80000 })
+RunUpdates()
+local frontTimer = CreatedControls["PBsConsoleHudCustomizerLabels3"].namedChildren.Timer
+local backTimer = CreatedControls["PBsConsoleHudCustomizerBack4"].namedChildren.Timer
+check("tenths under ten seconds", frontTimer:GetText(), "8.4")
+check("minutes over a minute, on the other set", backTimer:GetText(), "1m")
+Row(GetString(SI_PBSCHC_TIMER_DECIMALS)).setFunction(false)
+RunUpdates()
+check("whole seconds when tenths are off", frontTimer:GetText(), "8")
+Row(GetString(SI_PBSCHC_TIMER_DECIMALS)).setFunction(true)
+-- Under a second is noise; the game does not show it either.
+SetSlot(HOTBAR_CATEGORY_PRIMARY, 3, { name = "Front 3", icon = "front3.dds", id = 103, remaining = 400 })
+RunUpdates()
+check("nothing under a second", frontTimer:IsHidden(), true)
+SetSlot(HOTBAR_CATEGORY_PRIMARY, 3, { name = "Front 3", icon = "front3.dds", id = 103, remaining = 8400 })
+RunUpdates()
+
+print("\n== 19. the target count ==")
+local frontCount = CreatedControls["PBsConsoleHudCustomizerLabels3"].namedChildren.Count
+local now = GetGameTimeMilliseconds()
+FireEffect(EFFECT_RESULT_GAINED, "Front 3", "reticleover", (now + 9000) / 1000, 11, 303)
+RunUpdates()
+check("one target is not written by default", frontCount:IsHidden(), true)
+FireEffect(EFFECT_RESULT_GAINED, "Front 3", "", (now + 9000) / 1000, 12, 303)
+FireEffect(EFFECT_RESULT_GAINED, "Front 3", "", (now + 9000) / 1000, 13, 303)
+RunUpdates()
+check("three targets", frontCount:GetText(), "3")
+FireEffect(EFFECT_RESULT_FADED, "Front 3", "", 0, 12, 303)
+RunUpdates()
+check("two after one falls off", frontCount:GetText(), "2")
+-- A group member's copy of the same effect is not another target.
+FireEffect(EFFECT_RESULT_GAINED, "Front 3", "group3", (now + 9000) / 1000, 14, 303)
+RunUpdates()
+check("a group member's copy is not counted", frontCount:GetText(), "2")
+Row(GetString(SI_PBSCHC_COUNT_FROM_ONE)).setFunction(true)
+FireEffect(EFFECT_RESULT_GAINED, "Back 4", "", (now + 9000) / 1000, 21, 404)
+RunUpdates()
+check("a single target is written when that is asked for", CreatedControls["PBsConsoleHudCustomizerBack4"].namedChildren.Count:GetText(), "1")
+-- The count is matched by name; an ability with no effect of its own has none.
+check("an untouched slot has no count", CreatedControls["PBsConsoleHudCustomizerLabels6"].namedChildren.Count:IsHidden(), true)
+-- Expiry is by the clock, not by an event.
+AdvanceFrame(10000)
+RunUpdates()
+check("an effect that has run out stops being counted", frontCount:IsHidden(), true)
+Row(GetString(SI_PBSCHC_COUNT_ENABLED)).setFunction(false)
+RunUpdates()
+check("switched off entirely", CreatedControls["PBsConsoleHudCustomizerBack4"].namedChildren.Count:IsHidden(), true)
+Row(GetString(SI_PBSCHC_COUNT_ENABLED)).setFunction(true)
+
+print("\n== 20. the game's own numbers, the text size, and the loop ==")
+SetSlot(HOTBAR_CATEGORY_PRIMARY, 3, { name = "Front 3", icon = "front3.dds", id = 103, remaining = 8400 })
+GameBarTimers = true
+RunUpdates()
+check("automatic keeps off the bar the game is writing on", frontTimer:IsHidden(), true)
+check("but still writes on the other set", backTimer:IsHidden(), false)
+Row(GetString(SI_PBSCHC_TIMER_MODE)).setFunction(nil, nil, { data = "always" })
+RunUpdates()
+check("always writes anyway", frontTimer:GetText(), "8.4")
+Row(GetString(SI_PBSCHC_TIMER_MODE)).setFunction(nil, nil, { data = "never" })
+RunUpdates()
+check("never writes on either", frontTimer:IsHidden(), true)
+check("nor on the other set", backTimer:IsHidden(), true)
+Row(GetString(SI_PBSCHC_TIMER_MODE)).setFunction(nil, nil, { data = "auto" })
+GameBarTimers = false
+RunUpdates()
+check("and back", frontTimer:GetText(), "8.4")
+
+Row(GetString(SI_PBSCHC_TIMER_SIZE)).setFunction(36)
+check("the countdown font follows the slider", frontTimer.font, "$(GAMEPAD_BOLD_FONT)|36|thick-outline")
+check("on the other set too", backTimer.font, "$(GAMEPAD_BOLD_FONT)|36|thick-outline")
+Row(GetString(SI_PBSCHC_COUNT_SIZE)).setFunction(16)
+check("and the count has its own size", frontCount.font, "$(GAMEPAD_BOLD_FONT)|16|thick-outline")
+
+Row(GetString(SI_PBSCHC_BACKBAR_SCALE)).setFunction(70)
+check("the row is scaled", back3:GetScale(), 0.7)
+
+FireHud(SCENE_FRAGMENT_HIDDEN)
+check("the loop stops with the HUD", UpdateRegistered("PBsConsoleHudCustomizerTimers"), false)
+check("and everything of ours goes with it", back3:IsHidden(), true)
+-- The settings panel is reached through a menu, with the HUD down: moving a slider there must
+-- not start a hundred-millisecond loop behind it.
+Row(GetString(SI_PBSCHC_TIMER_SIZE)).setFunction(30)
+check("a slider moved behind a menu does not start it", UpdateRegistered("PBsConsoleHudCustomizerTimers"), false)
+check("but the font is still set for when it comes back", frontTimer.font, "$(GAMEPAD_BOLD_FONT)|30|thick-outline")
+FireHud(SCENE_FRAGMENT_SHOWN)
+check("and comes back", UpdateRegistered("PBsConsoleHudCustomizerTimers"), true)
+
+Row(GetString(SI_PBSCHC_ENABLED)).setFunction(false)
+check("the master switch stops it too", UpdateRegistered("PBsConsoleHudCustomizerTimers"), false)
+check("and puts the skill bar back", BarAnchor(SKILLBAR), "4->GuiRoot 4 (0,-25)")
+check("at its own size", _G[SKILLBAR]:GetScale(), 1)
+Row(GetString(SI_PBSCHC_ENABLED)).setFunction(true)
+check("on again", UpdateRegistered("PBsConsoleHudCustomizerTimers"), true)
 
 print("")
 if failures == 0 then

@@ -1,0 +1,68 @@
+<GuiXml>
+    <!--
+        The controls this add-on draws on the skill bar.
+
+        Laid out here rather than in Lua on purpose: a row of controls assembled with SetAnchor
+        from an add-on ran into anchor limits and zero-height rows on the console gamepad UI once
+        already (PB's MailerExtension). These are plain textures and labels of our own, with no
+        client template inherited, and only the parent is chosen at runtime, because the controls
+        they hang on (ActionButton3..8) do not exist until the UI has loaded.
+
+        PBsConsoleHudCustomizerBackBarSlot is one slot of the back bar: the other weapon set's
+        ability, drawn in the game's own back row frame (52 x 68, icon 44 x 44, the sizes and
+        texture coordinates of ZO_ActionBarTimer_BackBarSlot_Gamepad).
+
+        PBsConsoleHudCustomizerSlotLabels is the countdown and target count for a slot of the
+        game's own bar: nothing but two labels, filling the button it is parented to.
+
+        Both fonts are replaced from Lua at the size the player chose. The ones here are only so
+        that a control is legible if that ever fails.
+    -->
+    <Controls>
+        <Label name="PBsConsoleHudCustomizerTimerLabel" font="ZoFontGamepad27" color="DCD822"
+               horizontalAlignment="CENTER" verticalAlignment="BOTTOM" virtual="true">
+            <Dimensions x="0" y="25"/>
+        </Label>
+        <Label name="PBsConsoleHudCustomizerCountLabel" font="ZoFontGamepad27" color="FFFFFF"
+               horizontalAlignment="CENTER" verticalAlignment="TOP" virtual="true">
+            <Dimensions x="0" y="25"/>
+        </Label>
+
+        <Control name="PBsConsoleHudCustomizerBackBarSlot" virtual="true" tier="MEDIUM">
+            <Dimensions x="52" y="68"/>
+            <Controls>
+                <Texture name="$(parent)BG" textureFile="EsoUI/Art/ActionBar/Gamepad/gp_backrow_abilityFrame_BLANK.dds" level="0">
+                    <Dimensions x="52" y="68"/>
+                    <Anchor point="CENTER"/>
+                    <TextureCoords left="0" right="0.8125" top="0" bottom="1.0625"/>
+                </Texture>
+                <Texture name="$(parent)Icon" level="1">
+                    <Dimensions x="44" y="44"/>
+                    <Anchor point="CENTER"/>
+                </Texture>
+                <Texture name="$(parent)Overlay" textureFile="EsoUI/Art/ActionBar/Gamepad/gp_backrow_abilityFrame_overlay.dds" level="2">
+                    <Dimensions x="52" y="68"/>
+                    <Anchor point="CENTER"/>
+                    <TextureCoords left="0" right="0.8125" top="0" bottom="1.0625"/>
+                </Texture>
+                <Label name="$(parent)Timer" inherits="PBsConsoleHudCustomizerTimerLabel" level="3">
+                    <Anchor point="BOTTOM" relativeTo="$(parent)Icon" relativePoint="BOTTOM" offsetY="4"/>
+                </Label>
+                <Label name="$(parent)Count" inherits="PBsConsoleHudCustomizerCountLabel" level="3">
+                    <Anchor point="TOPRIGHT" relativeTo="$(parent)Icon" relativePoint="TOPRIGHT" offsetX="2" offsetY="-4"/>
+                </Label>
+            </Controls>
+        </Control>
+
+        <Control name="PBsConsoleHudCustomizerSlotLabels" virtual="true" tier="HIGH">
+            <Controls>
+                <Label name="$(parent)Timer" inherits="PBsConsoleHudCustomizerTimerLabel">
+                    <Anchor point="BOTTOM" relativePoint="BOTTOM" offsetY="4"/>
+                </Label>
+                <Label name="$(parent)Count" inherits="PBsConsoleHudCustomizerCountLabel">
+                    <Anchor point="TOPRIGHT" relativePoint="TOPRIGHT" offsetX="2" offsetY="-4"/>
+                </Label>
+            </Controls>
+        </Control>
+    </Controls>
+</GuiXml>

@@ -115,6 +115,7 @@ function MakeControl(name, parent, kind)
 	return c
 end
 function Control:GetName() return self.name end
+function Control:GetNamedChild(suffix) return (self.namedChildren or {})[suffix] or _G[self.name .. suffix] end
 function Control:GetParent() return self.parent end
 function Control:ClearAnchors() CountWrite(self, "anchor"); self.anchors = {} end
 function Control:SetAnchor(point, relativeTo, relativePoint, offsetX, offsetY, constrains)
@@ -144,6 +145,10 @@ function Control:SetHandler(name, fn) self.handlers[name] = fn end
 function Control:SetColor(r, g, b, a) self.color = { r, g, b, a } end
 function Control:SetText(t) self.text = t end
 function Control:SetFont(f) self.font = f end
+function Control:SetTexture(t) self.texture = t end
+function Control:GetText() return self.text end
+function Control:SetHorizontalAlignment() end
+function Control:SetVerticalAlignment() end
 function Control:Tick() if self.handlers.OnUpdate then self.handlers.OnUpdate(self) end end
 
 -- The client's own layout, for the one anchor these controls ever have: the anchor point of
@@ -161,6 +166,27 @@ function Control:Rect()
 end
 function Control:GetLeft() local l = self:Rect(); return l end
 function Control:GetTop() local _, t = self:Rect(); return t end
+
+-- Controls.xml, as far as the add-on reads it back: every template it asks for has an Icon, a
+-- Timer and a Count child, looked up with GetNamedChild.
+local VIRTUAL_CHILDREN = {
+	PBsConsoleHudCustomizerBackBarSlot = { "BG", "Icon", "Overlay", "Timer", "Count" },
+	PBsConsoleHudCustomizerSlotLabels = { "Timer", "Count" },
+}
+
+function CreateControlFromVirtual(name, parent, template, suffix)
+	local fullName = name .. tostring(suffix or "")
+	assert(not CreatedControls[fullName], "duplicate control name " .. fullName)
+	assert(VIRTUAL_CHILDREN[template], "unknown template " .. tostring(template))
+	local control = MakeControl(fullName, parent, "control")
+	control.template = template
+	control.namedChildren = {}
+	for _, child in ipairs(VIRTUAL_CHILDREN[template]) do
+		control.namedChildren[child] = MakeControl(fullName .. child, control, "control")
+	end
+	CreatedControls[fullName] = control
+	return control
+end
 
 CreatedControls = {}
 WINDOW_MANAGER = {
@@ -220,8 +246,36 @@ function BuildAttributeBars()
 	_G.ZO_PlayerAttributeMountStamina = mount
 
 	PLAYER_ATTRIBUTE_BARS = { bars = {} }
+	BuildActionBar()
 	Writes = {}
 	return group
+end
+
+-- ---- the action bar -----------------------------------------------------------------
+-- actionbar.xml / .lua: ZO_ActionBar1 is 70 high, 606 wide on the gamepad, BOTTOM of GuiRoot at
+-- -25 (GAMEPAD_CONSTANTS), and every button is a control named ActionButton<slot> inside it.
+ACTION_BAR_FIRST_NORMAL_SLOT_INDEX = 2
+ACTION_BAR_SLOTS_PER_PAGE = 6
+ACTION_BAR_ULTIMATE_SLOT_INDEX = 7
+HOTBAR_CATEGORY_PRIMARY, HOTBAR_CATEGORY_BACKUP = 0, 1
+ACTION_TYPE_NOTHING, ACTION_TYPE_ABILITY = 0, 1
+
+function BuildActionBar()
+	local bar = MakeControl("ZO_ActionBar1", GuiRoot, "toplevel")
+	bar.width, bar.height = 606, 70
+	bar:SetAnchor(BOTTOM, GuiRoot, BOTTOM, 0, -25)
+	_G.ZO_ActionBar1 = bar
+	for slot = 3, 8 do
+		local button = MakeControl("ActionButton" .. slot, bar, "control")
+		button.width, button.height = 64, 64
+		button:SetAnchor(LEFT, bar, LEFT, (slot - 3) * 74, 0)
+		local icon = MakeControl("ActionButton" .. slot .. "Icon", button, "texture")
+		icon:SetAnchor(CENTER, button, CENTER, 0, 0)
+		icon.width, icon.height = 64, 64
+		button.namedChildren = { Icon = icon }
+		_G["ActionButton" .. slot] = button
+	end
+	return bar
 end
 
 -- ZO_UnitVisualizer_ShrinkExpandModule:OnValueChanged -- a buff or debuff on a maximum writes
@@ -245,6 +299,68 @@ function BarAnchor(name)
 	local a = _G[name].anchors[1]
 	if not a then return "none" end
 	return string.format("%d->%s %d (%d,%d)", a.point, a.relativeTo and a.relativeTo:GetName() or "nil", a.relativePoint, a.offsetX, a.offsetY)
+end
+
+-- ---- the action slot API ------------------------------------------------------------
+-- GetActionSlotEffectTimeRemaining / Duration / StackCount and the slot readers, as the client
+-- has them since the action bar timers went in: they answer for either hotbar, which is what
+-- makes a countdown on the set you are not on possible at all.
+ActiveHotbar = HOTBAR_CATEGORY_PRIMARY
+SlotData = {}   -- [hotbar][slot] = { name, icon, id, remaining, duration, stacks }
+
+function GetActiveHotbarCategory() return ActiveHotbar end
+
+local function Slot(slot, hotbar)
+	return (SlotData[hotbar] or {})[slot]
+end
+
+function SetSlot(hotbar, slot, data)
+	SlotData[hotbar] = SlotData[hotbar] or {}
+	SlotData[hotbar][slot] = data
+end
+
+function SetAllSlots()
+	SlotData = {}
+	for slot = 3, 8 do
+		SetSlot(HOTBAR_CATEGORY_PRIMARY, slot, { name = "Front " .. slot, icon = "front" .. slot .. ".dds", id = 100 + slot })
+		SetSlot(HOTBAR_CATEGORY_BACKUP, slot, { name = "Back " .. slot, icon = "back" .. slot .. ".dds", id = 200 + slot })
+	end
+end
+
+function GetSlotName(slot, hotbar) local s = Slot(slot, hotbar); return s and s.name or "" end
+function GetSlotTexture(slot, hotbar) local s = Slot(slot, hotbar); return s and s.icon or "" end
+function GetSlotBoundId(slot, hotbar) local s = Slot(slot, hotbar); return s and s.id or 0 end
+function GetSlotType(slot, hotbar) local s = Slot(slot, hotbar); return s and ACTION_TYPE_ABILITY or ACTION_TYPE_NOTHING end
+function GetActionSlotEffectTimeRemaining(slot, hotbar) local s = Slot(slot, hotbar); return s and s.remaining or 0 end
+function GetActionSlotEffectDuration(slot, hotbar) local s = Slot(slot, hotbar); return s and s.duration or 0 end
+function GetActionSlotEffectStackCount(slot, hotbar) local s = Slot(slot, hotbar); return s and s.stacks or 0 end
+
+SETTING_TYPE_UI, UI_SETTING_SHOW_ACTION_BAR_TIMERS = "ui", "barTimers"
+GameBarTimers = false
+function GetSetting_Bool(settingType, settingId)
+	if settingType == SETTING_TYPE_UI and settingId == UI_SETTING_SHOW_ACTION_BAR_TIMERS then
+		return GameBarTimers
+	end
+	return false
+end
+
+-- EVENT_EFFECT_CHANGED, and the update loop.
+EVENT_EFFECT_CHANGED = "EVENT_EFFECT_CHANGED"
+EFFECT_RESULT_GAINED, EFFECT_RESULT_FADED, EFFECT_RESULT_UPDATED = 1, 2, 3
+REGISTER_FILTER_SOURCE_COMBAT_UNIT_TYPE, COMBAT_UNIT_TYPE_PLAYER = "source", 1
+function GetGameTimeMilliseconds() return GetFrameTimeMilliseconds() end
+
+local updates = {}
+EVENT_MANAGER.RegisterForUpdate = function(_, name, interval, fn) updates[name] = fn end
+EVENT_MANAGER.UnregisterForUpdate = function(_, name) updates[name] = nil end
+EVENT_MANAGER.AddFilterForEvent = function() end
+function RunUpdates() for _, fn in pairs(updates) do fn() end end
+function UpdateRegistered(name) return updates[name] ~= nil end
+
+-- The effect event, in the client's argument order.
+function FireEffect(changeType, effectName, unitTag, endTimeSec, unitId, abilityId)
+	Fire(EVENT_EFFECT_CHANGED, changeType, 1, effectName, unitTag, 0, endTimeSec, 0, "icon.dds", nil,
+		1, 1, 0, "someone", unitId, abilityId, COMBAT_UNIT_TYPE_PLAYER)
 end
 
 -- ---- scenes -------------------------------------------------------------------------
@@ -325,6 +441,7 @@ end
 dofile(DIR .. "/lang/strings.lua")
 dofile(DIR .. "/lang/jp.lua")
 dofile(DIR .. "/Main.lua")
+dofile(DIR .. "/Timers.lua")
 dofile(DIR .. "/Preview.lua")
 dofile(DIR .. "/Settings.lua")
 

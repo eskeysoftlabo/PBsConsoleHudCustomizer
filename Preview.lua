@@ -108,9 +108,16 @@ function preview:Create()
 	caption:SetText(GetString(SI_PBSCHC_PREVIEW_CAPTION))
 	self.caption = caption
 
-	for index, bar in ipairs(addon.bars) do
+	for index, bar in ipairs(addon.elements) do
 		self:Frame(bar, index)
 	end
+	-- The other weapon set's row, drawn only as an outline: it is not placed on its own, it
+	-- follows the skill bar.
+	self.backFrame = self:Frame({
+		key = "backbar",
+		colour = { 1, 0.41, 0.71 },
+		stringId = "SI_PBSCHC_SECTION_BACKBAR",
+	}, #addon.elements + 1)
 
 	-- Checked a few times a second while shown: the preview goes away by itself once the panel
 	-- it belongs to is no longer on screen, whichever way the player left it.
@@ -142,7 +149,7 @@ function preview:Update()
 	local rootWidth, rootHeight = addon:RootSize()
 	local highest = rootHeight
 
-	for index, bar in ipairs(addon.bars) do
+	for index, bar in ipairs(addon.elements) do
 		local frame = self:Frame(bar, index)
 		local position = addon:EffectivePosition(bar)
 		local scale = addon:EffectiveScalePercent(bar) / 100
@@ -160,7 +167,32 @@ function preview:Update()
 		end
 	end
 
-	-- The caption sits above the highest of the three, or below it when there is no room.
+	-- The other weapon set's row, above the skill bar and scaled with it.
+	if self.backFrame then
+		local control = self.backFrame.control
+		local shown = addon.BackBarEnabled and addon:BackBarEnabled()
+		if shown then
+			local skillbar = addon.barByKey.skillbar
+			local left, top, width = addon:RectOf(skillbar)
+			local barScale = addon:EffectiveScalePercent(skillbar) / 100
+			local scale = barScale * addon:BackBarScale() / 100
+			local gap = addon:BackBar().gap
+			gap = (type(gap) == "number" and gap or 4) * barScale
+			local height = 68 * scale
+			control:ClearAnchors()
+			control:SetAnchor(BOTTOMLEFT, self.control, TOPLEFT, left, top - gap)
+			control:SetDimensions(width, height)
+			control:SetHidden(false)
+			self.backFrame.label:SetScale(scale)
+			if top - gap - height < highest then
+				highest = top - gap - height
+			end
+		else
+			control:SetHidden(true)
+		end
+	end
+
+	-- The caption sits above the highest of the four, or below it when there is no room.
 	self.caption:ClearAnchors()
 	if highest < 40 then
 		self.caption:SetAnchor(TOP, self.control, TOP, 0, highest + 40)
