@@ -375,26 +375,38 @@ function addon:InitSettings()
 		}
 	)
 
-	settings:AddSetting(
-		{
-			type = LibHarvensAddonSettings.ST_SLIDER,
-			label = GetString(SI_PBSCHC_TIMER_SIZE),
-			tooltip = GetString(SI_PBSCHC_TIMER_SIZE_TOOLTIP),
-			min = self.MIN_TEXT_SIZE,
-			max = self.MAX_TEXT_SIZE,
-			step = 1,
-			default = self.DEFAULT_TIMER_SIZE,
-			format = "%d",
-			unit = "",
-			getFunction = function()
-				return self:TextSize("timer")
-			end,
-			setFunction = function(value)
-				self:SetTextSize("timer", value)
-				self:Refresh()
-			end
-		}
-	)
+	-- One slider per bar, for each of the two numbers. The other weapon set's follows this bar
+	-- until it is moved, so an install that never touches it keeps one size for both.
+	local function AddSizeSlider(which, isBack, label, tooltip, default)
+		settings:AddSetting(
+			{
+				type = LibHarvensAddonSettings.ST_SLIDER,
+				label = GetString(label),
+				tooltip = GetString(tooltip),
+				min = self.MIN_TEXT_SIZE,
+				max = self.MAX_TEXT_SIZE,
+				step = 1,
+				default = default,
+				format = "%d",
+				unit = "",
+				getFunction = function()
+					return self:TextSize(which, isBack)
+				end,
+				setFunction = function(value)
+					self:SetTextSize(which, value, isBack)
+					self:Refresh()
+					-- The front bar's slider moves the row's with it while the row has no size
+					-- of its own, so the panel has to re-read them.
+					if not isBack and not self:TextSizeIsOwn(which) and settings.UpdateControls then
+						settings:UpdateControls()
+					end
+				end
+			}
+		)
+	end
+
+	AddSizeSlider("timer", false, SI_PBSCHC_TIMER_SIZE, SI_PBSCHC_TIMER_SIZE_TOOLTIP, self.DEFAULT_TIMER_SIZE)
+	AddSizeSlider("timer", true, SI_PBSCHC_TIMER_SIZE_BACK, SI_PBSCHC_TIMER_SIZE_BACK_TOOLTIP, self.DEFAULT_TIMER_SIZE)
 
 	settings:AddSetting(
 		{
@@ -428,23 +440,22 @@ function addon:InitSettings()
 		}
 	)
 
+	AddSizeSlider("count", false, SI_PBSCHC_COUNT_SIZE, SI_PBSCHC_COUNT_SIZE_TOOLTIP, self.DEFAULT_COUNT_SIZE)
+	AddSizeSlider("count", true, SI_PBSCHC_COUNT_SIZE_BACK, SI_PBSCHC_COUNT_SIZE_BACK_TOOLTIP, self.DEFAULT_COUNT_SIZE)
+
 	settings:AddSetting(
 		{
-			type = LibHarvensAddonSettings.ST_SLIDER,
-			label = GetString(SI_PBSCHC_COUNT_SIZE),
-			tooltip = GetString(SI_PBSCHC_COUNT_SIZE_TOOLTIP),
-			min = self.MIN_TEXT_SIZE,
-			max = self.MAX_TEXT_SIZE,
-			step = 1,
-			default = self.DEFAULT_COUNT_SIZE,
-			format = "%d",
-			unit = "",
-			getFunction = function()
-				return self:TextSize("count")
-			end,
-			setFunction = function(value)
-				self:SetTextSize("count", value)
+			type = LibHarvensAddonSettings.ST_BUTTON,
+			label = GetString(SI_PBSCHC_TEXT_SIZE_MATCH),
+			tooltip = GetString(SI_PBSCHC_TEXT_SIZE_MATCH_TOOLTIP),
+			buttonText = GetString(SI_PBSCHC_RESET_BUTTON),
+			clickHandler = function()
+				self:ClearBackTextSize("timer")
+				self:ClearBackTextSize("count")
 				self:Refresh()
+				if settings.UpdateControls then
+					settings:UpdateControls()
+				end
 			end
 		}
 	)

@@ -451,6 +451,18 @@ And the fade remembered *that a slot* was faded rather than *which label* was, s
 button had been rebuilt was taken for done and left with the game's number on top of ours. It
 remembers the control now, and hands back anything it faded earlier.
 
+## 25. One size per bar, without resetting anybody's
+
+The two rows are not the same size on screen: the gamepad action button's icon is 61, and the
+other weapon set's row is drawn in the client's back row frame, whose icon is 44. One text size
+for both was always going to be a compromise, so each row has its own.
+
+The row's keys (`backTimerSize`, `backCountSize`) are **unset by default**, and an unset one means
+"whatever the bar you are on uses" -- the same shape as a position that has not been moved yet.
+So an install upgrading from a build with one size for both sees no change at all, moving the
+bar's slider still moves both until the row is given a size of its own, and a button in the panel
+puts the row back to following. `/pbhud status` prints both, and says which is following.
+
 ---
 
 ## Still to measure on a PS5

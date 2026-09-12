@@ -97,18 +97,46 @@ function addon:BackBar()
 	return self:Account().backBar
 end
 
-function addon:TextSize(which)
+-- Where a size is kept. The other weapon set's row has its own pair of keys, and an unset one
+-- means "whatever the bar you are on uses" -- the same shape as a position that has not been
+-- moved yet. So the row follows the front bar until the player gives it a size of its own, and
+-- an upgrade from a build that had one size for both changes nothing on screen.
+local function SizeKey(which, isBack)
+	if isBack then
+		return "back" .. which:sub(1, 1):upper() .. which:sub(2) .. "Size"
+	end
+	return which .. "Size"
+end
+
+addon.SizeKey = SizeKey
+
+function addon:TextSize(which, isBack)
 	local text = self:Text()
-	local size = text[which .. "Size"]
-	local fallback = which == "timer" and self.DEFAULT_TIMER_SIZE or self.DEFAULT_COUNT_SIZE
+	if isBack then
+		local own = text[SizeKey(which, true)]
+		if type(own) == "number" then
+			return addon.Clamp(Round(own), self.MIN_TEXT_SIZE, self.MAX_TEXT_SIZE)
+		end
+	end
+	local size = text[SizeKey(which, false)]
 	if type(size) ~= "number" then
-		return fallback
+		return which == "timer" and self.DEFAULT_TIMER_SIZE or self.DEFAULT_COUNT_SIZE
 	end
 	return addon.Clamp(Round(size), self.MIN_TEXT_SIZE, self.MAX_TEXT_SIZE)
 end
 
-function addon:SetTextSize(which, value)
-	self:Text()[which .. "Size"] = addon.Clamp(Round(value), self.MIN_TEXT_SIZE, self.MAX_TEXT_SIZE)
+function addon:SetTextSize(which, value, isBack)
+	self:Text()[SizeKey(which, isBack)] = addon.Clamp(Round(value), self.MIN_TEXT_SIZE, self.MAX_TEXT_SIZE)
+end
+
+-- True once the row has been given a size of its own.
+function addon:TextSizeIsOwn(which)
+	return type(self:Text()[SizeKey(which, true)]) == "number"
+end
+
+-- Back to following the bar you are on.
+function addon:ClearBackTextSize(which)
+	self:Text()[SizeKey(which, true)] = nil
 end
 
 -- Whether the game is drawing its own countdown and stack count on the bar. Its setting is
@@ -578,6 +606,7 @@ function timers:BackSlot(slot)
 		shade = Child(control, "Shade"),
 		shadeState = {},
 		button = button,
+		isBack = true,
 	}
 	self.back[slot] = entry
 	self:AnchorBackSlot(entry)
@@ -710,11 +739,12 @@ function timers:PlaceTimer(pair, centred)
 end
 
 function timers:StyleLabels(pair)
-	ApplyFont(pair.timer, addon:TextSize("timer"), "timer")
+	local isBack = pair.isBack == true
+	ApplyFont(pair.timer, addon:TextSize("timer", isBack), isBack and "back timer" or "timer")
 	if pair.timer then
 		pair.timer:SetColor(TIMER_COLOUR[1], TIMER_COLOUR[2], TIMER_COLOUR[3], 1)
 	end
-	ApplyFont(pair.count, addon:TextSize("count"), "count")
+	ApplyFont(pair.count, addon:TextSize("count", isBack), isBack and "back count" or "count")
 	if pair.count then
 		pair.count:SetColor(COUNT_COLOUR[1], COUNT_COLOUR[2], COUNT_COLOUR[3], 1)
 	end

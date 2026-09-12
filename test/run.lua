@@ -28,7 +28,7 @@ print("\n== 1. load ==")
 Fire(EVENT_ADD_ON_LOADED, "PBsConsoleHudCustomizer")
 local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 local health, magicka, stamina = addon.barByKey.health, addon.barByKey.magicka, addon.barByKey.stamina
-check("version read from manifest", addon.version, "1.3.3")
+check("version read from manifest", addon.version, "1.4.0")
 check("slash command registered", type(SLASH_COMMANDS["/pbhud"]), "function")
 check("short slash command registered", type(SLASH_COMMANDS["/pbhc"]), "function")
 check("HUD fragment callback registered", addon.hudRegistered, true)
@@ -44,9 +44,10 @@ check("HUD fragment callback registered", addon.hudRegistered, true)
 -- explanation, 2 checkboxes, the style section (heading, dropdown, slider), then per element:
 -- heading + 2 sliders + scale + reset, then spacing (heading, label, 3 sliders), the back bar
 -- (heading, label, 2 checkboxes, 2 sliders), the text (heading, label, dropdown, 3 sliders,
--- 3 checkboxes), the shade (heading, label, 2 checkboxes, slider, dropdown) and the general
--- section (heading, button, hint)
-check("settings rows", #PanelRows, 3 + 3 + 4 * 5 + 5 + 6 + 8 + 6 + 3)
+-- 3 checkboxes, 2 more size sliders and the button that puts the other set back to following),
+-- the shade (heading, label, 2 checkboxes, slider, dropdown) and the general section (heading,
+-- button, hint)
+check("settings rows", #PanelRows, 3 + 3 + 4 * 5 + 5 + 6 + 11 + 6 + 3)
 
 print("\n== 2. the first apply waits for the bars ==")
 Fire(EVENT_PLAYER_ACTIVATED)
@@ -349,9 +350,22 @@ check("faded whatever the game's setting says", gameTimer:GetAlpha(), 0)
 
 Row(GetString(SI_PBSCHC_TIMER_SIZE)).setFunction(36)
 check("the countdown font follows the slider", frontTimer.font, "$(GAMEPAD_BOLD_FONT)|36|thick-outline")
-check("on the other set too", backTimer.font, "$(GAMEPAD_BOLD_FONT)|36|thick-outline")
+check("and the other set follows it while it has no size of its own", backTimer.font, "$(GAMEPAD_BOLD_FONT)|36|thick-outline")
+-- Given one, the row keeps it: its icons are smaller than the bar's.
+Row(GetString(SI_PBSCHC_TIMER_SIZE_BACK)).setFunction(20)
+check("the other set takes its own size", backTimer.font, "$(GAMEPAD_BOLD_FONT)|20|thick-outline")
+check("and this bar is not touched by it", frontTimer.font, "$(GAMEPAD_BOLD_FONT)|36|thick-outline")
+Row(GetString(SI_PBSCHC_TIMER_SIZE)).setFunction(30)
+check("moving this bar's no longer moves the row's", backTimer.font, "$(GAMEPAD_BOLD_FONT)|20|thick-outline")
+check("but this bar still follows its own", frontTimer.font, "$(GAMEPAD_BOLD_FONT)|30|thick-outline")
+Row(GetString(SI_PBSCHC_TEXT_SIZE_MATCH)).clickHandler()
+check("and the row can be put back to following", backTimer.font, "$(GAMEPAD_BOLD_FONT)|30|thick-outline")
+Row(GetString(SI_PBSCHC_TIMER_SIZE)).setFunction(36)
+check("following again", backTimer.font, "$(GAMEPAD_BOLD_FONT)|36|thick-outline")
 Row(GetString(SI_PBSCHC_COUNT_SIZE)).setFunction(16)
 check("and the count has its own size", frontCount.font, "$(GAMEPAD_BOLD_FONT)|16|thick-outline")
+Row(GetString(SI_PBSCHC_COUNT_SIZE_BACK)).setFunction(14)
+check("the row's count too", CreatedControls["PBsConsoleHudCustomizerBack4"].namedChildren.Count.font, "$(GAMEPAD_BOLD_FONT)|14|thick-outline")
 
 Row(GetString(SI_PBSCHC_BACKBAR_SCALE)).setFunction(70)
 check("the row is scaled", back3:GetScale(), 0.7)

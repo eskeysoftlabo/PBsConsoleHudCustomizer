@@ -1003,9 +1003,13 @@ function addon:PrintStatus()
 	for _ in pairs(self.timers.back) do
 		backBuilt = backBuilt + 1
 	end
-	Line("|cFF69B4  skill bar text|r  countdown=%s (%d) count=%s (%d)  the game draws its own: %s (dimmed=%s)",
-		self:TimerMode(), self:TextSize("timer"), tostring(text.showCounts ~= false), self:TextSize("count"),
-		tostring(self:GameShowsBarTimers()), tostring(self:DimsGameTimer()))
+	Line("|cFF69B4  skill bar text|r  countdown=%s  the game draws its own: %s (dimmed=%s)",
+		self:TimerMode(), tostring(self:GameShowsBarTimers()), tostring(self:DimsGameTimer()))
+	Line("    sizes: countdown %d / %d%s   count %s %d / %d%s",
+		self:TextSize("timer", false), self:TextSize("timer", true),
+		self:TextSizeIsOwn("timer") and "" or " (following)",
+		tostring(text.showCounts ~= false), self:TextSize("count", false), self:TextSize("count", true),
+		self:TextSizeIsOwn("count") and "" or " (following)")
 	Line("    controls built: labels=%d/6 row=%d/6   effects tracked=%d   (%s slots for the rest)",
 		built, backBuilt, self.timers:TrackedCount(), SLASH .. " slots")
 	Line("|cFF69B4  back bar|r  on=%s empty=%s scale=%d%% gap=%d  running=%s",
@@ -1032,7 +1036,7 @@ local function Usage()
 	Line("  %s status                 -- settings, and where the bars really are", SLASH)
 	Line("  %s pos <bar> <x> <y>      -- x from the middle of the screen, y up from the bottom", SLASH)
 	Line("  %s scale <bar> <n>        -- size in per cent (%d-%d)", SLASH, addon.MIN_SCALE, addon.MAX_SCALE)
-	Line("  %s text timer|count <n>   -- size of the text on the skill bar (%d-%d)", SLASH, addon.MIN_TEXT_SIZE or 12, addon.MAX_TEXT_SIZE or 48)
+	Line("  %s text [back] timer|count <n> -- size of the text on the skill bar (%d-%d)", SLASH, addon.MIN_TEXT_SIZE or 12, addon.MAX_TEXT_SIZE or 48)
 	Line("  %s timers addon|both|game -- whose countdown goes on the front bar", SLASH)
 	Line("  %s gap skill|ult|item <n> -- the space along the skill bar (%d-%d)", SLASH, addon.MIN_GAP or 0, addon.MAX_GAP or 150)
 	Line("  %s style standard|liquid  -- the look of the three resource bars", SLASH)
@@ -1090,23 +1094,34 @@ local function OnSlash(argumentString)
 		addon:Refresh()
 		Line("%s: scale=%d%%", bar.key, addon:ScalePercent(bar))
 	elseif command == "text" then
-		local which = (args[2] or ""):lower()
-		local value = tonumber(args[3])
-		if which == "count" or which == "targets" then
+		-- "back" anywhere in front of the rest picks the other weapon set's row.
+		local index = 2
+		local isBack = false
+		local word = (args[index] or ""):lower()
+		if word == "back" or word == "front" then
+			isBack = word == "back"
+			index = index + 1
+			word = (args[index] or ""):lower()
+		end
+		local which
+		if word == "count" or word == "targets" then
 			which = "count"
-		elseif which == "timer" or which == "time" then
+		elseif word == "timer" or word == "time" then
 			which = "timer"
-		else
+		end
+		local value = tonumber(args[index + 1])
+		if which and word == "" then
 			which = nil
 		end
 		if not which or not value then
-			Line("usage: %s text timer|count <%d-%d>", SLASH, addon.MIN_TEXT_SIZE, addon.MAX_TEXT_SIZE)
+			Line("usage: %s text [back] timer|count <%d-%d>", SLASH, addon.MIN_TEXT_SIZE, addon.MAX_TEXT_SIZE)
 			return
 		end
-		addon:SetTextSize(which, value)
+		addon:SetTextSize(which, value, isBack)
 		account.enabled = true
 		addon:Refresh()
-		Line("%s text size: %d", which, addon:TextSize(which))
+		Line("%s text size: this bar %d, other set %d", which, addon:TextSize(which, false),
+			addon:TextSize(which, true))
 	elseif command == "gap" or command == "gaps" then
 		local which = (args[2] or ""):lower()
 		local names = { skill = "skill", skills = "skill", ability = "skill",

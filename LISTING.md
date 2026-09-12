@@ -110,7 +110,9 @@ XMLで各バーに固定されているため一緒に移動し、倍率も同�
 ・対象数（アイコン上・白）
 　その効果がかかっている対象の数です。既定は1体から表示（2体以上のときだけ表示にも変更可）。
 
-文字サイズはそれぞれ12〜48で調整できます。
+文字サイズは12〜48で、**表バーと裏バーそれぞれ独立して**設定できます（残り時間・対象数の4つ）。
+裏バーのアイコンは表バーより小さいため、少し小さめにすると収まりが良くなります。裏バー側は
+動かすまで表バーの設定に追従するので、両方同じで良ければスライダーは2つだけで済みます。
 
 残り時間はゲーム本体が持っている値そのものです（GetActionSlotEffectTimeRemaining）。裏バー側
 の値も同じ関数が答えるため、推測は一切していません。対象数だけはAPIがないため、自分がかけた
@@ -148,7 +150,7 @@ XMLで各バーに固定されているため一緒に移動し、倍率も同�
 /pbhud gap skill|ult|item <n>      スキルバーの間隔（0〜150）
 /pbhud style standard|liquid       リソースバーの見た目
 /pbhud shade [on|off|up|down|<n>]  使用中スキルの網掛け
-/pbhud text timer|count <n>        スキルバーの文字サイズ（12〜48）
+/pbhud text [back] timer|count <n> スキルバーの文字サイズ（12〜48、backで裏バー）
 /pbhud timers addon|both|game      表バーの残り時間をどちらが出すか
 /pbhud slots                       各スロットの状態（診断用）
 /pbhud backbar [on|off|empty|<n>]  裏バーの表示・大きさ
@@ -201,8 +203,9 @@ gap. It hides itself while you cannot swap weapons at all -- the Oakensoul Ring,
 that has not earned the second set yet.
 
 Countdown and target count, on both sets: how long is left on each ability's effect (gold, under
-the icon) and how many targets are under it (white, in the corner), each with its own text size
-from 12 to 48. The countdown is the game's own number -- the same one its action bar timers use,
+the icon) and how many targets are under it (white, in the corner), each with its own text size from 12 to 48, set separately for the bar
+you are on and for the other set's row (the row follows the bar until you give it a size of its
+own). The countdown is the game's own number -- the same one its action bar timers use,
 and it answers for the set you are not on as well. The target count has no API behind it and is
 counted from the effects you apply, matched by the ability's name.
 

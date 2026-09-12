@@ -6,7 +6,7 @@ as a shade that clears down the icon, a countdown, and a target count -- in The 
 Online on console.
 
 - **Author:** PinkBanther
-- **Version:** 1.3.3
+- **Version:** 1.4.0
 - **Optional:** `LibHarvensAddonSettings` >= 20106 (for the settings panel; the chat commands work
   without it)
 
@@ -112,7 +112,12 @@ On **both** sets, each icon can carry:
 | **Countdown** | How long is left on that ability's effect. Gold, at the bottom of the icon. A minute or more reads as `1m`, the last ten seconds as `9.4` (optional). |
 | **Target count** | How many targets are under the effect. White, in the top corner. From one target, or from two if you would rather a single-target ability did not carry a 1. |
 
-Both have their own text size, 12 to 48.
+Each has its own text size, 12 to 48, **per bar**: the countdown and the target count on the bar
+you are on, and the countdown and the target count on the other set's row. The row's icons are
+smaller than the bar's, so a smaller number often reads better there.
+
+Until you move one of the row's two sliders it **follows the bar's**, so one size for both stays
+one slider. **Match the other set to this bar** puts it back to following.
 
 The countdown is **the game's own number** — `GetActionSlotEffectTimeRemaining`, the same value
 the game's own action bar timers use, and it answers for the set you are not on as well. Nothing
@@ -156,7 +161,7 @@ which is the quickest way to check the two agree.
 /pbhud gap skill|ult|item <n>      the space along the skill bar (0-150)
 /pbhud style standard|liquid       the look of the three resource bars
 /pbhud shade [on|off|up|down|<n>]  the shade over a skill while its effect runs
-/pbhud text timer|count <n>        size of the text on the skill bar (12-48)
+/pbhud text [back] timer|count <n> size of the text on the skill bar (12-48)
 /pbhud timers addon|both|game      whose countdown goes on the front bar
 /pbhud slots                       what is on each slot, and why
 /pbhud backbar [on|off|empty|<n>]  the other weapon set's row
