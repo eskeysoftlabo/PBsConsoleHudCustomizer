@@ -16,11 +16,13 @@ local strings = {
 	-- ---- The look of the resource bars ---------------------------------------------------
 	SI_PBSCHC_SECTION_STYLE = "The look of the bars",
 	SI_PBSCHC_STYLE = "Bar style",
-	SI_PBSCHC_STYLE_TOOLTIP = "Standard is the game's own bars, untouched. Liquid keeps the same bars and the same frames, and draws what is in them as something poured: darker towards the bottom, light drifting across it, and a bright line at the surface where the fill ends. Nothing of the game's is hidden, so damage shields, armour changes and the low-health warning all still show.",
+	SI_PBSCHC_STYLE_TOOLTIP = "Standard is the game's own bars, untouched. Plain draws each bar as a flat rectangle -- a dark track and a solid block of the power's own colour -- with the game's arrow-shaped frame and background put away. The bars themselves are left in place and still doing their work, so damage shields, armour changes and the low-health warning all still show on top.",
 	SI_PBSCHC_STYLE_STANDARD = "Standard",
-	SI_PBSCHC_STYLE_LIQUID = "Liquid",
-	SI_PBSCHC_LIQUID_STRENGTH = "Liquid strength",
-	SI_PBSCHC_LIQUID_STRENGTH_TOOLTIP = "How strongly the liquid is drawn. 100% is the intended look; below that it is a hint, above it the bars take on a lot of shine. 0% is the same as choosing Standard.",
+	SI_PBSCHC_STYLE_PLAIN = "Plain",
+	SI_PBSCHC_PLAIN_OPACITY = "How solid",
+	SI_PBSCHC_PLAIN_OPACITY_TOOLTIP = "How solid the rectangles are. 100% hides the game's own fill completely; below that it shows through, which is one way to keep a little of the original look.",
+	SI_PBSCHC_PLAIN_KEEP_FRAME = "Keep the game's frame",
+	SI_PBSCHC_PLAIN_KEEP_FRAME_TOOLTIP = "Leave the arrow-shaped frame and the background where they are, and draw the rectangle inside them. Off, they are put away for as long as this style is chosen, and come straight back when it is not.",
 
 	-- ---- The shade over a skill ----------------------------------------------------------
 	SI_PBSCHC_SECTION_SHADE = "Shade over a skill in use",

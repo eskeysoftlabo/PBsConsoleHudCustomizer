@@ -161,19 +161,35 @@ function addon:InitSettings()
 	settings:AddSetting(
 		{
 			type = LibHarvensAddonSettings.ST_SLIDER,
-			label = GetString(SI_PBSCHC_LIQUID_STRENGTH),
-			tooltip = GetString(SI_PBSCHC_LIQUID_STRENGTH_TOOLTIP),
-			min = self.MIN_LIQUID,
-			max = self.MAX_LIQUID,
+			label = GetString(SI_PBSCHC_PLAIN_OPACITY),
+			tooltip = GetString(SI_PBSCHC_PLAIN_OPACITY_TOOLTIP),
+			min = self.MIN_PLAIN_OPACITY,
+			max = self.MAX_PLAIN_OPACITY,
 			step = 5,
-			default = self.DEFAULT_LIQUID,
+			default = self.DEFAULT_PLAIN_OPACITY,
 			format = "%d",
 			unit = "%",
 			getFunction = function()
-				return self:LiquidStrength()
+				return self:PlainOpacity()
 			end,
 			setFunction = function(value)
-				self:SetLiquidStrength(value)
+				self:SetPlainOpacity(value)
+				self:Refresh()
+			end
+		}
+	)
+
+	settings:AddSetting(
+		{
+			type = LibHarvensAddonSettings.ST_CHECKBOX,
+			label = GetString(SI_PBSCHC_PLAIN_KEEP_FRAME),
+			tooltip = GetString(SI_PBSCHC_PLAIN_KEEP_FRAME_TOOLTIP),
+			default = false,
+			getFunction = function()
+				return self:PlainKeepsFrame()
+			end,
+			setFunction = function(value)
+				self:Account().plainKeepFrame = value
 				self:Refresh()
 			end
 		}

@@ -1,12 +1,12 @@
 # PB's ConsoleHudCustomizer
 
-Moves and resizes the health, magicka, stamina and skill bars on the HUD, gives the resource bars
-a liquid look, shows the weapon set you are not on, and marks how long is left on each ability --
+Moves and resizes the health, magicka, stamina and skill bars on the HUD, can draw the resource
+bars as plain rectangles, shows the weapon set you are not on, and marks how long is left on each ability --
 as a shade that clears down the icon, a countdown, and a target count -- in The Elder Scrolls
 Online on console.
 
 - **Author:** PinkBanther
-- **Version:** 1.4.1
+- **Version:** 1.5.0
 - **Optional:** `LibHarvensAddonSettings` >= 20106 (for the settings panel; the chat commands work
   without it)
 
@@ -45,19 +45,24 @@ The werewolf bar lives under magicka, mount stamina under stamina and siege heal
 Each one is anchored to its partner in the game's own XML, so it moves with it, and this add-on
 gives it the same size so the pair still lines up.
 
-### A liquid look for the resource bars
+### A plain look for the resource bars
 
 **Bar style** switches the three resource bars between:
 
 - **Standard** — the game's own bars, untouched. Nothing is built and nothing runs.
-- **Liquid** — the same bars and the same frames, with what is in them drawn as something poured:
-  darker towards the bottom, light drifting across it at two speeds, and a bright line at the
-  surface where the fill ends. **Liquid strength** takes it from a hint to a lot of shine.
+- **Plain** — each bar as a flat rectangle: a dark track, and a solid block in that power's own
+  colour. The game's arrow-shaped frame and background are put away while this is chosen, and come
+  straight back when it is not. **How solid** takes the rectangles from fully opaque down to
+  letting the game's own fill show through, and **Keep the game's frame** leaves the arrows in
+  place if you want the rectangle inside them.
 
-It is drawn *over* the game's fill rather than instead of it, so the damage shield overlay, the
-armour and possession effects, the low-health warning and the out-of-combat fade all still work
-exactly as they did. Every texture used is one those bars already load, so the style adds nothing
-to the memory console add-ons share — there is no art file in this add-on.
+The bars themselves are left alone and still doing their work, so the damage shield overlay, the
+armour and possession effects, the low-health warning and the out-of-combat fade all still happen
+on top. Nothing is drawn from an art file — the rectangles are backdrops, which are a colour and
+nothing else.
+
+> The liquid style of 1.3.x is gone: it never drew anything on a console. If you had chosen it,
+> you now have this one.
 
 ### A shade over a skill while its effect runs
 
@@ -161,7 +166,7 @@ which is the quickest way to check the two agree.
 /pbhud pos <bar> <x> <y>           x from the middle of the screen, y up from the bottom
 /pbhud scale <bar> <n>             size in per cent (50-200)
 /pbhud gap skill|ult|item <n>      the space along the skill bar (0-150)
-/pbhud style standard|liquid       the look of the three resource bars
+/pbhud style standard|plain        the look of the three resource bars
 /pbhud shade [on|off|up|down|<n>]  the shade over a skill while its effect runs
 /pbhud text [back] timer|count <n> size of the text on the skill bar (12-48)
 /pbhud timers addon|both|game      whose countdown goes on the front bar
@@ -187,8 +192,8 @@ controls**, and lets the bars carry on running their own code:
 - **Size** is `SetScale` on that control, and on its small companion.
 - **The shade** is a `Cooldown` control of the add-on's own over the button's icon, started with
   `CD_TYPE_VERTICAL_REVEAL` and the effect's real duration; the engine runs the sweep.
-- **The liquid** is one child control per attribute bar, over the client's fill, with its width
-  set from `GetUnitPower` and its bands clipped by hand.
+- **The plain look** is one control per attribute bar, a child of the container and anchored over
+  the bar, holding two backdrops: the track and a block whose width comes from `GetUnitPower`.
 - **The gaps** are the same anchors the client writes in `ApplyAnchor` (`LEFT` on the previous
   button's `RIGHT`), with the quickslot moved off the hidden weapon swap marker and onto the
   first ability.
@@ -219,17 +224,17 @@ back.
 - **The order or the colours of the bars**, the werewolf / mount / siege bars' own positions, and
   anything else on the HUD.
 
-### If the liquid does not appear
+### If the rectangles do not appear
 
 ```
-/pbhud liquid
+/pbhud plain
 ```
 
-prints what it is doing: whether the style is actually Liquid, whether the loop is running,
-whether each bar control was found and its overlay built, how full the bar is, and the alpha the
-game has the bar at. That last one is the usual answer — **the game fades the resource bars out
-while they are full and you are out of combat**, and the liquid is drawn inside them, so look at a
-bar that is part-empty or wait until a fight.
+prints what it is doing: whether the style is actually Plain, whether the loop is running, whether
+each bar control was found and its rectangle built, how full the bar is, and the alpha the game
+has the bar at. That last one is worth knowing — **the game fades the resource bars out while they
+are full and you are out of combat**, and this is drawn on them, so look at a bar that is
+part-empty or wait until a fight.
 
 ### If a bar will not move
 

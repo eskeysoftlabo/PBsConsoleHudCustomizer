@@ -13,7 +13,7 @@ PB's ConsoleHudCustomizer
 ## Overview (JP)
 
 HUDの体力・マジカ・スタミナバーとスキルバーを、1つずつ好きな位置・好きな大きさにできます。
-さらに、裏の武器セットのスキルを常時表示し、表裏どちらのスキルにも「効果切れまでの残り時間」と
+さらに、リソースバーを四角い見た目にでき、裏の武器セットのスキルを常時表示し、表裏どちらのスキルにも「効果切れまでの残り時間」と
 「効果対象数」をアイコン上に表示します（文字サイズも調整可）。
 
 ## Overview (EN)
@@ -57,16 +57,16 @@ you choose.
 狼バー（マジカの下）、騎乗スタミナ（スタミナの下）、攻城兵器の体力（体力の下）は、ゲームの
 XMLで各バーに固定されているため一緒に移動し、倍率も同じ値が適用されます。
 
-■ バーの見た目（液体スタイル）
+■ バーの見た目（四角スタイル）
 
-体力・マジカ・スタミナのバーに、標準に加えて「液体」スタイルを選べます。バーと枠はそのままに、
-中身を液体のように描きます（下側ほど暗く、光が2つの速さで流れ、残量の先端に液面の光の線）。
-強さは0〜200%で調整できます。
+体力・マジカ・スタミナのバーに、標準に加えて「四角」スタイルを選べます。暗いトラックと、その
+リソース本来の色で塗られた平坦な四角で描き、ゲーム側の矢印型の枠と背景は、このスタイルを選んで
+いる間だけ非表示にします（「ゲームの枠を残す」で枠の内側に描くことも可能）。不透明度も調整
+できます。
 
-ゲーム側の描画の「上に」重ねる方式のため、ダメージシールドや防御力変化の表示、瀕死の警告、
-戦闘外での自動フェードはすべてそのまま機能します。使用しているテクスチャはバーが元から
-読み込んでいるものだけなので、コンソールの共有メモリを追加で消費しません（画像ファイルは
-同梱していません）。
+バー自体はそのまま残して動かしているため、ダメージシールドや防御力変化の表示、瀕死の警告、
+戦闘外での自動フェードはすべてそのまま機能します。描画にはテクスチャを使わない（色だけの
+バックドロップ）ので、追加の画像ファイルはありません。
 
 ■ 使用中スキルの網掛け
 
@@ -148,7 +148,7 @@ XMLで各バーに固定されているため一緒に移動し、倍率も同�
 /pbhud pos <bar> <x> <y>           位置（中央からの左右、下端からの高さ）
 /pbhud scale <bar> <n>             大きさ（50〜200）
 /pbhud gap skill|ult|item <n>      スキルバーの間隔（0〜150）
-/pbhud style standard|liquid       リソースバーの見た目
+/pbhud style standard|plain        リソースバーの見た目
 /pbhud shade [on|off|up|down|<n>]  使用中スキルの網掛け
 /pbhud text [back] timer|count <n> スキルバーの文字サイズ（12〜48、backで裏バー）
 /pbhud timers addon|both|game      表バーの残り時間をどちらが出すか
@@ -184,10 +184,10 @@ What you can set, for each of the four on its own:
 Health in the middle of the screen with magicka and stamina low in the corners, the skill bar
 higher up, or the whole set moved out of the way of a minimap -- all of it is three sliders each.
 
-A liquid look: the three resource bars, standard or with their fill drawn as something poured --
-darker at the bottom, light drifting across, a bright surface line where the fill ends. Drawn over
-the game's own fill, so shields and warnings still show, and built from textures the bars already
-load, so it costs no extra memory.
+A plain look: the three resource bars, standard or drawn as flat rectangles -- a dark track and a
+solid block in the power's own colour, with the game's arrow frame put away. Drawn over the game's
+own bars, so shields and warnings still show, and out of backdrops rather than art, so no image
+ships with it.
 
 A shade over a skill in use: while an ability's effect runs, its icon is shaded and the shade is
 wiped away down the icon as the time runs out, on both weapon sets. The game's own cooldown

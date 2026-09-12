@@ -28,7 +28,7 @@ print("\n== 1. load ==")
 Fire(EVENT_ADD_ON_LOADED, "PBsConsoleHudCustomizer")
 local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 local health, magicka, stamina = addon.barByKey.health, addon.barByKey.magicka, addon.barByKey.stamina
-check("version read from manifest", addon.version, "1.4.1")
+check("version read from manifest", addon.version, "1.5.0")
 check("slash command registered", type(SLASH_COMMANDS["/pbhud"]), "function")
 check("short slash command registered", type(SLASH_COMMANDS["/pbhc"]), "function")
 check("HUD fragment callback registered", addon.hudRegistered, true)
@@ -47,7 +47,7 @@ check("HUD fragment callback registered", addon.hudRegistered, true)
 -- 3 checkboxes, 2 more size sliders and the button that puts the other set back to following),
 -- the shade (heading, label, 2 checkboxes, slider, dropdown) and the general section (heading,
 -- button, hint)
-check("settings rows", #PanelRows, 3 + 3 + 4 * 5 + 5 + 6 + 11 + 6 + 3)
+check("settings rows", #PanelRows, 3 + 4 + 4 * 5 + 5 + 6 + 11 + 6 + 3)
 
 print("\n== 2. the first apply waits for the bars ==")
 Fire(EVENT_PLAYER_ACTIVATED)
@@ -551,75 +551,77 @@ Row(GetString(SI_PBSCHC_SHADE_ENABLED)).setFunction(true)
 RunUpdates()
 check("on again", shade3:IsHidden(), false)
 
-print("\n== 26. the liquid look ==")
-check("standard builds nothing", CreatedControls["PBsConsoleHudCustomizerLiquidZO_PlayerAttributeMagickaBar"], nil)
-check("and runs no loop", UpdateRegistered("PBsConsoleHudCustomizerLiquid"), false)
+print("\n== 26. the plain look ==")
+check("standard builds nothing", CreatedControls["PBsConsoleHudCustomizerPlainZO_PlayerAttributeMagickaBar"], nil)
+check("and runs no loop", UpdateRegistered("PBsConsoleHudCustomizerPlain"), false)
 
-Row(GetString(SI_PBSCHC_STYLE)).setFunction(nil, nil, { data = "liquid" })
-check("the loop starts with the style", UpdateRegistered("PBsConsoleHudCustomizerLiquid"), true)
-local magickaLiquid = CreatedControls["PBsConsoleHudCustomizerLiquidZO_PlayerAttributeMagickaBar"]
-check("an overlay is built per bar", magickaLiquid ~= nil, true)
-check("hanging on the game's own fill", magickaLiquid:GetParent():GetName(), "ZO_PlayerAttributeMagickaBar")
--- Magicka fills towards its left, so the overlay hangs off the right edge and its width is the
--- part that is full: half, here.
-check("held by the edge the fill grows from", magickaLiquid.anchors[1].point, TOPRIGHT)
-check("as wide as the bar is full", magickaLiquid:GetWidth(), 112)
-check("the surface line is at the fill's edge", magickaLiquid.namedChildren.Surface.anchors[1].point, TOPLEFT)
+Row(GetString(SI_PBSCHC_STYLE)).setFunction(nil, nil, { data = "plain" })
+check("the loop starts with the style", UpdateRegistered("PBsConsoleHudCustomizerPlain"), true)
+local magickaPlain = CreatedControls["PBsConsoleHudCustomizerPlainZO_PlayerAttributeMagickaBar"]
+check("a rectangle is built per bar", magickaPlain ~= nil, true)
+-- On the container, not on the status bar: the container is what the client's own frame,
+-- background and numbers hang on, so there is no question about a child of it drawing.
+check("built on the container", magickaPlain:GetParent():GetName(), "ZO_PlayerAttributeMagicka")
+check("over the bar's own rectangle", magickaPlain.anchors[1].relativeTo:GetName(), "ZO_PlayerAttributeMagickaBar")
+check("the track is a backdrop, not a texture", magickaPlain.namedChildren.Track.kind, "control")
+check("coloured, with no art", magickaPlain.namedChildren.Track.centerColor ~= nil, true)
+check("and the fill takes the power's own colour", magickaPlain.namedChildren.Fill.centerColor[3], 0.8)
 
-local healthLiquid = CreatedControls["PBsConsoleHudCustomizerLiquidZO_PlayerAttributeHealthBarRight"]
-check("a full bar fills its half", healthLiquid:GetWidth(), 111)
-check("and the right half is held by its left", healthLiquid.anchors[1].point, TOPLEFT)
+-- Magicka fills towards its left, so its block hangs off the right edge and is as wide as the
+-- bar is full: half, here.
+check("the block is held by the edge the bar fills from", magickaPlain.namedChildren.Fill.anchors[1].point, TOPRIGHT)
+check("as wide as the bar is full", magickaPlain.namedChildren.Fill:GetWidth(), 112)
+
+-- The game's arrow frame and background are put away while this style is on.
+check("the frame is put away", _G.ZO_PlayerAttributeMagickaFrameCenter:IsHidden(), true)
+check("and the background with it", _G.ZO_PlayerAttributeMagickaBgContainer:IsHidden(), true)
+Row(GetString(SI_PBSCHC_PLAIN_KEEP_FRAME)).setFunction(true)
+RunUpdates()
+check("kept when that is asked for", _G.ZO_PlayerAttributeMagickaFrameCenter:IsHidden(), false)
+Row(GetString(SI_PBSCHC_PLAIN_KEEP_FRAME)).setFunction(false)
+RunUpdates()
 
 SetPower(COMBAT_MECHANIC_FLAGS_MAGICKA, 100, 1000)
 RunUpdates()
-check("the overlay follows the value", string.format("%.1f", magickaLiquid:GetWidth()), "22.4")
--- The bands are clipped by hand, because ESO does not clip a child to its parent.
-local band = magickaLiquid.namedChildren.Band1
-check("a band never runs past the fill", band:GetWidth() <= magickaLiquid:GetWidth(), true)
+check("the block follows the value", string.format("%.1f", magickaPlain.namedChildren.Fill:GetWidth()), "22.4")
 SetPower(COMBAT_MECHANIC_FLAGS_MAGICKA, 0, 1000)
 RunUpdates()
-check("an empty bar draws nothing", magickaLiquid:IsHidden(), true)
+check("an empty bar shows only the track", magickaPlain.namedChildren.Fill:IsHidden(), true)
+check("and the track is still there", magickaPlain:IsHidden(), false)
 SetPower(COMBAT_MECHANIC_FLAGS_MAGICKA, 500, 1000)
 RunUpdates()
 
-Row(GetString(SI_PBSCHC_LIQUID_STRENGTH)).setFunction(0)
-check("strength 0 is the same as standard", UpdateRegistered("PBsConsoleHudCustomizerLiquid"), false)
-Row(GetString(SI_PBSCHC_LIQUID_STRENGTH)).setFunction(100)
-check("and back", UpdateRegistered("PBsConsoleHudCustomizerLiquid"), true)
-
 FireHud(SCENE_FRAGMENT_HIDDEN)
-check("the liquid stops with the HUD", UpdateRegistered("PBsConsoleHudCustomizerLiquid"), false)
-check("and is taken off the bars", magickaLiquid:IsHidden(), true)
+check("the loop stops with the HUD", UpdateRegistered("PBsConsoleHudCustomizerPlain"), false)
+check("and the game's frame comes back", _G.ZO_PlayerAttributeMagickaFrameCenter:IsHidden(), false)
 FireHud(SCENE_FRAGMENT_SHOWN)
-check("and comes back", UpdateRegistered("PBsConsoleHudCustomizerLiquid"), true)
+check("and it all comes back", UpdateRegistered("PBsConsoleHudCustomizerPlain"), true)
 Row(GetString(SI_PBSCHC_STYLE)).setFunction(nil, nil, { data = "standard" })
-check("standard puts it away again", UpdateRegistered("PBsConsoleHudCustomizerLiquid"), false)
+check("standard puts it away again", UpdateRegistered("PBsConsoleHudCustomizerPlain"), false)
+check("and hands the frame back", _G.ZO_PlayerAttributeMagickaFrameCenter:IsHidden(), false)
 
-print("\n== 27. the liquid survives a template that did not load ==")
--- Every other control of this add-on falls back to plain Lua when Controls.xml is not there.
--- The liquid did not, which is exactly the shape of "everything works except the liquid".
-Row(GetString(SI_PBSCHC_STYLE)).setFunction(nil, nil, { data = "liquid" })
-addon.liquid.overlays["ZO_PlayerAttributeStaminaBar"] = nil
-CreatedControls["PBsConsoleHudCustomizerLiquidZO_PlayerAttributeStaminaBar"] = nil
+print("\n== 27. the plain look survives a template that did not load ==")
+Row(GetString(SI_PBSCHC_STYLE)).setFunction(nil, nil, { data = "plain" })
+addon.plain.overlays["ZO_PlayerAttributeStaminaBar"] = nil
+CreatedControls["PBsConsoleHudCustomizerPlainZO_PlayerAttributeStaminaBar"] = nil
 addon.timers.usedFallback = false
 addon.writeErrors = nil
 local realCreate = CreateControlFromVirtual
 CreateControlFromVirtual = function() error("no such template") end
-local overlay = addon.liquid:Overlay({ name = "ZO_PlayerAttributeStaminaBar", reverse = false })
+local overlay = addon.plain:Overlay(addon.plain.bars[3], { name = "ZO_PlayerAttributeStaminaBar", reverse = false })
 CreateControlFromVirtual = realCreate
-check("the overlay is built anyway", overlay ~= nil, true)
-check("with its bands", overlay ~= nil and overlay.bands[1] ~= nil, true)
-check("and its surface", overlay ~= nil and overlay.surface ~= nil, true)
-check("the refusal is recorded", (addon.writeErrors or {}).PBsConsoleHudCustomizerLiquid ~= nil, true)
+check("the rectangle is built anyway", overlay ~= nil, true)
+check("with its track and its fill", overlay ~= nil and overlay.track ~= nil and overlay.fill ~= nil, true)
+check("the refusal is recorded", (addon.writeErrors or {}).PBsConsoleHudCustomizerPlainBar ~= nil, true)
 RunUpdates()
 check("and it draws", overlay ~= nil and not overlay.control:IsHidden(), true)
 addon.writeErrors = nil
 addon.timers.usedFallback = false
 
--- The diagnostic has to work in every one of those states, because it is what says which.
-addon.liquid:PrintStatus()
+-- The diagnostic has to work in either style, because it is what says which.
+addon.plain:PrintStatus()
 Row(GetString(SI_PBSCHC_STYLE)).setFunction(nil, nil, { data = "standard" })
-addon.liquid:PrintStatus()
+addon.plain:PrintStatus()
 check("the diagnostic runs in either style", true, true)
 
 print("\n== 28. a rectangle that cannot be read must not stop the move ==")
@@ -774,6 +776,20 @@ check("the name does not match", addon.timers.Normalize("Barbed Trap") == addon.
 check("but the icon does", matchedBy, "icon")
 check("so it is counted", count, 1)
 check("and written", countText, "1")
+
+print("\n== 35. an install that had chosen the liquid style ==")
+-- 1.3.x had a liquid style that never drew anything on a console. It is gone; anyone who had
+-- chosen it gets the plain one rather than being dropped back to Standard without being told.
+SavedStore.PBsConsoleHudCustomizer_Data = { style = "liquid", liquidStrength = 150 }
+addon.account = ZO_SavedVars:NewAccountWide("PBsConsoleHudCustomizer_Data", 1, nil, addon.accountDefaults)
+addon:Account()
+check("the style is carried over", addon:BarStyle(), "plain")
+check("and its strength becomes an opacity in range", addon:PlainOpacity(), 100)
+check("the old key is cleared away", addon.account.liquidStrength, nil)
+-- And the command still answers to the old name.
+SLASH_COMMANDS["/pbhud"]("style liquid")
+check("so does the command", addon:BarStyle(), "plain")
+SLASH_COMMANDS["/pbhud"]("style standard")
 
 print("")
 if failures == 0 then

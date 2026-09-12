@@ -340,7 +340,7 @@ a time type for that reason: nothing in the source says which way round the reve
 if it comes out upside down on a PS5 the player flips it, and a client that ever changes it costs
 nobody a release.
 
-## 20. Liquid without any new art
+## 20. Liquid without any new art (removed in 1.5.0)
 
 The liquid style is drawn **over** the client's own fill, not instead of it. That is the design
 decision the rest follows from: the damage shield overlays, the armour, possession and unwavering
@@ -493,6 +493,29 @@ which is the whole of the target count doing nothing for a single-target ability
 Repairing a nil key, which is all `Account()` did, cannot see this: the key is not missing, it
 holds an old default. The text settings carry a `version` now, and a change of mind moves the
 value on once and stamps it, so a player who then chooses the old value keeps it.
+
+## 29. The liquid style is gone, and what replaced it
+
+The liquid style never drew anything on a PS5, and nothing found from here explained it: the
+style was on, the loop ran, the controls were built. 1.5.0 replaces it with a plain one rather
+than carrying on guessing, and deliberately changes the two things about the old one that could
+each have been the reason:
+
+- **Where it hung.** The liquid overlay was a child of the client's **status bar** controls, and
+  nothing in the client does that -- the client's own gloss is a child StatusBar, but every other
+  thing drawn on a bar (the frame, the background, the numbers, every attribute visualiser
+  overlay) is a child of the **container**. The plain rectangles are children of the container
+  too, anchored over the bar.
+- **What it was made of.** Textures, blend modes and texture coordinates, any of which can come to
+  nothing without an error. A backdrop is a centre colour: `SetCenterColor` and a width, no art to
+  fail to load.
+
+What it does not change is the part that was right: the client's own bars are left alone and
+still doing their work, so the shield, armour and possession overlays and the low-health warning
+all still draw. The frame and background are hidden by their own flag while the style is on, and
+put back the moment it is not.
+
+`/pbhud plain` prints the same chain the liquid one did.
 
 ---
 

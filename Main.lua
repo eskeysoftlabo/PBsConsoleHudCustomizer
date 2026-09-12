@@ -254,10 +254,11 @@ addon.accountDefaults = {
 		countFromOne = true,
 		decimals = true,
 	},
-	-- The look of the three attribute bars: the game's own, or the same bars with liquid drawn
-	-- over the fill. Standard is the default, and while it is chosen nothing is built at all.
+	-- The look of the three attribute bars: the game's own, or flat rectangles. Standard is the
+	-- default, and while it is chosen nothing is built at all.
 	style = "standard",
-	liquidStrength = 100,
+	plainOpacity = 100,
+	plainKeepFrame = false,
 	-- The shade over a skill icon while its effect runs.
 	shade = {
 		enabled = true,
@@ -300,6 +301,17 @@ function addon:Account()
 	end
 	if type(account.spacing) ~= "table" then
 		account.spacing = {}
+	end
+	-- 1.3.x had a liquid style here, which never drew anything on a console and has been taken
+	-- out. Anyone who had chosen it gets the plain one, at an opacity in the range this uses.
+	if account.style == "liquid" then
+		account.style = "plain"
+	end
+	if account.liquidStrength ~= nil then
+		if type(account.plainOpacity) ~= "number" then
+			account.plainOpacity = math.min(100, math.max(10, Round(account.liquidStrength)))
+		end
+		account.liquidStrength = nil
 	end
 	-- 1.1.0 called these auto / always / never, for a setting that meant something slightly
 	-- different. Carried over rather than reset, so nobody's choice is thrown away.
@@ -869,8 +881,8 @@ function addon:Refresh()
 	if self.timers then
 		self.timers:Refresh()
 	end
-	if self.liquid then
-		self.liquid:Refresh()
+	if self.plain then
+		self.plain:Refresh()
 	end
 	if self.preview then
 		self.preview:Update()
@@ -905,8 +917,8 @@ function addon:OnHudShowing()
 	if self.timers then
 		self.timers:OnHudStateChange(true)
 	end
-	if self.liquid then
-		self.liquid:OnHudStateChange(true)
+	if self.plain then
+		self.plain:OnHudStateChange(true)
 	end
 end
 
@@ -915,8 +927,8 @@ function addon:OnHudHidden()
 	if self.timers then
 		self.timers:OnHudStateChange(false)
 	end
-	if self.liquid then
-		self.liquid:OnHudStateChange(false)
+	if self.plain then
+		self.plain:OnHudStateChange(false)
 	end
 end
 
@@ -1004,9 +1016,9 @@ function addon:PrintStatus()
 		Line("    weapon swap: %s%s", tostring(available), why and (" (" .. why .. ")") or "")
 	end
 
-	if self.liquid then
-		Line("|cFF69B4  bar style|r  %s  strength=%d%%  running=%s", self:BarStyle(), self:LiquidStrength(),
-			tostring(self.liquid.running == true))
+	if self.plain then
+		Line("|cFF69B4  bar style|r  %s  opacity=%d%% keep frame=%s  running=%s", self:BarStyle(),
+			self:PlainOpacity(), tostring(self:PlainKeepsFrame()), tostring(self.plain.running == true))
 	end
 	Line("|cFF69B4  icon shade|r  on=%s darkness=%d%% direction=%s leading edge=%s",
 		tostring(self:ShadeEnabled()), self:ShadeDarkness(), self:ShadeDirection(),
@@ -1055,10 +1067,10 @@ local function Usage()
 	Line("  %s text [back] timer|count <n> -- size of the text on the skill bar (%d-%d)", SLASH, addon.MIN_TEXT_SIZE or 12, addon.MAX_TEXT_SIZE or 48)
 	Line("  %s timers addon|both|game -- whose countdown goes on the front bar", SLASH)
 	Line("  %s gap skill|ult|item <n> -- the space along the skill bar (%d-%d)", SLASH, addon.MIN_GAP or 0, addon.MAX_GAP or 150)
-	Line("  %s style standard|liquid  -- the look of the three resource bars", SLASH)
+	Line("  %s style standard|plain   -- the look of the three resource bars", SLASH)
 	Line("  %s shade [on|off|up|down|<n>] -- the shade over a skill while its effect runs", SLASH)
 	Line("  %s slots                  -- what is on each slot, and why", SLASH)
-	Line("  %s liquid                 -- what the liquid look is really doing", SLASH)
+	Line("  %s plain                  -- what the plain look is really doing", SLASH)
 	Line("  %s backbar [on|off|empty|<scale>] -- the other weapon set's row", SLASH)
 	Line("  %s on | off               -- switch every change on or off", SLASH)
 	Line("  %s preview                -- show or hide the preview frames", SLASH)
@@ -1077,9 +1089,9 @@ local function OnSlash(argumentString)
 
 	if command == "status" then
 		addon:PrintStatus()
-	elseif command == "liquid" then
-		if addon.liquid then
-			addon.liquid:PrintStatus()
+	elseif command == "plain" then
+		if addon.plain then
+			addon.plain:PrintStatus()
 		end
 	elseif command == "slots" or command == "skills" then
 		if addon.timers then
@@ -1155,8 +1167,11 @@ local function OnSlash(argumentString)
 		Line("gaps: skill=%d ultimate=%d item=%d", addon:Gap("skill"), addon:Gap("ultimate"), addon:Gap("item"))
 	elseif command == "style" then
 		local style = (args[2] or ""):lower()
+		if style == "liquid" then
+			style = "plain"
+		end
 		if not addon:SetBarStyle(style) then
-			Line("usage: %s style standard|liquid", SLASH)
+			Line("usage: %s style standard|plain", SLASH)
 			return
 		end
 		account.enabled = true

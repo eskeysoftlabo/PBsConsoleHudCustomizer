@@ -39,14 +39,15 @@ function AdvanceFrame(ms) frameTime = frameTime + (ms or 1000) end
 function GetAddOnManager()
 	return {
 		GetNumAddOns = function() return 1 end,
-		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ConsoleHudCustomizer|r 1.4.1" end,
+		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ConsoleHudCustomizer|r 1.5.0" end,
 	}
 end
 
 -- ---- constants ----------------------------------------------------------------------
 TOP, LEFT, BOTTOM, RIGHT, CENTER = 1, 2, 4, 8, 128
 TOPLEFT, TOPRIGHT, BOTTOMLEFT, BOTTOMRIGHT = 3, 9, 6, 12
-CT_LABEL, CT_TEXTURE, CT_CONTROL, CT_COOLDOWN = "label", "texture", "control", "cooldown"
+CT_LABEL, CT_TEXTURE, CT_CONTROL, CT_COOLDOWN, CT_BACKDROP = "label", "texture", "control", "cooldown", "backdrop"
+INTERFACE_COLOR_TYPE_POWER_START = 1
 CD_TYPE_VERTICAL_REVEAL, CD_TYPE_RADIAL = 1, 2
 CD_TIME_TYPE_TIME_UNTIL, CD_TIME_TYPE_TIME_REMAINING = 1, 2
 COMBAT_MECHANIC_FLAGS_HEALTH, COMBAT_MECHANIC_FLAGS_MAGICKA, COMBAT_MECHANIC_FLAGS_STAMINA = 1, 2, 4
@@ -162,6 +163,8 @@ function Control:SetFillColor(r, g, b, a) self.fillColor = { r, g, b, a } end
 function Control:SetVerticalCooldownLeadingEdgeHeight(h) self.edgeHeight = h end
 function Control:SetDesaturation(v) self.desaturation = v end
 function Control:SetDrawLevel(v) self.drawLevel = v end
+function Control:SetCenterColor(r, g, b, a) self.centerColor = { r, g, b, a } end
+function Control:SetEdgeColor(r, g, b, a) self.edgeColor = { r, g, b, a } end
 function Control:GetAlpha() return self.alpha or 1 end
 function Control:GetFontHeight() local size = tonumber((self.font or ""):match("|(%d+)|")) or 0; return math.ceil(size * 1.25) end
 function Control:GetText() return self.text end
@@ -192,7 +195,7 @@ local VIRTUAL_CHILDREN = {
 	PBsConsoleHudCustomizerBackBarSlot = { "BG", "Icon", "Overlay", "Shade", "Timer", "Count" },
 	PBsConsoleHudCustomizerSlotLabels = { "Timer", "Count" },
 	PBsConsoleHudCustomizerShade = {},
-	PBsConsoleHudCustomizerLiquid = { "Depth", "Band1", "Band2", "Surface" },
+	PBsConsoleHudCustomizerPlainBar = { "Track", "Fill" },
 }
 
 function CreateControlFromVirtual(name, parent, template, suffix)
@@ -250,8 +253,15 @@ function BuildAttributeBars()
 	local magicka = MakeBar("ZO_PlayerAttributeMagicka", RIGHT, group, LEFT, 237)
 	local stamina = MakeBar("ZO_PlayerAttributeStamina", LEFT, group, RIGHT, -237)
 
-	-- The status bars inside each container, which is what the liquid overlay hangs on: two
-	-- halves for health, one each for magicka and stamina.
+	-- The frame pieces and the background container the plain style hides.
+	for _, container in ipairs({ health, magicka, stamina }) do
+		for _, suffix in ipairs({ "FrameLeft", "FrameCenter", "FrameRight", "BgContainer" }) do
+			local piece = MakeControl(container.name .. suffix, container, "texture")
+			_G[container.name .. suffix] = piece
+		end
+	end
+
+	-- The status bars inside each container: two halves for health, one each for the others.
 	local function MakeFill(name, parent, width)
 		local fill = MakeControl(name, parent, "statusbar")
 		fill.width, fill.height = width, 17
@@ -386,6 +396,13 @@ function BarAnchor(name)
 	local a = _G[name].anchors[1]
 	if not a then return "none" end
 	return string.format("%d->%s %d (%d,%d)", a.point, a.relativeTo and a.relativeTo:GetName() or "nil", a.relativePoint, a.offsetX, a.offsetY)
+end
+
+function GetInterfaceColor(colorType, powerType)
+	if colorType ~= INTERFACE_COLOR_TYPE_POWER_START then return 1, 1, 1, 1 end
+	local colours = { [1] = { 0.7, 0.2, 0.2 }, [2] = { 0.2, 0.4, 0.8 }, [4] = { 0.3, 0.6, 0.2 } }
+	local c = colours[powerType] or { 1, 1, 1 }
+	return c[1], c[2], c[3], 1
 end
 
 -- ---- the player's power -------------------------------------------------------------
@@ -541,7 +558,7 @@ dofile(DIR .. "/lang/jp.lua")
 dofile(DIR .. "/Main.lua")
 dofile(DIR .. "/SkillBar.lua")
 dofile(DIR .. "/Timers.lua")
-dofile(DIR .. "/Liquid.lua")
+dofile(DIR .. "/Plain.lua")
 dofile(DIR .. "/Preview.lua")
 dofile(DIR .. "/Settings.lua")
 
