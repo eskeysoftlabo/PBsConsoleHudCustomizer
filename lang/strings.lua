@@ -108,6 +108,15 @@ local strings = {
 	SI_PBSCHC_RESET_TOOLTIP = "Put all three bars back where the game draws them, at the game's own size.",
 	SI_PBSCHC_RESET_BUTTON = "Reset",
 
+	SI_PBSCHC_SECTION_TRACE = "Measurement",
+	SI_PBSCHC_TRACE_HINT = "For working out why an ability's countdown is wrong. Press Start, cast the ability once -- for one that is aimed, place it once and cancel it once -- then press Show: what the game sent, and when, is written into the chat window. It records nothing until Start is pressed and stops again at Show, and it changes nothing on the screen either way.",
+	SI_PBSCHC_TRACE_START = "Record a cast",
+	SI_PBSCHC_TRACE_START_TOOLTIP = "Start writing down every press, ground-targeting circle, effect and combat event of the abilities you cast from now on.",
+	SI_PBSCHC_TRACE_START_BUTTON = "Start",
+	SI_PBSCHC_TRACE_SHOW = "Show what was recorded",
+	SI_PBSCHC_TRACE_SHOW_TOOLTIP = "Stop recording and write the whole record into the chat window, oldest first, with the time each line arrived.",
+	SI_PBSCHC_TRACE_SHOW_BUTTON = "Show",
+
 	SI_PBSCHC_GAME_SETTINGS_HINT = "Whether the numbers are shown on the bars, and whether the bars fade out when nothing is happening, are the game's own settings under Settings > Interface. An add-on cannot change those, so set them there.",
 
 	SI_PBSCHC_PREVIEW_CAPTION = "Resource bars (preview)",

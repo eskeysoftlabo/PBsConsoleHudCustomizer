@@ -28,7 +28,7 @@ print("\n== 1. load ==")
 Fire(EVENT_ADD_ON_LOADED, "PBsConsoleHudCustomizer")
 local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 local health, magicka, stamina = addon.barByKey.health, addon.barByKey.magicka, addon.barByKey.stamina
-check("version read from manifest", addon.version, "1.13.0")
+check("version read from manifest", addon.version, "1.14.0")
 check("slash command registered", type(SLASH_COMMANDS["/pbhud"]), "function")
 check("short slash command registered", type(SLASH_COMMANDS["/pbhc"]), "function")
 check("HUD fragment callback registered", addon.hudRegistered, true)
@@ -46,12 +46,12 @@ check("HUD fragment callback registered", addon.hudRegistered, true)
 -- (heading, label, 2 checkboxes, 2 sliders), the text (heading, label, dropdown, 3 sliders,
 -- 3 checkboxes, 2 more size sliders and the button that puts the other set back to following),
 -- the shade (heading, label, 2 checkboxes, slider, dropdown) and the general section (heading,
--- button, hint)
+-- button, hint), and the measurement section (heading, hint, two buttons)
 -- ... and the skill bar's section carries one more row than the other three: the switch that
 -- hands the whole bar back.
 -- ... and the three attribute bars carry two more rows each: the width and the height
 -- MURA-HIGE Style draws them at.
-check("settings rows", #PanelRows, 3 + 4 + 4 * 5 + 3 * 2 + 1 + 5 + 6 + 11 + 6 + 3)
+check("settings rows", #PanelRows, 3 + 4 + 4 * 5 + 3 * 2 + 1 + 5 + 6 + 11 + 6 + 3 + 4)
 
 print("\n== 2. the first apply waits for the bars ==")
 Fire(EVENT_PLAYER_ACTIVATED)
@@ -1479,6 +1479,78 @@ FireEffect(EFFECT_RESULT_GAINED, "Major Breach", "", (now21 + 20000) / 1000, 53,
 FireEffect(EFFECT_RESULT_GAINED, "Power of the Light", "", (now21 + 6000) / 1000, 53, 103003)
 RunUpdates()
 check("still six, not twenty", addon.timers.labels[5].timer:GetText(), "6.0")
+
+-- ---------------------------------------------------------------------------------------
+-- The trace
+--
+-- It is a measuring instrument, so what is tested is that it measures: that it is silent until
+-- asked, that it registers only events this client really has -- the mistake that cost 1.12.0 --
+-- and that a press, a placement and the effect that follows come back in the order they arrived.
+-- ---------------------------------------------------------------------------------------
+print("\n== 20. the trace ==")
+local trace = addon.trace
+check("off until asked", trace.running ~= true, true)
+check("and it has registered nothing", handlers[EVENT_ENTER_GROUND_TARGET_MODE] == nil, true)
+
+trace:Command("quiet")
+trace:Command("on")
+check("on", trace.running, true)
+check("both ground events this client has", trace.groundEvents, 2)
+check("LEAVE is not one of them", EVENT_LEAVE_GROUND_TARGET_MODE, nil)
+check("and the aiming poll is running", trace.polling, true)
+
+-- A ground-targeted ability, as the player casts it: press, circle up, place, effect.
+SetSlot(HOTBAR_CATEGORY_PRIMARY, 4, { name = "Caltrops", icon = "caltrops.dds", id = 40252, remaining = 0, duration = 0 })
+SetAbilityDuration(40252, 18000)
+FireCast(4)
+FireGround("enter")
+SetGroundTargeting(true)
+RunUpdates()
+AdvanceFrame(1200)
+SetGroundTargeting(false)
+RunUpdates()
+local placedAt = GetGameTimeMilliseconds()
+FireCombat(ACTION_RESULT_EFFECT_GAINED, "Caltrops", 40252, "a bandit")
+FireEffect(EFFECT_RESULT_GAINED, "Caltrops", "", (placedAt + 18000) / 1000, 90, 40252)
+FireEffect(EFFECT_RESULT_GAINED, "Caltrops", "", (placedAt + 18000) / 1000, 91, 40252)
+
+local kinds = {}
+for index = 1, trace.count do
+	local entry = trace.entries[(index - 1) % #trace.entries + 1]
+	kinds[#kinds + 1] = entry.kind
+end
+check("press, circle up, circle gone, combat, effect", table.concat(kinds, ","), "press,ground,aiming,aiming,combat,effect")
+check("the second target did not add a line", trace.count, 6)
+check("the press wrote down what the game says it lasts", trace.entries[1].text:find("lasts 18.0s", 1, true) ~= nil, true)
+check("the placement is timed from the press", trace.entries[4].ms >= 1200, true)
+
+-- Nobody else's combat events, and nothing from an ability that was never pressed.
+FireCombat(ACTION_RESULT_EFFECT_GAINED, "Someone else's hit", 99999, "a bandit")
+FireEffect(EFFECT_RESULT_GAINED, "Minor Vitality", "", (placedAt + 10000) / 1000, 92, 88888)
+check("an ability that was not pressed is ignored", trace.count, 6)
+
+-- And it lets go: twelve seconds on, the same ability is somebody else's business again.
+AdvanceFrame(13000)
+FireEffect(EFFECT_RESULT_FADED, "Caltrops", "", 0, 90, 40252)
+check("a press is followed for a while, not for ever", trace.count, 6)
+
+trace:Command("off")
+check("off again", trace.running, false)
+check("and the registration is gone", handlers[EVENT_ENTER_GROUND_TARGET_MODE][addon.name .. "TraceEnter"], nil)
+check("the lines are still readable", trace.count, 6)
+trace:Command("clear")
+check("until cleared", trace.count, 0)
+
+-- The two buttons in the panel, which is how it is really used: a console player should not have
+-- to type a slash command on an on-screen keyboard to measure something.
+OpenPanel(Panel)
+Row(GetString(SI_PBSCHC_TRACE_START)).clickHandler()
+check("the panel's Start button starts it", trace.running, true)
+FireCast(4)
+check("and it is recording", trace.count >= 1, true)
+Row(GetString(SI_PBSCHC_TRACE_SHOW)).clickHandler()
+check("the Show button stops it", trace.running, false)
+trace:Command("clear")
 
 print("")
 if failures == 0 then

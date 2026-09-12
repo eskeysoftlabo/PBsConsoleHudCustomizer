@@ -108,6 +108,15 @@ local strings = {
 	SI_PBSCHC_RESET_TOOLTIP = "3本とも、ゲーム本来の位置と大きさに戻します。",
 	SI_PBSCHC_RESET_BUTTON = "戻す",
 
+	SI_PBSCHC_SECTION_TRACE = "計測",
+	SI_PBSCHC_TRACE_HINT = "スキルのカウントダウンがおかしい原因を調べるための機能です。「開始」を押してから対象のスキルを1回使い、範囲指定スキルなら「設置する」「キャンセルする」を1回ずつ行い、「表示」を押してください。ゲームから届いた情報と、その時刻がチャット欄に出力されます。「開始」を押すまで何も記録せず、「表示」で記録を止めます。画面表示には一切影響しません。",
+	SI_PBSCHC_TRACE_START = "使用時の動作を記録する",
+	SI_PBSCHC_TRACE_START_TOOLTIP = "これ以降に使用したスキルについて、ボタン入力・範囲指定の円・効果・戦闘イベントをすべて記録します。",
+	SI_PBSCHC_TRACE_START_BUTTON = "開始",
+	SI_PBSCHC_TRACE_SHOW = "記録を表示する",
+	SI_PBSCHC_TRACE_SHOW_TOOLTIP = "記録を止めて、届いた順に時刻付きでチャット欄に出力します。",
+	SI_PBSCHC_TRACE_SHOW_BUTTON = "表示",
+
 	SI_PBSCHC_GAME_SETTINGS_HINT = "バーに数値を表示するか、戦闘していないときにバーを薄くするかはゲーム本体の設定です（設定 > インターフェース）。アドオンからは変更できないため、そちらで設定してください。",
 
 	SI_PBSCHC_PREVIEW_CAPTION = "リソースバー（プレビュー）",

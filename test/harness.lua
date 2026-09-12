@@ -39,7 +39,7 @@ function AdvanceFrame(ms) frameTime = frameTime + (ms or 1000) end
 function GetAddOnManager()
 	return {
 		GetNumAddOns = function() return 1 end,
-		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ConsoleHudCustomizer|r 1.13.0" end,
+		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ConsoleHudCustomizer|r 1.14.0" end,
 	}
 end
 
@@ -528,6 +528,33 @@ function FireEffect(changeType, effectName, unitTag, endTimeSec, unitId, ability
 		abilityId, icon, effectSlot, beginTimeSec)
 end
 
+-- Ground targeting, and the combat event. EVENT_LEAVE_GROUND_TARGET_MODE is deliberately absent:
+-- the client does not have it either (FINDINGS 49), and a test that invents it would have passed
+-- the very code that broke 1.12.0.
+EVENT_ENTER_GROUND_TARGET_MODE = "EVENT_ENTER_GROUND_TARGET_MODE"
+EVENT_CANCEL_GROUND_TARGET_MODE = "EVENT_CANCEL_GROUND_TARGET_MODE"
+EVENT_COMBAT_EVENT = "EVENT_COMBAT_EVENT"
+ACTION_RESULT_EFFECT_GAINED = 2240
+
+GroundTargeting = false
+function IsPlayerGroundTargeting() return GroundTargeting end
+function SetGroundTargeting(value) GroundTargeting = value and true or false end
+
+function FireGround(which)
+	Fire(which == "cancel" and EVENT_CANCEL_GROUND_TARGET_MODE or EVENT_ENTER_GROUND_TARGET_MODE)
+end
+
+-- The client's argument order, with the source filter honoured as it is for effects.
+function FireCombat(result, abilityName, abilityId, targetName, source)
+	source = source or COMBAT_UNIT_TYPE_PLAYER
+	for name, fn in pairs(handlers[EVENT_COMBAT_EVENT] or {}) do
+		if EventFilters[name] == nil or EventFilters[name] == source then
+			fn(EVENT_COMBAT_EVENT, result, false, abilityName, 0, 0, "you", source,
+				targetName or "someone", 1, 0, 0, 0, false, 1, 2, abilityId, 0)
+		end
+	end
+end
+
 -- ---- scenes -------------------------------------------------------------------------
 local hudCallbacks = {}
 HUD_FRAGMENT = { RegisterCallback = function(_, name, fn) table.insert(hudCallbacks, fn) end }
@@ -612,6 +639,7 @@ dofile(DIR .. "/lang/jp.lua")
 dofile(DIR .. "/Main.lua")
 dofile(DIR .. "/SkillBar.lua")
 dofile(DIR .. "/Timers.lua")
+dofile(DIR .. "/Trace.lua")
 dofile(DIR .. "/Plain.lua")
 dofile(DIR .. "/Preview.lua")
 dofile(DIR .. "/Settings.lua")

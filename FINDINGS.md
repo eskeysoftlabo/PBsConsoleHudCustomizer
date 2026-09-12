@@ -988,6 +988,39 @@ but it should never have applied to an ability that has not been cast yet.
    by something that cannot fail to arrive, and every held press must have its own release, not
    one shared slot.
 
+## 50. The trace (1.14.0): the measurement before the third attempt
+
+Nothing in 1.14.0 changes what is drawn. It adds one thing: a recorder, off until it is asked
+for, that writes down what the game actually sends while an ability is cast -- the measurement
+§49 says has to come before any third attempt at ground targeting.
+
+**How it is used.** Settings > PB's ConsoleHudCustomizer > Measurement has two buttons, Start and
+Show (`/pbhud trace on` / `/pbhud trace` do the same from chat, but a console player should not
+have to open the on-screen keyboard to measure something). Press Start, cast Caltrops once and
+place it, cast it again and cancel it, press Show. The record goes to the chat window, oldest
+first, each line stamped with the time it arrived relative to the first.
+
+**What it records**, and why each one is there:
+
+| line | source | the question it answers |
+| --- | --- | --- |
+| `press` | `EVENT_ACTION_SLOT_ABILITY_USED` | does the game report the press that raises the circle, the press that places it, or both? The line carries a press counter for exactly this. |
+| `ground` | `EVENT_ENTER_GROUND_TARGET_MODE`, `EVENT_CANCEL_GROUND_TARGET_MODE` | do these arrive on console at all, and in what order against the presses? |
+| `aiming` | `IsPlayerGroundTargeting()`, polled every 50 ms | the cross-check. If the events are silent but the poll turns over, the poll is what a third attempt must be built on -- and if the poll is flat while the events fire, the reverse. |
+| `effect` | `EVENT_EFFECT_CHANGED` (player and pet sources) | "ends in" against the two presses says which one the game measured the duration from. |
+| `combat` | `EVENT_COMBAT_EVENT`, player source | whether the "it went off" signal FancyActionBar+ waits for (`needCombatEvent`) arrives here, and when. |
+
+**What it deliberately does not do.** It registers nothing until Start, unregisters everything at
+Show, and never touches the countdown, the links or the labels. Effects and combat events are
+written only for abilities pressed in the last twelve seconds, and only the first of each kind per
+ability, so a fight cannot fill the record; the ring holds 160 lines. The header of every dump
+prints which of `ENTER` / `CANCEL` / `LEAVE` the client really has, so the mistake behind 1.12.0
+is visible on the first line rather than three builds later.
+
+The harness gained the two ground events, `EVENT_COMBAT_EVENT`, `IsPlayerGroundTargeting` and the
+`FireGround` / `FireCombat` helpers -- and deliberately **no** `EVENT_LEAVE_GROUND_TARGET_MODE`,
+because a stand-in that invents an event would have let 1.12.0 pass its tests.
+
 ---
 
 ## Still to measure on a PS5

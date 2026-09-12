@@ -198,6 +198,7 @@ which is the quickest way to check the two agree.
 /pbhud text [back] timer|count <n> size of the text on the skill bar (12-48)
 /pbhud timers addon|both|game      whose countdown goes on the front bar
 /pbhud slots                       what is on each slot, and why
+/pbhud trace [on|off|clear]        record what the game sends as an ability is cast
 /pbhud backbar [on|off|empty|<n>]  the other weapon set's row
 /pbhud skillbar on|off             whether the skill bar is this add-on's to touch
 /pbhud on | off                    switch every change on or off
@@ -207,6 +208,13 @@ which is the quickest way to check the two agree.
 
 `<bar>` is `health`, `magicka`, `stamina` or `skillbar` (`hp`, `mag`, `stam`, `bar` also work).
 `/pbhc` is the same command.
+
+`trace` is for working out why an ability's countdown is wrong, and the settings panel has the
+same two buttons under **Measurement** so it can be used without a keyboard. Start it, cast the
+ability -- for one that is aimed, place it once and cancel it once -- then show the record: every
+press, ground-targeting circle, effect and combat event the game sent, in order, with the time
+each arrived. It records nothing until it is started, stops when the record is shown, and changes
+nothing on the screen either way.
 
 ## How it works
 
