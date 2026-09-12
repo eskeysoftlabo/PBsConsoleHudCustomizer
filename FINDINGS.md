@@ -889,30 +889,104 @@ FancyActionBar+ gets all three from its table of ability ids. This gets them fro
 `GetAbilityDuration` and one rule, which is the trade named in §47: no table to keep up to date,
 and less exact where an ability's real duration is not what the game declares.
 
-## 49. Ground targeting: tried twice, withdrawn
+## 49. Ground targeting: two attempts, two defects, and what the reference really does
 
-A ground-targeted ability is pressed once to start aiming and again to place it, and counting
-from the press has the countdown running while the circle is still on the floor. 1.12.0 held such
-a press until the aiming ended, the way FancyActionBar+ holds its slot updates
-(`main.lua`, `groundTargetMode`, across `EVENT_ENTER_GROUND_TARGET_MODE` and its `LEAVE`).
+A ground-targeted ability is pressed once to start aiming and again to place it. Counting from the
+press has the countdown running while the circle is still on the floor. 1.12.0 tried to hold such
+a press, 1.12.1 tried to make the hold safe, and both took **every** countdown in the add-on with
+them. Neither was a mystery once the client's own source and FancyActionBar+ were read properly.
 
-On a PS5 it took **every** countdown in the add-on with it. 1.12.1 answered the three ways that
-could happen -- the gate also asked `IsPlayerGroundTargeting()`, a held press had nothing but the
-`LEAVE` event to release it, and an ended cast was remembered for ever, which silences the client
-for that slot (§34) -- and it still showed nothing. So the cause is something else, and the code
-is out: 1.13.0 is 1.11.1's implementation exactly, which is the last one known to display.
+### Why the first attempt failed: the event does not exist
 
-What a third attempt would need first, rather than another guess:
+`EVENT_LEAVE_GROUND_TARGET_MODE` is not an event. The client's own source registers one ground
+event (`ingamescenemanager.lua:32`, `EVENT_ENTER_GROUND_TARGET_MODE`), and FancyActionBar+
+registers that one and **`EVENT_CANCEL_GROUND_TARGET_MODE`** (`main.lua:7084-7085`). There is no
+"leave".
 
-- whether `EVENT_ENTER_GROUND_TARGET_MODE` arrives at all on console, and whether its `LEAVE`
-  follows. `/pbhud effects` printed "aiming now", presses held, and holds that timed out; a
-  screenshot of that line while the countdowns were missing would have said which of the three it
-  was, or that it was none of them.
-- whether `EVENT_ACTION_SLOT_ABILITY_USED` fires at the press or at the placement for those
-  abilities. If it fires at the placement there is nothing to fix in the first place.
+1.12.0 registered a table of two:
 
-Two rounds of a PS5's time went on this, and the feature is worth less than the countdown it
-broke.
+```lua
+for _, event in ipairs({ EVENT_ENTER_GROUND_TARGET_MODE, EVENT_LEAVE_GROUND_TARGET_MODE }) do
+```
+
+The second is `nil`, so only `ENTER` was ever registered -- and the handler read
+
+```lua
+if eventCode == EVENT_ENTER_GROUND_TARGET_MODE then self.groundActive = true return end
+self.groundActive = false   -- unreachable
+```
+
+So every event that could arrive **set** the gate and nothing could ever clear it. The first
+ground-targeted press of the session closed it for good, and from then on every press of every
+ability was held: no cast recorded, no countdown started, nothing on any icon.
+
+### Why the second attempt failed: the safety net was keyed to the wrong thing
+
+1.12.1 added a three-second release for a held press, and kept the same non-existent event. The
+release read:
+
+```lua
+Later(function()
+    if groundPending == pending then ... release ... end
+end, GROUND_HOLD_MAX_MS)
+```
+
+`groundPending` holds **the most recent** held press. In a fight a press lands every second or
+two, each overwriting it, so when press A's timer fired three seconds later the pending press was
+C or D and A was dropped without being released. The gate stayed shut for the same reason as
+before, and the one thing that might have re-opened it by accident -- the `IsPlayerGroundTargeting()`
+poll -- had been removed in the same release.
+
+Two rounds of a PS5's time, and both defects were visible from the client's own source.
+
+### What FancyActionBar+ actually does
+
+The mechanism 1.12.0 copied is not the one that times a cast. `groundTargetMode` in FAB+ queues
+`OnHotbarSlotStateUpdated` -- button *usable-state* updates -- while aiming and replays them
+afterwards (`main.lua:5792-5850`). It has nothing to do with when a countdown starts.
+
+What times a cast there:
+
+- **`EVENT_ACTION_SLOT_ABILITY_USED` starts no countdown at all** for an ordinary ability. It sets
+  `eff.hasActiveCast = true` and `eff.castTime = t` (`main.lua:5983-5987`) -- a hint used later to
+  decide whether a target may be recorded -- and nothing else.
+- **The countdown comes from the effect.** `OnEffectChanged` takes `beginTime`/`endTime` from the
+  event, and `RecordUnit` / `PruneUnits` carry `effect.endTime` out to the furthest target.
+- **Starting at the press exists only for a named list.** `specialEffects[id].onAbilityUsed` sets
+  `effect.endTime = duration + t` (`main.lua:6037-6051`) for the abilities its config names --
+  Cleansing Ritual, the traps, and so on. For traps there is even a setting to *not* do it
+  (`SV.ignoreTrapPlacement`), because a trap's timer should not start where it is placed.
+- **For those same abilities it waits for proof.** `needCombatEvent[abilityId].result` matched
+  against `EVENT_COMBAT_EVENT`, filtered by ability id and player source, then
+  `effect.endTime = currentTime + duration` (`main.lua:6848-6856`). That combat event is the
+  "it really went off" signal.
+
+And the fact that shapes all of it: **there is no "placed" event**. `ENTER` says aiming began,
+`CANCEL` says it was abandoned, and nothing at all says it landed. That is why FancyActionBar+
+never tries to time a placement from those events -- it waits for the effect, or for a combat
+event it has named in advance.
+
+### Where our own design is wrong, then
+
+Not in the hold: in §47. "Start the countdown at the press, from the tooltip's length" is this
+add-on's rule, not the reference's, and it is exactly wrong for anything with an aiming phase.
+It was introduced to cover abilities whose effect the client never reports, and it does that --
+but it should never have applied to an ability that has not been cast yet.
+
+### What a third attempt needs, in order
+
+1. **A measurement, before any code.** A logging build that prints, with timestamps: `ENTER`,
+   `CANCEL`, `ACTION_SLOT_ABILITY_USED` with its slot, the first `EFFECT_CHANGED` for that
+   ability, and the first `COMBAT_EVENT` for it. Place a Caltrops; cancel one. That single
+   capture answers all of: does `ABILITY_USED` fire at the press or at the placement, do the two
+   ground events arrive on console at all, and what arrives at the moment of placement.
+2. **Learn which abilities are ground-targeted rather than listing them.** When `ENTER` fires, the
+   ability just pressed is one; remember its id. No table to maintain.
+3. **For those abilities, do not start from the press.** Start from the effect, as the reference
+   does, or from a combat event for that ability id with the player as its source.
+4. **Nothing that can hold a press indefinitely.** If a gate is needed at all it must be released
+   by something that cannot fail to arrive, and every held press must have its own release, not
+   one shared slot.
 
 ---
 
