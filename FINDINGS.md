@@ -862,6 +862,33 @@ toggles, grounds, channels, the banner. Seventeen hundred lines of it, maintaine
 release. This add-on has the cast to work from instead: less exact for the families that need a
 handler, and nothing to keep up to date.
 
+## 48. The tooltip's length is the reference, not the longest effect that turns up
+
+From a PS5: Templar's Blinding Flashes lasts 10 seconds and the bar read 6.
+
+One cast, more than one effect, for the third time -- and this one the other way round from Power
+of the Light. There the ability's own effect was the short one and a 20-second Major Breach came
+with it; here the ability's own is what the client does not report at all, and the six-second
+effect that comes with it was the only candidate there was. "The candidate closest to the
+ability's length" then picks it, because it is the only thing to pick.
+
+So a candidate is now only followed if it is **about as long as the game says the ability is** --
+within a quarter, and never less than a second and a half, which leaves room for the passives and
+sets that stretch a duration a little. Nothing matching means the length from the tooltip stands,
+counted from the cast (§47), and that is the number the player is comparing against anyway.
+
+The three cases together, and what each needs:
+
+| | the game says | effects seen | followed |
+| --- | --- | --- | --- |
+| Power of the Light | 6 s | 6 s, and 20 s of Major Breach | the 6 s effect |
+| Blue Betty | 22 s | 22 s of Major Sorcery, 5 s of netch | the 22 s effect |
+| Blinding Flashes | 10 s | 6 s only | the tooltip's 10 s |
+
+FancyActionBar+ gets all three from its table of ability ids. This gets them from
+`GetAbilityDuration` and one rule, which is the trade named in §47: no table to keep up to date,
+and less exact where an ability's real duration is not what the game declares.
+
 ---
 
 ## Still to measure on a PS5

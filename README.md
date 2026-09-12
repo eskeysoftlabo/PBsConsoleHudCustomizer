@@ -6,7 +6,7 @@ as a shade that clears down the icon, a countdown, and a target count -- in The 
 Online on console.
 
 - **Author:** PinkBanther
-- **Version:** 1.11.0
+- **Version:** 1.11.1
 - **Optional:** `LibHarvensAddonSettings` >= 20106 (for the settings panel; the chat commands work
   without it)
 
@@ -138,8 +138,10 @@ smaller than the bar's, so a smaller number often reads better there.
 Until you move one of the row's two sliders it **follows the bar's**, so one size for both stays
 one slider. **Match the other set to this bar** puts it back to following.
 
-The countdown starts the moment you cast, from the length the game gives the ability, and the
-effect your cast produced takes over from it as soon as the game reports one. If the same effect
+The countdown starts the moment you cast, from the length the game gives the ability, and an
+effect of that cast takes over from it — but only if that effect is about as long as the ability
+is. One cast can put several effects on the world, and the longest, or the only one the client
+reports, is often not the ability's own. If the same effect
 lands on another target later, the countdown runs to whichever ends last.
 
 The countdown is **the effect your cast produced**. When you press a slot, the effects that appear

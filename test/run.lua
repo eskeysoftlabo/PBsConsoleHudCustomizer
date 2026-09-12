@@ -28,7 +28,7 @@ print("\n== 1. load ==")
 Fire(EVENT_ADD_ON_LOADED, "PBsConsoleHudCustomizer")
 local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 local health, magicka, stamina = addon.barByKey.health, addon.barByKey.magicka, addon.barByKey.stamina
-check("version read from manifest", addon.version, "1.11.0")
+check("version read from manifest", addon.version, "1.11.1")
 check("slash command registered", type(SLASH_COMMANDS["/pbhud"]), "function")
 check("short slash command registered", type(SLASH_COMMANDS["/pbhc"]), "function")
 check("HUD fragment callback registered", addon.hudRegistered, true)
@@ -1436,6 +1436,49 @@ FireEffect(EFFECT_RESULT_GAINED, "Ritual", "", (now18 + 3000) / 1000, 43, 221)
 RunUpdates()
 check("a shorter one does not pull it in", ritual:GetText(), "20")
 check("all three are counted as targets", addon.timers.labels[4].count:GetText(), "3")
+
+print("\n== 54. a ten-second ability that also puts a six-second effect out ==")
+-- From a PS5: Templar's Blinding Flashes lasts 10 seconds and the bar read 6. One cast, two
+-- effects again -- but this time the ability's own is the one the client does not report, and
+-- the shorter one was followed because it was the only candidate there was.
+--
+-- The game's own length for the ability is the reference. An effect is followed only if it is
+-- about that long; otherwise what stands is the length from the tooltip, counted from the cast.
+addon.timers:Forget_All()
+addon.timers.timers = {}
+addon.timers.counts = {}
+addon.timers.mismatched = 0
+SetSlot(HOTBAR_CATEGORY_PRIMARY, 6, { name = "Blinding Flashes", icon = "blind.dds", id = 230, remaining = 0, duration = 0 })
+SetAbilityDuration(230, 10000)
+FireHud(SCENE_FRAGMENT_SHOWN)
+local now19 = GetGameTimeMilliseconds()
+FireCast(6)
+FireEffect(EFFECT_RESULT_GAINED, "Blinding Flashes", "", (now19 + 6000) / 1000, 51, 231)
+RunUpdates()
+local blind = addon.timers.labels[6].timer
+check("the ten seconds the game gives it", blind:GetText(), "10")
+check("and the six-second effect was refused", addon.timers.mismatched >= 1, true)
+
+-- An effect that *is* about the ability's length is followed, and its real end is what counts.
+addon.timers:Forget_All()
+AdvanceFrame(11000)
+local now20 = GetGameTimeMilliseconds()
+FireCast(6)
+FireEffect(EFFECT_RESULT_GAINED, "Blinding Flashes", "", (now20 + 11000) / 1000, 52, 231)
+RunUpdates()
+check("a matching effect is followed, at its own end", blind:GetText(), "11")
+
+-- Power of the Light is the same rule the other way round: 6 seconds declared, and the 20-second
+-- Major Breach it also applies is refused rather than followed.
+addon.timers:Forget_All()
+SetSlot(HOTBAR_CATEGORY_PRIMARY, 5, { name = "Power of the Light", icon = "potl.dds", id = 103003, remaining = 0, duration = 0 })
+SetAbilityDuration(103003, 6000)
+local now21 = GetGameTimeMilliseconds()
+FireCast(5)
+FireEffect(EFFECT_RESULT_GAINED, "Major Breach", "", (now21 + 20000) / 1000, 53, 61743)
+FireEffect(EFFECT_RESULT_GAINED, "Power of the Light", "", (now21 + 6000) / 1000, 53, 103003)
+RunUpdates()
+check("still six, not twenty", addon.timers.labels[5].timer:GetText(), "6.0")
 
 print("")
 if failures == 0 then

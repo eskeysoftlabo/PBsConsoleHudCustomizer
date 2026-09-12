@@ -334,6 +334,13 @@ local CAST_WINDOW_MS = 1500
 -- Shorter than this is a cast time or a flash, not something to count down.
 local CAST_EFFECT_MINIMUM_MS = 900
 
+-- How far an effect's length may be from the ability's own before it is taken for a different
+-- effect entirely. A quarter, and never less than a second and a half: wide enough for the
+-- passives and sets that stretch a duration a little, narrow enough that a six-second effect is
+-- not mistaken for a ten-second ability.
+local DURATION_TOLERANCE_RATIO = 0.25
+local DURATION_TOLERANCE_MIN_MS = 1500
+
 local slotEffects = {}
 
 -- The same ability is often in a slot on both weapon sets, and it is one effect however many
@@ -431,6 +438,21 @@ function timers:LinkToCast(key, icon, beginMs, endMs, now)
 	-- best guess, which is what a negative score gives.
 	local expected = lastUse.expected or 0
 	local score = expected > 0 and math.abs(duration - expected) or -duration
+
+	-- An effect is only taken for the ability's own if it is about as long as the game says the
+	-- ability lasts. Templar's Blinding Flashes is ten seconds and puts a six-second effect on
+	-- the world as well; without this the six was followed and the bar read six.
+	--
+	-- What stands when nothing matches is the ability's own length, counted from the cast (the
+	-- link made in OnAbilityUsed). That is the number in the tooltip, and it is the one the
+	-- player is comparing against.
+	if expected > 0 then
+		local tolerance = math.max(DURATION_TOLERANCE_MIN_MS, expected * DURATION_TOLERANCE_RATIO)
+		if math.abs(duration - expected) > tolerance then
+			self.mismatched = (self.mismatched or 0) + 1
+			return
+		end
+	end
 	-- Read here rather than through the slot readers further down the file: those are defined
 	-- after this, and an effect can arrive before anything else has run.
 	local slotIcon = nil
@@ -1686,8 +1708,8 @@ function timers:PrintSlots()
 		self.sources or 0, self.dropped or 0)
 	Line("  casts seen=%d  effects tied to a cast=%d  shorter readings refused=%d",
 		self.casts or 0, self.linked or 0, self.shorterIgnored or 0)
-	Line("  counted from the tooltip's own length=%d  carried out to a later target=%d",
-		self.declared or 0, self.extended or 0)
+	Line("  counted from the tooltip's own length=%d  carried out to a later target=%d  effects refused as the wrong length=%d",
+		self.declared or 0, self.extended or 0, self.mismatched or 0)
 	Line("  clocks: frame=%d game=%d (they must agree for an effect's end time to mean anything)",
 		Round(Now()), Round(GetGameTimeMilliseconds and GetGameTimeMilliseconds() or 0))
 	Line("  effects: gains=%d fades=%d stale fades ignored=%d already-over on arrival=%d",
