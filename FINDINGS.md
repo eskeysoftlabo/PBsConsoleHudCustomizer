@@ -809,6 +809,35 @@ LibHarvensAddonSettings takes as a function, as Votan's Minimap does). The style
 `UpdateControls` so the change shows at once. The skill bar is scaled whatever the attribute bars
 are doing, so its own percentage stays live.
 
+## 46. The target count against FancyActionBar+'s
+
+Asked whether the number in the icon's corner works the way FancyActionBar+'s does. The idea is
+the same -- count the units an effect is on and drop them as they expire -- and three rules were
+not.
+
+| | FancyActionBar+ | here |
+| --- | --- | --- |
+| on yourself | not recorded (`GetAbilityTargetDescription(id, nil, unitTag) == "Self"`) | **now** not counted |
+| on your pets | not recorded (`IsPlayerPet`) | **now** not counted |
+| area effects | not recorded at all, unless a cast is running with a real unit id | counted |
+| the key for a target | the unit id, and only when it is above zero | unit id, else the effect's slot, else the tag |
+| shown from | 2 targets, or 1 for a debuff with the option on | 1 by default, 2 by setting |
+| a count that comes back empty | recomputed, so it goes | held while the client still times the effect |
+
+The first two are worth having and are taken: a buff on yourself is not a target count -- the
+countdown beside it already says it is up -- and neither is one on something of yours. They were
+the whole of the "1" that appeared on every self-buff.
+
+The rest are deliberate differences. FancyActionBar+ can leave area effects out because it
+carries a table of hand-tuned ability ids to fall back on; this add-on has no such table, so it
+keys a target by the effect's own slot where there is no unit id and counts the area effects that
+way (§39). The hold (§32) is ours because the bookkeeping under it is simpler than theirs. And
+"from 1" is a better default once a buff on yourself no longer produces one.
+
+One thing worth noting about the reference: `GetAbilityTargetDescription(...) == "Self"` compares
+against an English string, so on a Japanese client that test never matches. The check here is
+`unitTag == "player"`, which holds in any language.
+
 ---
 
 ## Still to measure on a PS5

@@ -28,7 +28,7 @@ print("\n== 1. load ==")
 Fire(EVENT_ADD_ON_LOADED, "PBsConsoleHudCustomizer")
 local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 local health, magicka, stamina = addon.barByKey.health, addon.barByKey.magicka, addon.barByKey.stamina
-check("version read from manifest", addon.version, "1.10.2")
+check("version read from manifest", addon.version, "1.10.3")
 check("slash command registered", type(SLASH_COMMANDS["/pbhud"]), "function")
 check("short slash command registered", type(SLASH_COMMANDS["/pbhc"]), "function")
 check("HUD fragment callback registered", addon.hudRegistered, true)
@@ -1135,7 +1135,9 @@ RunUpdates()
 local timer3b = addon.timers.labels[3].timer
 local count3b = addon.timers.labels[3].count
 check("the pet's effect is seen", timer3b:GetText(), "22")
-check("and counted", count3b:GetText(), "1")
+-- ... and counts as no target at all, because it landed on the player: a buff on yourself is not
+-- a target count, which is where FancyActionBar+ draws the line too.
+check("but a buff on yourself is not a target", count3b:IsHidden(), true)
 check("both registrations are in place", addon.timers.sources, 2)
 
 print("\n== 43. the cap does not throw away what is being watched ==")
@@ -1362,6 +1364,35 @@ check("and the panel is told to re-read them", Panel.updates > 0, true)
 
 Row(GetString(SI_PBSCHC_STYLE)).setFunction(nil, nil, { data = "standard" })
 check("standard: back to the percentage", Panel:IsDisabled(staminaScale), false)
+
+print("\n== 52. what counts as a target ==")
+-- Compared against FancyActionBar+, which draws the same line: an effect on yourself is not a
+-- target count, and neither is one on something of yours. An enemy is, including the ones the
+-- client reports with no unit tag at all, which is most of them.
+addon.timers:Forget_All()
+addon.timers.counts = {}
+addon.account.text.countFromOne = true
+SetSlot(HOTBAR_CATEGORY_PRIMARY, 3, { name = "Rally", icon = "rally.dds", id = 190, remaining = 0, duration = 0 })
+SetAbilityDuration(190, 30000)
+FireHud(SCENE_FRAGMENT_SHOWN)
+local now16 = GetGameTimeMilliseconds()
+FireCast(3)
+FireEffect(EFFECT_RESULT_GAINED, "Rally", "player", (now16 + 30000) / 1000, 1, 191)
+RunUpdates()
+local rallyTimer, rallyCount = addon.timers.labels[3].timer, addon.timers.labels[3].count
+check("the buff on yourself is counted down", rallyTimer:GetText(), "30")
+check("and carries no target count", rallyCount:IsHidden(), true)
+
+-- Something of yours is not a target either.
+FireEffectFrom(COMBAT_UNIT_TYPE_PLAYER, EFFECT_RESULT_GAINED, "Rally", "playerpet1", (now16 + 30000) / 1000, 2, 191)
+RunUpdates()
+check("nor is a pet of yours", rallyCount:IsHidden(), true)
+
+-- An enemy is, tag or no tag.
+FireEffect(EFFECT_RESULT_GAINED, "Rally", "reticleover", (now16 + 30000) / 1000, 3, 191)
+FireEffect(EFFECT_RESULT_GAINED, "Rally", "", (now16 + 30000) / 1000, 4, 191)
+RunUpdates()
+check("two enemies are", rallyCount:GetText(), "2")
 
 print("")
 if failures == 0 then

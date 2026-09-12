@@ -582,6 +582,15 @@ function timers:OnEffectChanged(_, changeType, effectSlot, effectName, unitTag, 
 	if not key then
 		return
 	end
+
+	-- What is a target, and what is not. FancyActionBar+ draws the same line (main.lua: isSelf
+	-- from GetAbilityTargetDescription, and IsPlayerPet): an effect on yourself is not a target
+	-- count -- the countdown beside it already says the buff is up -- and neither is one on
+	-- something of yours. Everything else is, including an enemy the client reports with no unit
+	-- tag at all, which is most of them.
+	local tag = type(unitTag) == "string" and unitTag or ""
+	local isSelf = tag == "player"
+	local isPet = tag:find("^playerpet") ~= nil or tag == "companion"
 	local now = Now()
 	-- One key per target. unitId is the one to use where there is one; where there is not -- some
 	-- area effects report none -- the effect's own slot tells two instances apart, which is what
@@ -618,9 +627,15 @@ function timers:OnEffectChanged(_, changeType, effectSlot, effectName, unitTag, 
 	end
 	local icon = IconKey(iconName)
 	local beginMs = (type(beginTime) == "number" and beginTime > 0) and math.floor(beginTime * 1000) or now
-	self:Track(key, abilityId, icon, unitKey, endMs, now)
+	-- The cast is tied to the effect whoever it landed on: that is how a buff on yourself gets
+	-- its countdown. Only the counting leaves self and pets out.
+	if not (isSelf or isPet) then
+		self:Track(key, abilityId, icon, unitKey, endMs, now)
+	else
+		self.untargeted = (self.untargeted or 0) + 1
+	end
 	self:LinkToCast(key, icon, beginMs, endMs, now)
-	self:Log("gain", changeType, key, unitKey, endMs, now)
+	self:Log((isSelf or isPet) and "self" or "gain", changeType, key, unitKey, endMs, now)
 end
 
 -- How many units are under this effect right now, and what it was matched by.
@@ -1628,6 +1643,7 @@ function timers:PrintSlots()
 		Round(Now()), Round(GetGameTimeMilliseconds and GetGameTimeMilliseconds() or 0))
 	Line("  effects: gains=%d fades=%d stale fades ignored=%d already-over on arrival=%d",
 		self.gains or 0, self.fades or 0, self.staleFades or 0, self.pastEffects or 0)
+	Line("  on you or yours, so not counted as targets: %d", self.untargeted or 0)
 	Line("  the game's countdown faded back %d time(s)", self.redims or 0)
 	Line("  effects tracked=%d  counts shown from %d target(s)  controls from %s", self:TrackedCount(),
 		addon:Text().countFromOne and 1 or 2, self.usedFallback and "plain Lua (Controls.xml did not load)" or "Controls.xml")
