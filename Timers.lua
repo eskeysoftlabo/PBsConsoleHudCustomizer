@@ -60,7 +60,7 @@ local MINIMUM_SHOWN_MS = 1000
 
 -- How many effects are remembered for the target count. Six abilities on each bar, a handful of
 -- targets each; the cap is what stops a long fight in a crowd from growing the table for ever.
-local MAX_TRACKED_EFFECTS = 96
+local MAX_TRACKED_EFFECTS = 128
 
 local TIMER_COLOUR = { 0.86, 0.85, 0.13 }
 local COUNT_COLOUR = { 1, 1, 1 }
@@ -438,16 +438,35 @@ function timers:ForgetLinks()
 	linksByIcon = {}
 end
 
-local function DropOldest()
-	local oldestKey, oldestTime = nil, nil
+-- Room for one more. What goes is the least recently used entry with nothing live in it; only
+-- if every entry is live does the least recently used of those go.
+--
+-- The old version took the least recently *touched*, and an entry is only touched when an effect
+-- arrives -- so a damage-over-time ticking away quietly on three targets was exactly the kind of
+-- thing it threw out, which reads as the target count disappearing.
+local function DropOldest(now)
+	local deadKey, deadTime, anyKey, anyTime
 	for key, entry in pairs(effects) do
-		if not oldestTime or entry.touched < oldestTime then
-			oldestKey, oldestTime = key, entry.touched
+		local live = false
+		for _, endMs in pairs(entry.units) do
+			if endMs == 0 or endMs > now then
+				live = true
+				break
+			end
+		end
+		local used = entry.used or entry.touched or 0
+		if not live and (not deadTime or used < deadTime) then
+			deadKey, deadTime = key, used
+		end
+		if not anyTime or used < anyTime then
+			anyKey, anyTime = key, used
 		end
 	end
-	if oldestKey then
-		effects[oldestKey] = nil
+	local key = deadKey or anyKey
+	if key then
+		effects[key] = nil
 		effectCount = effectCount - 1
+		timers.dropped = (timers.dropped or 0) + 1
 	end
 end
 
@@ -455,7 +474,7 @@ function timers:Track(key, abilityId, icon, unitKey, endMs, now)
 	local entry = effects[key]
 	if not entry then
 		if effectCount >= MAX_TRACKED_EFFECTS then
-			DropOldest()
+			DropOldest(now)
 		end
 		entry = { units = {} }
 		effects[key] = entry
@@ -581,6 +600,9 @@ function timers:CountFor(key, abilityId, icon, now)
 	if not entry then
 		return 0, nil
 	end
+	-- Being read is being used: an effect the player is watching count down must not be the one
+	-- thrown out to make room.
+	entry.used = now
 	local count = 0
 	for unitKey, endMs in pairs(entry.units) do
 		if endMs == 0 or endMs > now then
@@ -1529,6 +1551,8 @@ function timers:PrintSlots()
 		Line("  weapon swap available=%s%s  -> other set row=%s", tostring(available),
 			why and (" (" .. why .. ")") or "", tostring(addon:BackBarEnabled()))
 	end
+	Line("  effect sources registered=%d (the player, and anything of theirs)  entries dropped for room=%d",
+		self.sources or 0, self.dropped or 0)
 	Line("  casts seen=%d  effects tied to a cast=%d  shorter readings refused=%d",
 		self.casts or 0, self.linked or 0, self.shorterIgnored or 0)
 	Line("  clocks: frame=%d game=%d (they must agree for an effect's end time to mean anything)",
@@ -1553,6 +1577,18 @@ function timers:PrintSlots()
 			Line("      from %s; the client's own reading is %dms over %dms", source,
 				Round(raw or SlotNumber(GetActionSlotEffectTimeRemaining, slot, activeHotbar)),
 				Round(SlotNumber(GetActionSlotEffectDuration, slot, activeHotbar)))
+		end
+		local linked = self:LinkFor(slot, activeHotbar, IconKey(SlotString(GetSlotTexture, slot, activeHotbar)))
+		if linked then
+			local held = effects[linked.key]
+			local units = 0
+			if held then
+				for _ in pairs(held.units) do
+					units = units + 1
+				end
+			end
+			Line("      counting \"%s\" -- %s, %d unit(s) on record", tostring(linked.key),
+				held and "tracked" or "|cFF4040not tracked|r", units)
 		end
 		Line("|cFF69B4  %d|r %s  left=%dms -> %s  targets=%d%s -> %s  label=%s h=%s", slot, name, Round(remaining),
 			tostring(timerText), count or 0, matchedBy and (" by " .. matchedBy) or "",
@@ -1579,19 +1615,37 @@ function timers:Register()
 	if self.registered or not EVENT_MANAGER then
 		return false
 	end
-	EVENT_MANAGER:RegisterForEvent(addon.name .. "Effects", EVENT_EFFECT_CHANGED, function(...)
-		timers:OnEffectChanged(...)
-	end)
+	-- Two registrations, because one is not enough: a great many effects a player applies are
+	-- applied by something of theirs rather than by them. The netch of Blue Betty is a pet, and
+	-- so are the sorcerer's familiars, the warden's bear and the nightblade's shade -- filtered
+	-- to the player alone, none of what they put on the world is ever seen here, which is the
+	-- whole of "the target count does not work" for those abilities. Action Duration Reminder
+	-- registers the same two (Core.lua, addon.name and addon.name..'_pet').
+	local sources = {
+		{ suffix = "Effects", source = COMBAT_UNIT_TYPE_PLAYER },
+		{ suffix = "PetEffects", source = COMBAT_UNIT_TYPE_PLAYER_PET },
+	}
+	for _, entry in ipairs(sources) do
+		if entry.source ~= nil then
+			local name = addon.name .. entry.suffix
+			EVENT_MANAGER:RegisterForEvent(name, EVENT_EFFECT_CHANGED, function(...)
+				timers:OnEffectChanged(...)
+			end)
+			if type(EVENT_MANAGER.AddFilterForEvent) == "function" and REGISTER_FILTER_SOURCE_COMBAT_UNIT_TYPE then
+				pcall(EVENT_MANAGER.AddFilterForEvent, EVENT_MANAGER, name, EVENT_EFFECT_CHANGED,
+					REGISTER_FILTER_SOURCE_COMBAT_UNIT_TYPE, entry.source)
+			end
+			self.sources = (self.sources or 0) + 1
+		end
+	end
+
 	-- Which slot was pressed. The effects that follow within a moment are that slot's.
 	if EVENT_ACTION_SLOT_ABILITY_USED then
 		EVENT_MANAGER:RegisterForEvent(addon.name .. "Used", EVENT_ACTION_SLOT_ABILITY_USED, function(...)
 			timers:OnAbilityUsed(...)
 		end)
 	end
-	if type(EVENT_MANAGER.AddFilterForEvent) == "function" and REGISTER_FILTER_SOURCE_COMBAT_UNIT_TYPE then
-		pcall(EVENT_MANAGER.AddFilterForEvent, EVENT_MANAGER, addon.name .. "Effects", EVENT_EFFECT_CHANGED,
-			REGISTER_FILTER_SOURCE_COMBAT_UNIT_TYPE, COMBAT_UNIT_TYPE_PLAYER)
-	end
+
 	self.registered = true
 	return true
 end

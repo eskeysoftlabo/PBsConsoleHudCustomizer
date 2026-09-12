@@ -6,7 +6,7 @@ as a shade that clears down the icon, a countdown, and a target count -- in The 
 Online on console.
 
 - **Author:** PinkBanther
-- **Version:** 1.7.1
+- **Version:** 1.7.2
 - **Optional:** `LibHarvensAddonSettings` >= 20106 (for the settings panel; the chat commands work
   without it)
 
@@ -140,7 +140,8 @@ the netch does, which is what the game's own per-slot timer does near the end. T
 cast is on record against the ability, not just the slot it was made from. For a slot whose effect
 this add-on has not seen cast at all, the game's own number is used instead.
 
-The target count has no API behind it: it is counted from the effects you apply — the same effect
+The target count has no API behind it: it is counted from the effects you and anything of yours
+apply -- a pet's count too, which matters for the netch, the familiars, the bear and the shade — the same effect
 the countdown is for, when the cast was seen, and otherwise matched to the slot by the ability's
 **name**, then its **id**, then its **icon**. The icon is what catches a
 morph whose effect is called something else, which is most of them. `/pbhud slots` says which of

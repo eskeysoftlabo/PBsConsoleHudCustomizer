@@ -662,6 +662,34 @@ That is also what makes a weapon swap invisible to the countdown: the bar coming
 the same record. A different ability in the slot has different art, so it is not given somebody
 else's time.
 
+## 36. A great many effects are not applied by the player
+
+The target count still did nothing for some abilities, and one registration is the reason:
+
+```lua
+EVENT_MANAGER:AddFilterForEvent(name, EVENT_EFFECT_CHANGED,
+    REGISTER_FILTER_SOURCE_COMBAT_UNIT_TYPE, COMBAT_UNIT_TYPE_PLAYER)
+```
+
+Filtered to the player as the source, **nothing a pet applies is ever seen**. The netch of Blue
+Betty is a pet; so are the sorcerer's familiar and twilight, the warden's bear, the nightblade's
+shade. For every one of those the effect never arrives, so there is no effect to tie to the cast
+and nothing to count. Action Duration Reminder registers the same event twice for exactly this
+reason (`Core.lua`: `addon.name` and `addon.name..'_pet'`), and a third time unfiltered for two
+named abilities the client reports with no source at all.
+
+Both registrations are made now: `COMBAT_UNIT_TYPE_PLAYER` and `COMBAT_UNIT_TYPE_PLAYER_PET`.
+`/pbhud effects` says how many are in place.
+
+## 37. The cap threw out the wrong entries
+
+The table of tracked effects is capped, and what went to make room was the least recently
+**added**. A damage-over-time ticking quietly on three targets is never added again while it
+runs, so it was exactly the shape of entry the cap threw out -- the target count disappearing
+mid-fight for no reason the player can see. Reading an entry now counts as using it, what goes is
+the least recently used entry with **nothing live in it**, and only if every entry is live does a
+live one go. The cap is 128 rather than 96, and `/pbhud effects` counts what has been dropped.
+
 ---
 
 ## Still to measure on a PS5

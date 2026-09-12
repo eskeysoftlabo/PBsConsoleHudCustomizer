@@ -28,7 +28,7 @@ print("\n== 1. load ==")
 Fire(EVENT_ADD_ON_LOADED, "PBsConsoleHudCustomizer")
 local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 local health, magicka, stamina = addon.barByKey.health, addon.barByKey.magicka, addon.barByKey.stamina
-check("version read from manifest", addon.version, "1.7.1")
+check("version read from manifest", addon.version, "1.7.2")
 check("slash command registered", type(SLASH_COMMANDS["/pbhud"]), "function")
 check("short slash command registered", type(SLASH_COMMANDS["/pbhc"]), "function")
 check("HUD fragment callback registered", addon.hudRegistered, true)
@@ -1105,6 +1105,52 @@ RunUpdates()
 SetSlot(HOTBAR_CATEGORY_BACKUP, 7, { name = "Something Else", icon = "other.dds", id = 180, remaining = 4000, duration = 4000 })
 RunUpdates()
 check("another ability is not given the netch's time", back7:GetText(), "4.0")
+
+print("\n== 42. what the player's pet puts on the world ==")
+-- Filtered to the player as the source, none of what a pet applies is ever seen -- and the netch
+-- of Blue Betty is a pet, as are the sorcerer's familiars, the warden's bear and the shade. For
+-- those abilities the effect never arrives, so there is no cast to tie it to and nothing to
+-- count: "the target count does not work".
+addon.timers:Forget_All()
+addon.timers.timers = {}
+addon.timers.counts = {}
+addon.account.text.countFromOne = true
+SetSlot(HOTBAR_CATEGORY_PRIMARY, 3, { name = "Blue Betty", icon = "betty.dds", id = 170, remaining = 0, duration = 0 })
+FireHud(SCENE_FRAGMENT_SHOWN)
+
+local now10 = GetGameTimeMilliseconds()
+FireCast(3)
+-- The netch, not the player, is what grants it.
+FireEffectFrom(COMBAT_UNIT_TYPE_PLAYER_PET, EFFECT_RESULT_GAINED, "Major Sorcery", "player",
+	(now10 + 22000) / 1000, 1, 901, "betty.dds")
+RunUpdates()
+local timer3b = addon.timers.labels[3].timer
+local count3b = addon.timers.labels[3].count
+check("the pet's effect is seen", timer3b:GetText(), "22")
+check("and counted", count3b:GetText(), "1")
+check("both registrations are in place", addon.timers.sources, 2)
+
+print("\n== 43. the cap does not throw away what is being watched ==")
+-- A long session fills the table with every effect the player has applied. The entry that goes
+-- to make room used to be the one least recently *added*, which is exactly a damage-over-time
+-- ticking quietly on three targets.
+addon.timers:Forget_All()
+local now11 = GetGameTimeMilliseconds()
+SetSlot(HOTBAR_CATEGORY_PRIMARY, 4, { name = "Caltrops", icon = "caltrops.dds", id = 140, remaining = 0, duration = 0 })
+FireCast(4)
+FireEffect(EFFECT_RESULT_GAINED, "Caltrops", "", (now11 + 30000) / 1000, 91, 141)
+FireEffect(EFFECT_RESULT_GAINED, "Caltrops", "", (now11 + 30000) / 1000, 92, 141)
+RunUpdates()
+local count4b = addon.timers.labels[4].count
+check("two targets", count4b:GetText(), "2")
+-- Another two hundred effects come and go, all of them over as they arrive.
+for index = 1, 200 do
+	AdvanceFrame(10)
+	FireEffect(EFFECT_RESULT_GAINED, "Passing Thing " .. index, "", (GetGameTimeMilliseconds() + 1200) / 1000, 500 + index, 500 + index)
+	RunUpdates()
+end
+check("the one being watched is still there", count4b:GetText(), "2")
+check("and something was dropped to make room", (addon.timers.dropped or 0) > 0, true)
 
 print("")
 if failures == 0 then

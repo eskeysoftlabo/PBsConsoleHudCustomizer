@@ -39,7 +39,7 @@ function AdvanceFrame(ms) frameTime = frameTime + (ms or 1000) end
 function GetAddOnManager()
 	return {
 		GetNumAddOns = function() return 1 end,
-		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ConsoleHudCustomizer|r 1.7.1" end,
+		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ConsoleHudCustomizer|r 1.7.2" end,
 	}
 end
 
@@ -58,7 +58,7 @@ SCENE_FRAGMENT_SHOWING, SCENE_FRAGMENT_SHOWN, SCENE_FRAGMENT_HIDING, SCENE_FRAGM
 -- ---- events -------------------------------------------------------------------------
 EVENT_ADD_ON_LOADED = "EVENT_ADD_ON_LOADED"
 EVENT_PLAYER_ACTIVATED = "EVENT_PLAYER_ACTIVATED"
-local handlers = {}
+handlers = {}
 EVENT_MANAGER = {
 	RegisterForEvent = function(_, name, event, fn) handlers[event] = handlers[event] or {}; handlers[event][name] = fn end,
 	UnregisterForEvent = function(_, name, event) if handlers[event] then handlers[event][name] = nil end end,
@@ -468,12 +468,17 @@ EVENT_EFFECT_CHANGED = "EVENT_EFFECT_CHANGED"
 EVENT_ACTION_SLOT_ABILITY_USED = "EVENT_ACTION_SLOT_ABILITY_USED"
 EFFECT_RESULT_GAINED, EFFECT_RESULT_FADED, EFFECT_RESULT_UPDATED = 1, 2, 3
 REGISTER_FILTER_SOURCE_COMBAT_UNIT_TYPE, COMBAT_UNIT_TYPE_PLAYER = "source", 1
+COMBAT_UNIT_TYPE_PLAYER_PET = 2
+-- Which source each registration is filtered to, so a test can send an effect as a pet.
+EventFilters = {}
+EVENT_MANAGER.AddFilterForEvent = function(_, name, event, filterType, value)
+	EventFilters[name] = value
+end
 function GetGameTimeMilliseconds() return GetFrameTimeMilliseconds() end
 
 local updates = {}
 EVENT_MANAGER.RegisterForUpdate = function(_, name, interval, fn) updates[name] = fn end
 EVENT_MANAGER.UnregisterForUpdate = function(_, name) updates[name] = nil end
-EVENT_MANAGER.AddFilterForEvent = function() end
 function RunUpdates() for _, fn in pairs(updates) do fn() end end
 function UpdateRegistered(name) return updates[name] ~= nil end
 
@@ -482,10 +487,20 @@ function FireCast(slotNum)
 	Fire(EVENT_ACTION_SLOT_ABILITY_USED, slotNum)
 end
 
--- The effect event, in the client's argument order.
-function FireEffect(changeType, effectName, unitTag, endTimeSec, unitId, abilityId)
-	Fire(EVENT_EFFECT_CHANGED, changeType, 1, effectName, unitTag, 0, endTimeSec, 0, "icon.dds", nil,
-		1, 1, 0, "someone", unitId, abilityId, COMBAT_UNIT_TYPE_PLAYER)
+-- The effect event, in the client's argument order, delivered only to the registrations whose
+-- filter matches the source -- which is how the client behaves, and the whole point of the pet
+-- registration.
+function FireEffectFrom(source, changeType, effectName, unitTag, endTimeSec, unitId, abilityId, icon)
+	for name, fn in pairs(handlers[EVENT_EFFECT_CHANGED] or {}) do
+		if EventFilters[name] == nil or EventFilters[name] == source then
+			fn(EVENT_EFFECT_CHANGED, changeType, 1, effectName, unitTag, 0, endTimeSec, 0,
+				icon or "icon.dds", nil, 1, 1, 0, "someone", unitId, abilityId, source)
+		end
+	end
+end
+
+function FireEffect(changeType, effectName, unitTag, endTimeSec, unitId, abilityId, icon)
+	FireEffectFrom(COMBAT_UNIT_TYPE_PLAYER, changeType, effectName, unitTag, endTimeSec, unitId, abilityId, icon)
 end
 
 -- ---- scenes -------------------------------------------------------------------------
