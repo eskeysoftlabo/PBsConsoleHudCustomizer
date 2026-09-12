@@ -28,7 +28,7 @@ print("\n== 1. load ==")
 Fire(EVENT_ADD_ON_LOADED, "PBsConsoleHudCustomizer")
 local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 local health, magicka, stamina = addon.barByKey.health, addon.barByKey.magicka, addon.barByKey.stamina
-check("version read from manifest", addon.version, "1.4.0")
+check("version read from manifest", addon.version, "1.4.1")
 check("slash command registered", type(SLASH_COMMANDS["/pbhud"]), "function")
 check("short slash command registered", type(SLASH_COMMANDS["/pbhc"]), "function")
 check("HUD fragment callback registered", addon.hudRegistered, true)
@@ -699,8 +699,12 @@ local labels3 = pair3.control
 local timer3 = pair3.timer
 check("the labels hang on the icon, not the button", labels3.anchors[1].relativeTo:GetName(), "ActionButton3Icon")
 check("the countdown is centred", timer3.anchors[1].point, CENTER)
--- ACTION_BUTTON_TIMER_TEXT_OFFSET_Y_DEFAULT_GAMEPAD, the client's own.
-check("at the client's own offset", timer3.anchors[1].offsetY, 4)
+-- Dead centre on the icon. The client puts its own 4 down
+-- (ACTION_BUTTON_TIMER_TEXT_OFFSET_Y_DEFAULT_GAMEPAD); ours is not, because at 4 it reads as
+-- sitting low, which is what came back from the PS5.
+check("with no offset of its own", timer3.anchors[1].offsetY, 0)
+-- And it is as tall as its own text, or a big size cannot centre in it.
+check("the label is the height of its font", timer3.height > 0, true)
 check("only one anchor on it", #timer3.anchors, 1)
 check("the game's number is out of the way", _G["ActionButton3"].namedChildren.TimerText:GetAlpha(), 0)
 
@@ -739,6 +743,37 @@ check("and the rebuild is a different control", newTimerText ~= oldTimerText, tr
 RunUpdates()
 check("which is faded as well", newTimerText:GetAlpha(), 0)
 check("the one it replaced is handed back", oldTimerText:GetAlpha(), 1)
+
+print("\n== 33. a default thought better of, on an install that already ran ==")
+-- ZO_SavedVars copies defaults into the saved table, so 1.1.0's countFromOne = false is still
+-- there on every install that ran it, and 1.1.1's change of mind never reached them: the target
+-- count then says nothing at all for a single-target ability.
+SavedStore.PBsConsoleHudCustomizer_Data = { text = { timerMode = "auto", countFromOne = false } }
+addon.account = ZO_SavedVars:NewAccountWide("PBsConsoleHudCustomizer_Data", 1, nil, addon.accountDefaults)
+addon:Account()
+check("the old setting is moved on", addon:Text().countFromOne, true)
+check("and the old mode name with it", addon:TimerMode(), "addon")
+check("marked, so it is only done once", addon:Text().version, 2)
+-- And a player who really does want it from two is left alone.
+addon:Text().countFromOne = false
+addon:Account()
+check("a choice made since is kept", addon:Text().countFromOne, false)
+addon:Text().countFromOne = true
+
+print("\n== 34. an effect whose name is not the ability's is matched by its icon ==")
+addon.timers:Forget_All()
+SetAllSlots()
+SetSlot(HOTBAR_CATEGORY_PRIMARY, 4, { name = "Barbed Trap", icon = "trap.dds", id = 140, remaining = 9000, duration = 20000 })
+local now2 = GetGameTimeMilliseconds()
+-- The effect the client reports carries another name, as a morph's often does, but the same art.
+Fire(EVENT_EFFECT_CHANGED, EFFECT_RESULT_GAINED, 1, "Trap Beast", "", 0, (now2 + 9000) / 1000, 0,
+	"/Trap.dds", nil, 1, 1, 0, "someone", 77, 999, COMBAT_UNIT_TYPE_PLAYER)
+RunUpdates()
+local _, countText, count, matchedBy = addon.timers:SlotText(4, HOTBAR_CATEGORY_PRIMARY, GetGameTimeMilliseconds())
+check("the name does not match", addon.timers.Normalize("Barbed Trap") == addon.timers.Normalize("Trap Beast"), false)
+check("but the icon does", matchedBy, "icon")
+check("so it is counted", count, 1)
+check("and written", countText, "1")
 
 print("")
 if failures == 0 then

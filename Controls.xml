@@ -27,11 +27,17 @@
         -->
         <Label name="PBsConsoleHudCustomizerTimerLabel" font="ZoFontGamepad27" color="DCD822"
                horizontalAlignment="CENTER" verticalAlignment="CENTER" virtual="true">
-            <Dimensions x="0" y="25"/>
+            <!--
+                Width 0 sizes the label to its text, as the client's own does. The height is set
+                from the font at runtime rather than fixed at the client's 25: the size here goes
+                up to 48, and text centred in a box shorter than itself does not sit where the
+                middle of the box is.
+            -->
+            <Dimensions x="0" y="0"/>
         </Label>
         <Label name="PBsConsoleHudCustomizerCountLabel" font="ZoFontGamepad27" color="FFFFFF"
                horizontalAlignment="CENTER" verticalAlignment="TOP" virtual="true">
-            <Dimensions x="0" y="25"/>
+            <Dimensions x="0" y="0"/>
         </Label>
 
         <Control name="PBsConsoleHudCustomizerBackBarSlot" virtual="true" tier="MEDIUM">
@@ -56,7 +62,7 @@
                     <Anchor point="BOTTOMRIGHT" relativeTo="$(parent)Icon" relativePoint="BOTTOMRIGHT"/>
                 </Cooldown>
                 <Label name="$(parent)Timer" inherits="PBsConsoleHudCustomizerTimerLabel" level="3">
-                    <Anchor point="CENTER" relativeTo="$(parent)Icon" relativePoint="CENTER" offsetY="2"/>
+                    <Anchor point="CENTER" relativeTo="$(parent)Icon" relativePoint="CENTER"/>
                 </Label>
                 <Label name="$(parent)Count" inherits="PBsConsoleHudCustomizerCountLabel" level="3">
                     <Anchor point="TOPLEFT" relativeTo="$(parent)Icon" relativePoint="TOPLEFT" offsetX="-2" offsetY="-4"/>
@@ -67,7 +73,7 @@
         <Control name="PBsConsoleHudCustomizerSlotLabels" virtual="true" tier="HIGH">
             <Controls>
                 <Label name="$(parent)Timer" inherits="PBsConsoleHudCustomizerTimerLabel">
-                    <Anchor point="CENTER" relativePoint="CENTER" offsetY="4"/>
+                    <Anchor point="CENTER" relativePoint="CENTER"/>
                 </Label>
                 <!--
                     Top left, because the client's own stack count sits at CENTER +23, -20, which

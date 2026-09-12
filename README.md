@@ -6,7 +6,7 @@ as a shade that clears down the icon, a countdown, and a target count -- in The 
 Online on console.
 
 - **Author:** PinkBanther
-- **Version:** 1.4.0
+- **Version:** 1.4.1
 - **Optional:** `LibHarvensAddonSettings` >= 20106 (for the settings panel; the chat commands work
   without it)
 
@@ -123,9 +123,11 @@ The countdown is **the game's own number** — `GetActionSlotEffectTimeRemaining
 the game's own action bar timers use, and it answers for the set you are not on as well. Nothing
 is guessed at.
 
-The target count has no API behind it: it is counted from the effects you apply, matched to the
-slot by the ability's name. A morph that applies its effect under a different name will not be
-counted — the countdown is unaffected, because that comes from the client.
+The target count has no API behind it: it is counted from the effects you apply, and matched to
+the slot by the ability's **name**, then its **id**, then its **icon**. The icon is what catches a
+morph whose effect is called something else, which is most of them. `/pbhud slots` says which of
+the three matched, or that nothing did. The countdown is unaffected either way, because that comes
+from the client.
 
 **Countdown on the bar you are on** decides what happens when the game is already writing its own
 number there (Settings > Interface > Action Bar Timers). That number is drawn at a size no add-on

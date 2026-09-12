@@ -242,6 +242,8 @@ addon.accountDefaults = {
 	-- The text on the skill bar's icons, and the back bar. Defaults rather than "unset": these
 	-- draw something the game does not draw at all, so there is no game value to fall back to.
 	text = {
+		-- Bumped when a default in here is thought better of; see Account().
+		version = 2,
 		timerMode = "addon",
 		timerSize = 27,
 		countSize = 22,
@@ -304,6 +306,20 @@ function addon:Account()
 	local renamedModes = { auto = "addon", always = "both", never = "game" }
 	if type(account.text) == "table" and renamedModes[account.text.timerMode] then
 		account.text.timerMode = renamedModes[account.text.timerMode]
+	end
+
+	-- ZO_SavedVars copies the defaults into the saved table, so a default that is later thought
+	-- better of stays on every install that ever ran the old build. countFromOne started false in
+	-- 1.1.0 and became true in 1.1.1 -- and an install from before that kept the false, which
+	-- reads as "the target count does not work" for every single-target ability there is.
+	--
+	-- Moved on once, with a marker so that anyone who does want it from two targets can say so
+	-- and be left alone from then on.
+	if type(account.text) == "table" and account.text.version == nil then
+		if account.text.countFromOne == false then
+			account.text.countFromOne = true
+		end
+		account.text.version = 2
 	end
 	for _, group in ipairs({ "text", "backBar", "shade" }) do
 		if type(account[group]) ~= "table" then

@@ -267,6 +267,7 @@ end
 local effects = {}
 local effectCount = 0
 local idKeys = {}
+local iconKeys = {}
 
 local function Normalize(name)
 	if type(name) ~= "string" or name == "" then
@@ -283,6 +284,17 @@ end
 
 timers.Normalize = Normalize
 
+-- An icon path, as a key. GetSlotTexture and the icon an effect reports are the same art, but
+-- not always spelt the same way: one may carry a leading slash, and case is not to be trusted.
+local function IconKey(path)
+	if type(path) ~= "string" or path == "" then
+		return nil
+	end
+	return (path:lower():gsub("^/", ""))
+end
+
+timers.IconKey = IconKey
+
 local function DropOldest()
 	local oldestKey, oldestTime = nil, nil
 	for key, entry in pairs(effects) do
@@ -296,7 +308,7 @@ local function DropOldest()
 	end
 end
 
-function timers:Track(key, abilityId, unitKey, endMs, now)
+function timers:Track(key, abilityId, icon, unitKey, endMs, now)
 	local entry = effects[key]
 	if not entry then
 		if effectCount >= MAX_TRACKED_EFFECTS then
@@ -310,6 +322,9 @@ function timers:Track(key, abilityId, unitKey, endMs, now)
 	entry.units[unitKey] = endMs
 	if type(abilityId) == "number" and abilityId > 0 then
 		idKeys[abilityId] = key
+	end
+	if icon then
+		iconKeys[icon] = key
 	end
 end
 
@@ -328,7 +343,7 @@ end
 -- EVENT_EFFECT_CHANGED. The signature is the client's, and only a few of its arguments matter
 -- here: what the effect is called, which unit it is on, when it ends, and whether it has just
 -- gone away.
-function timers:OnEffectChanged(_, changeType, _, effectName, unitTag, beginTime, endTime, _, _, _, _, _, _, _, unitId, abilityId)
+function timers:OnEffectChanged(_, changeType, _, effectName, unitTag, beginTime, endTime, _, iconName, _, _, _, _, _, unitId, abilityId)
 	-- A group member's copy of a buff is the same effect on the same name; counting those would
 	-- turn a self-buff into "12".
 	if type(unitTag) == "string" and unitTag:find("group", 1, true) then
@@ -347,18 +362,28 @@ function timers:OnEffectChanged(_, changeType, _, effectName, unitTag, beginTime
 	end
 	-- endTime is in seconds on the game clock, and 0 for something that does not expire.
 	local endMs = (type(endTime) == "number" and endTime > 0) and math.floor(endTime * 1000) or 0
-	self:Track(key, abilityId, unitKey, endMs, now)
+	self:Track(key, abilityId, IconKey(iconName), unitKey, endMs, now)
 end
 
--- How many units are under this effect right now.
-function timers:CountFor(key, abilityId, now)
-	local entry = key and effects[key] or nil
+-- How many units are under this effect right now, and what it was matched by.
+--
+-- Three chances, because an effect does not have to carry the name of the ability that applied
+-- it: the name, the ability id, and the icon. The icon is the one that catches a morph whose
+-- effect is called something else -- the art is nearly always the ability's own.
+function timers:CountFor(key, abilityId, icon, now)
+	local entry, matchedBy = key and effects[key] or nil, "name"
 	if not entry and type(abilityId) == "number" then
 		local byId = idKeys[abilityId]
 		entry = byId and effects[byId] or nil
+		matchedBy = "id"
+	end
+	if not entry and icon then
+		local byIcon = iconKeys[icon]
+		entry = byIcon and effects[byIcon] or nil
+		matchedBy = "icon"
 	end
 	if not entry then
-		return 0
+		return 0, nil
 	end
 	local count = 0
 	for unitKey, endMs in pairs(entry.units) do
@@ -368,7 +393,7 @@ function timers:CountFor(key, abilityId, now)
 			entry.units[unitKey] = nil
 		end
 	end
-	return count
+	return count, matchedBy
 end
 
 function timers:Prune(now)
@@ -391,6 +416,7 @@ end
 function timers:Forget_All()
 	effects = {}
 	idKeys = {}
+	iconKeys = {}
 	effectCount = 0
 end
 
@@ -414,7 +440,7 @@ end
 
 local FALLBACK_PARTS = {
 	PBsConsoleHudCustomizerSlotLabels = {
-		{ name = "Timer", kind = "label", point = "CENTER", relative = "CENTER", x = 0, y = 4 },
+		{ name = "Timer", kind = "label", point = "CENTER", relative = "CENTER", x = 0, y = 0 },
 		{ name = "Count", kind = "label", point = "TOPLEFT", relative = "TOPLEFT", x = -2, y = -4 },
 	},
 	PBsConsoleHudCustomizerBackBarSlot = {
@@ -428,7 +454,7 @@ local FALLBACK_PARTS = {
 			width = 52, height = 68, coords = { 0, 0.8125, 0, 1.0625 }, level = 2 },
 		{ name = "Shade", kind = "cooldown", point = "CENTER", relative = "CENTER", x = 0, y = 0,
 			width = 44, height = 44, level = 2 },
-		{ name = "Timer", kind = "label", point = "CENTER", relative = "CENTER", x = 0, y = 2, level = 3 },
+		{ name = "Timer", kind = "label", point = "CENTER", relative = "CENTER", x = 0, y = 0, level = 3 },
 		{ name = "Count", kind = "label", point = "TOPLEFT", relative = "TOPLEFT", x = -2, y = -4, level = 3 },
 	},
 	PBsConsoleHudCustomizerShade = {},
@@ -630,6 +656,11 @@ local function ApplyFont(label, size, what)
 	if type(label.GetFontHeight) == "function" then
 		local okHeight, height = pcall(label.GetFontHeight, label)
 		label.pbsHeight = okHeight and height or nil
+		-- The label is made as tall as its own text. Left at the client's fixed 25 it would hold
+		-- a 48 the way a 25 box holds a 48: not in the middle.
+		if okHeight and type(height) == "number" and height > 0 then
+			pcall(label.SetHeight, label, height)
+		end
 	end
 	label.pbsDescriptor = descriptor
 end
@@ -731,7 +762,7 @@ function timers:PlaceTimer(pair, centred)
 	local label = pair.timer
 	label:ClearAnchors()
 	if centred then
-		label:SetAnchor(CENTER, pair.control, CENTER, 0, 4)
+		label:SetAnchor(CENTER, pair.control, CENTER, 0, 0)
 	else
 		label:SetAnchor(BOTTOM, pair.control, BOTTOM, 0, 6)
 	end
@@ -899,12 +930,13 @@ function timers:SlotText(slot, hotbar, now)
 	local countText = nil
 	local key = Normalize(SlotString(GetSlotName, slot, hotbar))
 	local abilityId = SlotNumber(GetSlotBoundId, slot, hotbar)
-	local count = self:CountFor(key, abilityId, now)
+	local icon = IconKey(SlotString(GetSlotTexture, slot, hotbar))
+	local count, matchedBy = self:CountFor(key, abilityId, icon, now)
 	local minimum = addon:Text().countFromOne and 1 or 2
 	if count >= minimum then
 		countText = tostring(count)
 	end
-	return timerText, countText
+	return timerText, countText, count, matchedBy
 end
 
 -- Seconds to the end, in the shape the game uses on the bar: a minute or more as whole minutes,
@@ -1144,10 +1176,10 @@ function timers:PrintSlots()
 		local pair = self.labels[slot]
 		local name = SlotString(GetSlotName, slot, activeHotbar) or "-"
 		local remaining = SlotNumber(GetActionSlotEffectTimeRemaining, slot, activeHotbar)
-		local timerText, countText = self:SlotText(slot, activeHotbar, now)
-		Line("|cFF69B4  %d|r %s  left=%dms -> %s  count=%s  label=%s h=%s", slot, name, Round(remaining),
-			tostring(timerText), tostring(countText),
-			pair and (pair.timer:IsHidden() and "hidden" or "shown") or "not built",
+		local timerText, countText, count, matchedBy = self:SlotText(slot, activeHotbar, now)
+		Line("|cFF69B4  %d|r %s  left=%dms -> %s  targets=%d%s -> %s  label=%s h=%s", slot, name, Round(remaining),
+			tostring(timerText), count or 0, matchedBy and (" by " .. matchedBy) or "",
+			tostring(countText), pair and (pair.timer:IsHidden() and "hidden" or "shown") or "not built",
 			pair and tostring(pair.timer.pbsHeight) or "-")
 		if backHotbar then
 			local backName = SlotString(GetSlotName, slot, backHotbar) or "-"
@@ -1158,8 +1190,10 @@ function timers:PrintSlots()
 				self.back[slot] and (self.back[slot].control:IsHidden() and "hidden" or "shown") or "not built")
 		end
 	end
-	Line("  the name on the left is what a count is matched against: it has to appear in the")
-	Line("  tracked list above for a number to be written.")
+	Line("  a count is matched by name, then ability id, then icon. The name on the left has to")
+	Line("  appear in the tracked list above, or the icon has to be the effect's own, for a")
+	Line("  number to be written -- and it is only written from %d target(s) up.",
+		addon:Text().countFromOne and 1 or 2)
 end
 
 -- Registered on the add-on's own name, beside everyone else's handler for the same event, with

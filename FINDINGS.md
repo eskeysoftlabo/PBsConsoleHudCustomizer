@@ -463,6 +463,37 @@ So an install upgrading from a build with one size for both sees no change at al
 bar's slider still moves both until the row is given a size of its own, and a button in the panel
 puts the row back to following. `/pbhud status` prints both, and says which is following.
 
+## 26. Centred means centred, and a label must be as tall as its text
+
+The client puts its own countdown 4 pixels below the middle
+(`ACTION_BUTTON_TIMER_TEXT_OFFSET_Y_DEFAULT_GAMEPAD`), and 1.3.3 copied that to keep the two in
+the same place. On a PS5 it reads as sitting low, so ours is now on the middle exactly, offset 0.
+
+The second half of that was the label's box. The client's is `<Dimensions x="0" y="25"/>`: width 0
+so it sizes to the text, height fixed at 25 for its fixed 27 font. This add-on's size goes to 48,
+and text centred in a box shorter than itself does not sit where the middle of the box is. The
+height is set from `GetFontHeight()` whenever the font is applied, so the label is always exactly
+as tall as what is in it.
+
+## 27. Three chances to match an effect to a slot
+
+There is no API for how many targets an effect is on, so the effects the player applies are
+matched to a slot. By name alone, a morph whose effect is called something else is never counted.
+The icon is the better key -- the art is nearly always the ability's own even when the name is not
+-- so the match is now name, then ability id, then icon, and `/pbhud slots` prints which of the
+three caught it, or that nothing did.
+
+## 28. A default thought better of does not reach an install that already ran
+
+`ZO_SavedVars:NewAccountWide` copies the defaults into the saved table on first run. So
+`countFromOne`, which started `false` in 1.1.0 and was changed to `true` in 1.1.1 because "nothing
+is showing" is worse than a 1, stayed `false` for ever on every install that had run 1.1.0 --
+which is the whole of the target count doing nothing for a single-target ability.
+
+Repairing a nil key, which is all `Account()` did, cannot see this: the key is not missing, it
+holds an old default. The text settings carry a `version` now, and a change of mind moves the
+value on once and stamps it, so a player who then chooses the old value keeps it.
+
 ---
 
 ## Still to measure on a PS5
