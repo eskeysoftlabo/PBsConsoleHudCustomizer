@@ -144,10 +144,15 @@ function addon:ShowsTimerOn(isBackBar)
 	return self:TimerMode() ~= "game"
 end
 
--- True while the game's own number on the front bar should be got out of the way, because ours
--- is going on the same icon.
+-- True while the game's own number on the front bar should be got out of the way, because ours is
+-- going on the same spot.
+--
+-- Deliberately not conditional on GameShowsBarTimers(): fading a label the game is not drawing
+-- anything on costs nothing, and reading that setting is the one part of this that can quietly
+-- come back wrong -- which shows up as two numbers on one icon, which is what it was meant to
+-- prevent. The setting is still read, for status to print.
 function addon:DimsGameTimer()
-	return self:ShowsTimerOn(false) and self:TimerMode() == "addon" and self:GameShowsBarTimers()
+	return self:ShowsTimerOn(false) and self:TimerMode() == "addon"
 end
 
 function addon:ShowsCount()
@@ -381,8 +386,8 @@ end
 
 local FALLBACK_PARTS = {
 	PBsConsoleHudCustomizerSlotLabels = {
-		{ name = "Timer", kind = "label", point = "BOTTOM", relative = "BOTTOM", x = 0, y = 4 },
-		{ name = "Count", kind = "label", point = "TOPRIGHT", relative = "TOPRIGHT", x = 2, y = -4 },
+		{ name = "Timer", kind = "label", point = "CENTER", relative = "CENTER", x = 0, y = 4 },
+		{ name = "Count", kind = "label", point = "TOPLEFT", relative = "TOPLEFT", x = -2, y = -4 },
 	},
 	PBsConsoleHudCustomizerBackBarSlot = {
 		{ name = "BG", kind = "texture", point = "CENTER", relative = "CENTER", x = 0, y = 0,
@@ -395,8 +400,8 @@ local FALLBACK_PARTS = {
 			width = 52, height = 68, coords = { 0, 0.8125, 0, 1.0625 }, level = 2 },
 		{ name = "Shade", kind = "cooldown", point = "CENTER", relative = "CENTER", x = 0, y = 0,
 			width = 44, height = 44, level = 2 },
-		{ name = "Timer", kind = "label", point = "BOTTOM", relative = "BOTTOM", x = 0, y = 4, level = 3 },
-		{ name = "Count", kind = "label", point = "TOPRIGHT", relative = "TOPRIGHT", x = 2, y = -4, level = 3 },
+		{ name = "Timer", kind = "label", point = "CENTER", relative = "CENTER", x = 0, y = 2, level = 3 },
+		{ name = "Count", kind = "label", point = "TOPLEFT", relative = "TOPLEFT", x = -2, y = -4, level = 3 },
 	},
 	PBsConsoleHudCustomizerShade = {},
 	-- The liquid overlay. Anchors and widths are all set from Lua every tick, so the parts only
@@ -534,8 +539,12 @@ function timers:Labels(slot)
 	if not control then
 		return nil
 	end
-	control:SetAnchor(TOPLEFT, button, TOPLEFT, 0, 0)
-	control:SetAnchor(BOTTOMRIGHT, button, BOTTOMRIGHT, 0, 0)
+	-- On the icon rather than on the button: the gamepad icon is 61 inside a 64 button (67 in 70
+	-- for the ultimate), so "the middle" and "the corner" mean the icon's, which is what the
+	-- player is looking at.
+	local icon = Child(button, "Icon") or button
+	control:SetAnchor(TOPLEFT, icon, TOPLEFT, 0, 0)
+	control:SetAnchor(BOTTOMRIGHT, icon, BOTTOMRIGHT, 0, 0)
 	local pair = {
 		control = control,
 		timer = Child(control, "Timer"),
@@ -680,6 +689,26 @@ function timers:HideShades()
 	end
 end
 
+-- The countdown goes exactly where the client puts its own -- CENTER, 4 down
+-- (ACTION_BUTTON_TIMER_TEXT_OFFSET_Y_DEFAULT_GAMEPAD) -- so that switching between ours and the
+-- game's moves nothing on the icon.
+--
+-- The one exception is "Both", with the game drawing its number there as well: two numbers on one
+-- spot cannot be read, so ours drops to the bottom of the icon out of its way.
+function timers:PlaceTimer(pair, centred)
+	if not pair or not pair.timer or pair.centred == centred then
+		return
+	end
+	local label = pair.timer
+	label:ClearAnchors()
+	if centred then
+		label:SetAnchor(CENTER, pair.control, CENTER, 0, 4)
+	else
+		label:SetAnchor(BOTTOM, pair.control, BOTTOM, 0, 6)
+	end
+	pair.centred = centred
+end
+
 function timers:StyleLabels(pair)
 	ApplyFont(pair.timer, addon:TextSize("timer"), "timer")
 	if pair.timer then
@@ -756,13 +785,20 @@ function timers:GameTimerLabel(slot)
 	return nil
 end
 
+-- What is remembered is the label that was faded, not merely that a slot was: a slot whose
+-- button has been rebuilt would otherwise be taken for done and left with the game's number on
+-- top of ours for the rest of the session.
 function timers:DimGameTimer(slot, dim)
-	if self.dimmed[slot] == dim then
-		return true
-	end
 	local label = self:GameTimerLabel(slot)
 	if not label then
 		return false
+	end
+	local faded = self.dimmed[slot]
+	if dim and faded == label then
+		return true
+	end
+	if not dim and faded == nil then
+		return true
 	end
 	local ok, err = pcall(label.SetAlpha, label, dim and 0 or 1)
 	if not ok then
@@ -770,13 +806,18 @@ function timers:DimGameTimer(slot, dim)
 		addon.writeErrors["game timer"] = tostring(err)
 		return false
 	end
-	self.dimmed[slot] = dim
+	-- Anything faded earlier and since replaced is handed back as well.
+	if faded and faded ~= label then
+		pcall(faded.SetAlpha, faded, 1)
+	end
+	self.dimmed[slot] = dim and label or nil
 	return true
 end
 
 function timers:UndimAll()
-	for slot in pairs(self.dimmed) do
-		self:DimGameTimer(slot, false)
+	for slot, label in pairs(self.dimmed) do
+		pcall(label.SetAlpha, label, 1)
+		self.dimmed[slot] = nil
 	end
 end
 
@@ -899,6 +940,9 @@ function timers:Update()
 	local showEmpty = addon:BackBar().showEmpty ~= false
 	local dim = addon:DimsGameTimer()
 	local shadeEnabled = addon:ShadeEnabled()
+	-- "Both" is a choice to have the game's number as well, so ours keeps out of its place
+	-- whether or not the game happens to be drawing one at this moment.
+	local centredTimer = addon:TimerMode() ~= "both"
 
 	for slot = FIRST_SLOT, LAST_SLOT do
 		self:DimGameTimer(slot, dim)
@@ -907,6 +951,7 @@ function timers:Update()
 		if showTimer or showCount then
 			local pair = self:Labels(slot)
 			if pair then
+				self:PlaceTimer(pair, centredTimer)
 				local timerText, countText = self:SlotText(slot, activeHotbar, now)
 				pair.control:SetHidden(false)
 				SetText(pair.timer, showTimer and timerText or nil)

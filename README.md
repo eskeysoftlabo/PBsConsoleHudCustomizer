@@ -6,7 +6,7 @@ as a shade that clears down the icon, a countdown, and a target count -- in The 
 Online on console.
 
 - **Author:** PinkBanther
-- **Version:** 1.3.2
+- **Version:** 1.3.3
 - **Optional:** `LibHarvensAddonSettings` >= 20106 (for the settings panel; the chat commands work
   without it)
 
@@ -126,9 +126,11 @@ counted — the countdown is unaffected, because that comes from the client.
 number there (Settings > Interface > Action Bar Timers). That number is drawn at a size no add-on
 can change, so:
 
-- **This add-on** (the default) — ours goes on the icon and the game's own number is faded out of
-  the way, so the text size setting always does something.
-- **Both** — ours next to the game's.
+- **This add-on** (the default) — ours goes in the middle of the icon and the game's own number is
+  faded out of the way, so the text size setting always does something and there is only ever one
+  number.
+- **Both** — ours as well as the game's; ours drops to the bottom of the icon so the two do not
+  sit on top of each other.
 - **The game** — the front bar is left exactly as it is. The other set still gets ours, because
   the game never writes a number there at all.
 

@@ -419,6 +419,38 @@ that answers the next report of this kind: a count that climbs means something r
 the bars and the watch is fighting it; a count that stays at zero while the bars are wrong means
 the write never landed at all, which is a different bug in a different place.
 
+## 24. Where the countdown goes, and the number that would not go away
+
+Reported from a PS5: this add-on's countdown sat off the middle of the icon, next to the game's
+own.
+
+The client's is `ActionButton<n>TimerText`, anchored `CENTER` on `CENTER` with
+`ACTION_BUTTON_TIMER_TEXT_OFFSET_Y_DEFAULT_GAMEPAD`, which is **4**, in `ZoFontGamepad27` at
+`DCD822`. Ours was anchored to the **bottom** of the button, deliberately, from 1.1.0 -- when the
+two could be on screen together and had to keep out of each other's way. From 1.1.1 the default
+mode fades the client's out instead, so the place ours should stand is exactly where the client's
+was. It now uses the client's own anchor, and steps down to the bottom only in "Both", which is a
+choice to have two numbers.
+
+Two more things came out of the same report:
+
+- **The labels are anchored to the icon, not the button.** On the gamepad the icon is
+  `ZO_GAMEPAD_ACTION_BUTTON_SIZE` = 61 inside a 64 button (67 in 70 for the ultimate), so "the
+  middle" and "the corner" now mean the icon's, which is what the player is looking at.
+- **The target count moved to the top left.** The client's stack count is at `CENTER` +23, -20 --
+  the top right of the icon -- and two numbers in one corner cannot be read.
+
+The duplicate number was a second bug. Fading the client's was conditional on
+`GetSetting_Bool(SETTING_TYPE_UI, UI_SETTING_SHOW_ACTION_BAR_TIMERS)` coming back true; a reading
+that comes back wrong puts two numbers on one icon, which is the thing it was there to prevent.
+Fading a label the game is not drawing on costs nothing, so the condition is gone: in "This
+add-on" the client's label is faded, full stop. The setting is still read, for `/pbhud status` to
+print.
+
+And the fade remembered *that a slot* was faded rather than *which label* was, so a slot whose
+button had been rebuilt was taken for done and left with the game's number on top of ours. It
+remembers the control now, and hands back anything it faded earlier.
+
 ---
 
 ## Still to measure on a PS5

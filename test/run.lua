@@ -28,7 +28,7 @@ print("\n== 1. load ==")
 Fire(EVENT_ADD_ON_LOADED, "PBsConsoleHudCustomizer")
 local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 local health, magicka, stamina = addon.barByKey.health, addon.barByKey.magicka, addon.barByKey.stamina
-check("version read from manifest", addon.version, "1.3.2")
+check("version read from manifest", addon.version, "1.3.3")
 check("slash command registered", type(SLASH_COMMANDS["/pbhud"]), "function")
 check("short slash command registered", type(SLASH_COMMANDS["/pbhc"]), "function")
 check("HUD fragment callback registered", addon.hudRegistered, true)
@@ -342,7 +342,10 @@ check("and back", frontTimer:GetText(), "8.4")
 check("faded again", gameTimer:GetAlpha(), 0)
 GameBarTimers = false
 RunUpdates()
-check("nothing to fade when the game is not writing", gameTimer:GetAlpha(), 1)
+-- Still faded: whether the game is drawing its number is read for status, but it is not what
+-- decides this. A label with nothing on it costs nothing to fade, and depending on that reading
+-- is how two numbers end up on one icon.
+check("faded whatever the game's setting says", gameTimer:GetAlpha(), 0)
 
 Row(GetString(SI_PBSCHC_TIMER_SIZE)).setFunction(36)
 check("the countdown font follows the slider", frontTimer.font, "$(GAMEPAD_BOLD_FONT)|36|thick-outline")
@@ -664,6 +667,64 @@ PLAYER_ATTRIBUTE_BARS = { bars = {} }
 Fire(EVENT_PLAYER_ACTIVATED)
 FlushCallLater()
 check("so the next zone load applies it", addon.firstApplyDone, true)
+
+print("\n== 31. the countdown sits where the game's own does ==")
+-- Reported from a PS5: our number was off the middle of the icon. It was anchored to the bottom
+-- of the button, to stay clear of the client's own number -- but in the default mode the
+-- client's is faded out and ours should be standing exactly where it was.
+addon.account.text.timerMode = "addon"
+GameBarTimers = true
+SetAllSlots()
+SetSlot(HOTBAR_CATEGORY_PRIMARY, 3, { name = "Front 3", icon = "front3.dds", id = 103, remaining = 8400, duration = 20000 })
+FireHud(SCENE_FRAGMENT_SHOWN)
+RunUpdates()
+-- Taken from the add-on rather than by name: a pair built through the fallback path earlier in
+-- this run has its children on the control itself, not under a named child.
+local pair3 = addon.timers.labels[3]
+local labels3 = pair3.control
+local timer3 = pair3.timer
+check("the labels hang on the icon, not the button", labels3.anchors[1].relativeTo:GetName(), "ActionButton3Icon")
+check("the countdown is centred", timer3.anchors[1].point, CENTER)
+-- ACTION_BUTTON_TIMER_TEXT_OFFSET_Y_DEFAULT_GAMEPAD, the client's own.
+check("at the client's own offset", timer3.anchors[1].offsetY, 4)
+check("only one anchor on it", #timer3.anchors, 1)
+check("the game's number is out of the way", _G["ActionButton3"].namedChildren.TimerText:GetAlpha(), 0)
+
+-- Both: the client's number is there as well, so ours cannot sit on top of it.
+Row(GetString(SI_PBSCHC_TIMER_MODE)).setFunction(nil, nil, { data = "both" })
+RunUpdates()
+check("ours steps aside when both are drawn", timer3.anchors[1].point, BOTTOM)
+check("and the game's is left alone", _G["ActionButton3"].namedChildren.TimerText:GetAlpha(), 1)
+Row(GetString(SI_PBSCHC_TIMER_MODE)).setFunction(nil, nil, { data = "addon" })
+RunUpdates()
+check("and back to the middle", timer3.anchors[1].point, CENTER)
+
+-- With the game not drawing one at all, ours is centred whichever mode is chosen.
+GameBarTimers = false
+Row(GetString(SI_PBSCHC_TIMER_MODE)).setFunction(nil, nil, { data = "both" })
+RunUpdates()
+check("Both keeps ours out of the way either way", timer3.anchors[1].point, BOTTOM)
+check("and hands the game's back", _G["ActionButton3"].namedChildren.TimerText:GetAlpha(), 1)
+Row(GetString(SI_PBSCHC_TIMER_MODE)).setFunction(nil, nil, { data = "addon" })
+RunUpdates()
+check("addon takes the middle and fades the game's", timer3.anchors[1].point, CENTER)
+
+-- The target count keeps out of the corner the client uses for its stack count (CENTER +23, -20).
+check("the target count is in the other corner", pair3.count.anchors[1].point, TOPLEFT)
+
+print("\n== 32. a button that has been rebuilt is faded again ==")
+-- The fade was remembered per slot, so a slot whose button had been replaced was taken for done
+-- and left with the game's number sitting on top of ours.
+addon.account.text.timerMode = "addon"
+RunUpdates()
+local oldTimerText = _G["ActionButton3"].namedChildren.TimerText
+check("the one on screen is faded", oldTimerText:GetAlpha(), 0)
+BuildActionBar()
+local newTimerText = _G["ActionButton3"].namedChildren.TimerText
+check("and the rebuild is a different control", newTimerText ~= oldTimerText, true)
+RunUpdates()
+check("which is faded as well", newTimerText:GetAlpha(), 0)
+check("the one it replaced is handed back", oldTimerText:GetAlpha(), 1)
 
 print("")
 if failures == 0 then

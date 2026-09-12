@@ -19,8 +19,14 @@
         that a control is legible if that ever fails.
     -->
     <Controls>
+        <!--
+            The countdown, in the client's own shape: ZoFontGamepad27 at DCD822, 25 high, width 0
+            so it sizes itself to the text, centred. ActionButton<n>TimerText is the same, and
+            this one takes its place on the icon, so a number does not jump when the game's own
+            action bar timers are switched on or off.
+        -->
         <Label name="PBsConsoleHudCustomizerTimerLabel" font="ZoFontGamepad27" color="DCD822"
-               horizontalAlignment="CENTER" verticalAlignment="BOTTOM" virtual="true">
+               horizontalAlignment="CENTER" verticalAlignment="CENTER" virtual="true">
             <Dimensions x="0" y="25"/>
         </Label>
         <Label name="PBsConsoleHudCustomizerCountLabel" font="ZoFontGamepad27" color="FFFFFF"
@@ -50,10 +56,10 @@
                     <Anchor point="BOTTOMRIGHT" relativeTo="$(parent)Icon" relativePoint="BOTTOMRIGHT"/>
                 </Cooldown>
                 <Label name="$(parent)Timer" inherits="PBsConsoleHudCustomizerTimerLabel" level="3">
-                    <Anchor point="BOTTOM" relativeTo="$(parent)Icon" relativePoint="BOTTOM" offsetY="4"/>
+                    <Anchor point="CENTER" relativeTo="$(parent)Icon" relativePoint="CENTER" offsetY="2"/>
                 </Label>
                 <Label name="$(parent)Count" inherits="PBsConsoleHudCustomizerCountLabel" level="3">
-                    <Anchor point="TOPRIGHT" relativeTo="$(parent)Icon" relativePoint="TOPRIGHT" offsetX="2" offsetY="-4"/>
+                    <Anchor point="TOPLEFT" relativeTo="$(parent)Icon" relativePoint="TOPLEFT" offsetX="-2" offsetY="-4"/>
                 </Label>
             </Controls>
         </Control>
@@ -61,10 +67,15 @@
         <Control name="PBsConsoleHudCustomizerSlotLabels" virtual="true" tier="HIGH">
             <Controls>
                 <Label name="$(parent)Timer" inherits="PBsConsoleHudCustomizerTimerLabel">
-                    <Anchor point="BOTTOM" relativePoint="BOTTOM" offsetY="4"/>
+                    <Anchor point="CENTER" relativePoint="CENTER" offsetY="4"/>
                 </Label>
+                <!--
+                    Top left, because the client's own stack count sits at CENTER +23, -20, which
+                    is the top right of the icon. Two different numbers in one corner would be
+                    unreadable.
+                -->
                 <Label name="$(parent)Count" inherits="PBsConsoleHudCustomizerCountLabel">
-                    <Anchor point="TOPRIGHT" relativePoint="TOPRIGHT" offsetX="2" offsetY="-4"/>
+                    <Anchor point="TOPLEFT" relativePoint="TOPLEFT" offsetX="-2" offsetY="-4"/>
                 </Label>
             </Controls>
         </Control>
