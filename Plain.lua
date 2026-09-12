@@ -221,13 +221,16 @@ function addon:SetBarSize(bar, which, value)
 	end
 end
 
--- True while a bar is drawn at a size of the player's choosing rather than the game's.
+-- True while a bar is drawn at a size rather than scaled. That is the whole of what MURA-HIGE
+-- Style is, so it is true for every bar the moment the style is chosen -- not only once a slider
+-- has been moved.
+--
+-- It was the saved values that decided this until 1.10.2, which meant choosing the style changed
+-- nothing on screen until a slider was touched, and the sizes looked as though they only applied
+-- on the second attempt. Unset values are the game's own size; drawing that at a size of our own
+-- looks the same and behaves consistently.
 function addon:BarSizeIsOwn(bar)
-	if not self:BarsAreMuraHige() then
-		return false
-	end
-	local width, height = self:BarSizeSaved(bar)
-	return type(width) == "number" or type(height) == "number"
+	return self:BarsAreMuraHige()
 end
 
 -- ---------------------------------------------------------------------------------------

@@ -154,6 +154,10 @@ function addon:InitSettings()
 				self:SetBarStyle(item.data)
 				self:Account().enabled = true
 				self:Refresh()
+				-- Which of the size rows are live depends on the style.
+				if settings.UpdateControls then
+					settings:UpdateControls()
+				end
 			end
 		}
 	)
@@ -254,6 +258,10 @@ function addon:InitSettings()
 						self:SetBarSize(bar, "width", value)
 						self:Account().enabled = true
 						self:Refresh()
+					end,
+					-- Only MURA-HIGE Style draws a bar at a size; the others scale the game's.
+					disable = function()
+						return not self:BarsAreMuraHige()
 					end
 				}
 			)
@@ -275,6 +283,9 @@ function addon:InitSettings()
 						self:SetBarSize(bar, "height", value)
 						self:Account().enabled = true
 						self:Refresh()
+					end,
+					disable = function()
+						return not self:BarsAreMuraHige()
 					end
 				}
 			)
@@ -298,6 +309,11 @@ function addon:InitSettings()
 					self:SetScalePercent(bar, value)
 					self:Account().enabled = true
 					self:Refresh()
+				end,
+				-- A bar drawn at a width and a height has no use for a percentage as well, and
+				-- offering both invites the two to fight. The skill bar is always scaled.
+				disable = function()
+					return not bar.isActionBar and self:BarsAreMuraHige()
 				end
 			}
 		)

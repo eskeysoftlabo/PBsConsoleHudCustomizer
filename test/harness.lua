@@ -39,7 +39,7 @@ function AdvanceFrame(ms) frameTime = frameTime + (ms or 1000) end
 function GetAddOnManager()
 	return {
 		GetNumAddOns = function() return 1 end,
-		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ConsoleHudCustomizer|r 1.10.1" end,
+		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ConsoleHudCustomizer|r 1.10.2" end,
 	}
 end
 
@@ -558,6 +558,10 @@ LibHarvensAddonSettings = {
 	AddAddon = function(_, title)
 		local panel = { title = title, name = title, updates = 0, selected = false }
 		function panel:AddSetting(row) if self == Panel then PanelRows[#PanelRows + 1] = row end end
+		function panel:IsDisabled(row)
+			if type(row.disable) == "function" then return row.disable() end
+			return row.disable == true
+		end
 		function panel:UpdateControls() self.updates = self.updates + 1 end
 		function panel:Select()
 			if self.selected then return end

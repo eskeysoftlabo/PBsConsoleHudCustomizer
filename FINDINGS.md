@@ -793,6 +793,22 @@ Four rectangles rather than a backdrop's own edge, because an edge needs an edge
 no art ships with this add-on. Each side is held by two corners so it stretches with the bar,
 which also means the outline is right whatever size MURA-HIGE Style is set to.
 
+## 45. Choosing the style is the setting
+
+MURA-HIGE Style appeared to do nothing until a size slider was moved. Whether a bar was drawn at
+a size or scaled was decided by whether a size had been **saved**, so a fresh install of the style
+fell through to "follow the game's bar" -- which is what Square does -- and the sizes looked as
+though they only took on the second attempt.
+
+Choosing the style is the setting. An unset width or height is the game's own size, drawn at that
+size by us, which looks the same and behaves the same as every size after it.
+
+The panel now also takes turns: the pixel rows are live only in MURA-HIGE Style and the
+percentage only outside it, through `disable` functions on the rows (which
+LibHarvensAddonSettings takes as a function, as Votan's Minimap does). The style dropdown calls
+`UpdateControls` so the change shows at once. The skill bar is scaled whatever the attribute bars
+are doing, so its own percentage stays live.
+
 ---
 
 ## Still to measure on a PS5

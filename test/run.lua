@@ -28,7 +28,7 @@ print("\n== 1. load ==")
 Fire(EVENT_ADD_ON_LOADED, "PBsConsoleHudCustomizer")
 local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 local health, magicka, stamina = addon.barByKey.health, addon.barByKey.magicka, addon.barByKey.stamina
-check("version read from manifest", addon.version, "1.10.1")
+check("version read from manifest", addon.version, "1.10.2")
 check("slash command registered", type(SLASH_COMMANDS["/pbhud"]), "function")
 check("short slash command registered", type(SLASH_COMMANDS["/pbhc"]), "function")
 check("HUD fragment callback registered", addon.hudRegistered, true)
@@ -1257,8 +1257,10 @@ SetPower(COMBAT_MECHANIC_FLAGS_HEALTH, 1000, 1000)
 Row(GetString(SI_PBSCHC_STYLE)).setFunction(nil, nil, { data = "rounded" })
 RunUpdates()
 local stamina = addon.plain.overlays["ZO_PlayerAttributeStaminaBar"]
-check("it follows the game's bar until told otherwise", stamina.sizedWidth, nil)
-check("and the game's own fill is left alone", stamina.bar.gradient[4], 1)
+-- Choosing the style is enough: the bar is drawn at a size straight away, the game's own size
+-- until one is set. Until 1.10.2 nothing happened until a slider was moved.
+check("the style alone puts it at a size", stamina.sizedWidth, addon.GAME_BAR_WIDTH)
+check("and the game's own fill goes at once", stamina.bar.gradient[4], 0)
 
 Row(GetString(SI_PBSCHC_BAR_WIDTH):gsub("<<1>>", GetString(SI_PBSCHC_BAR_STAMINA))).setFunction(300)
 Row(GetString(SI_PBSCHC_BAR_HEIGHT):gsub("<<1>>", GetString(SI_PBSCHC_BAR_STAMINA))).setFunction(8)
@@ -1340,6 +1342,26 @@ addon.account = ZO_SavedVars:NewAccountWide("PBsConsoleHudCustomizer_Data", 1, n
 addon:Account()
 check("the old key is cleared away", addon.account.plainKeepFrame, nil)
 check("and the outline is on, which is the frame now", addon:PlainBorder(), true)
+
+print("\n== 51. the size rows and the scale row take turns ==")
+-- A bar drawn at a width and a height has no use for a percentage as well, and a panel that
+-- offers both invites the two to fight.
+local staminaScale = Row(GetString(SI_PBSCHC_SCALE):gsub("<<1>>", GetString(SI_PBSCHC_BAR_STAMINA)))
+local staminaWidth = Row(GetString(SI_PBSCHC_BAR_WIDTH):gsub("<<1>>", GetString(SI_PBSCHC_BAR_STAMINA)))
+local skillScale = Row(GetString(SI_PBSCHC_SCALE):gsub("<<1>>", GetString(SI_PBSCHC_BAR_SKILLBAR)))
+
+Row(GetString(SI_PBSCHC_STYLE)).setFunction(nil, nil, { data = "plain" })
+check("square: the percentage is live", Panel:IsDisabled(staminaScale), false)
+check("and the pixels are not", Panel:IsDisabled(staminaWidth), true)
+
+Row(GetString(SI_PBSCHC_STYLE)).setFunction(nil, nil, { data = "rounded" })
+check("MURA-HIGE: the pixels are live", Panel:IsDisabled(staminaWidth), false)
+check("and the percentage is not", Panel:IsDisabled(staminaScale), true)
+check("the skill bar is scaled whatever the bars are doing", Panel:IsDisabled(skillScale), false)
+check("and the panel is told to re-read them", Panel.updates > 0, true)
+
+Row(GetString(SI_PBSCHC_STYLE)).setFunction(nil, nil, { data = "standard" })
+check("standard: back to the percentage", Panel:IsDisabled(staminaScale), false)
 
 print("")
 if failures == 0 then
