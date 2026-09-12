@@ -28,7 +28,7 @@ print("\n== 1. load ==")
 Fire(EVENT_ADD_ON_LOADED, "PBsConsoleHudCustomizer")
 local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 local health, magicka, stamina = addon.barByKey.health, addon.barByKey.magicka, addon.barByKey.stamina
-check("version read from manifest", addon.version, "1.9.0")
+check("version read from manifest", addon.version, "1.9.1")
 check("slash command registered", type(SLASH_COMMANDS["/pbhud"]), "function")
 check("short slash command registered", type(SLASH_COMMANDS["/pbhc"]), "function")
 check("HUD fragment callback registered", addon.hudRegistered, true)
@@ -1296,6 +1296,43 @@ check("the command sets the size", string.format("%dx%d", w, h), "260x12")
 SLASH_COMMANDS["/pbhud"]("style mura")
 check("and the style answers to MURA-HIGE", addon:BarStyle(), "rounded")
 SLASH_COMMANDS["/pbhud"]("style standard")
+
+print("\n== 48. the preview's row is the row, not the whole bar ==")
+-- From a PS5: the other weapon set's outline in the settings panel looked far too wide. It was
+-- drawn at the bar's full width -- and the bar's control is 606 wide while the buttons occupy
+-- rather less of it, with the invisible weapon swap marker holding the left-hand end.
+addon:Account().skillBar = true
+addon:Account().enabled = true
+addon:ResetSpacing()
+BuildAttributeBars()
+SetAllSlots()
+addon:CaptureAll()
+
+local from, to = addon:ButtonSpan()
+check("the buttons' span is measured", from ~= nil, true)
+-- The marker holds 61 + its own 45 of the bar's left-hand end, and the quickslot sits 5 to the
+-- left of it, so the row starts a good way in but not at the very edge.
+-- The marker holds 61 of the bar's left-hand end and is 45 wide, and the first ability is 10
+-- past it: the row starts a fifth of the way in, not at the edge.
+check("it starts at the first ability", string.format("%.3f", from), string.format("%.3f", (61 + 45 + 10) / 606))
+check("and ends with the ultimate", to > from, true)
+check("and it is not the whole bar", to - from < 1, true)
+
+-- The fraction holds whatever size the bar is set to, because both numbers scale together.
+Row(GetString(SI_PBSCHC_SCALE):gsub("<<1>>", GetString(SI_PBSCHC_BAR_SKILLBAR))).setFunction(70)
+local from2, to2 = addon:ButtonSpan()
+check("scaling the bar does not move the fraction", string.format("%.3f", from2), string.format("%.3f", from))
+check("nor the far end", string.format("%.3f", to2), string.format("%.3f", to))
+Row(GetString(SI_PBSCHC_SCALE):gsub("<<1>>", GetString(SI_PBSCHC_BAR_SKILLBAR))).setFunction(100)
+
+-- Closing the gaps brings the far end in.
+Row(GetString(SI_PBSCHC_GAP_ULTIMATE)).setFunction(4)
+local _, to3 = addon:ButtonSpan()
+check("closing a gap shortens the row", to3 < to, true)
+Row(GetString(SI_PBSCHC_GAP_ULTIMATE)).setFunction(65)
+
+-- The quickslot has no row above it, so it is not part of the span.
+check("the quickslot is not counted in", from > 0, true)
 
 print("")
 if failures == 0 then

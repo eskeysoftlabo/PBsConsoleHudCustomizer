@@ -311,6 +311,43 @@ function skillbar:Apply()
 end
 
 -- ---------------------------------------------------------------------------------------
+-- Where the buttons sit inside the bar
+--
+-- The bar's control is 606 wide and the buttons occupy rather less of it: the weapon swap marker
+-- holds the left-hand end, and where the row ends depends on the gaps. Measured off the real
+-- controls and given back as fractions of the bar's width, which is what the settings panel's
+-- preview needs to draw a row over the buttons rather than a band across the whole bar.
+--
+-- Fractions rather than distances because they are free of scale: both numbers are scaled the
+-- same and it cancels, so the answer holds whatever size the bar has been set to.
+-- ---------------------------------------------------------------------------------------
+
+function addon:ButtonSpan()
+	local bar = self:Control(self.actionBar)
+	local first = skillbar:Button(FIRST_SLOT)
+	local last = skillbar:Button(ULTIMATE_SLOT) or skillbar:Button(LAST_ABILITY_SLOT)
+	if not bar or not first or not last then
+		return nil
+	end
+	local okBar, barLeft = pcall(bar.GetLeft, bar)
+	local okWidth, barWidth = pcall(bar.GetWidth, bar)
+	local okFirst, firstLeft = pcall(first.GetLeft, first)
+	local okLast, lastRight = pcall(last.GetRight, last)
+	if not (okBar and okWidth and okFirst and okLast) or type(barWidth) ~= "number" or barWidth <= 0 then
+		return nil
+	end
+	-- The abilities and the ultimate only. The quickslot and a companion's ultimate sit further
+	-- left and have no row above them: the other weapon set's slots stand over ActionButton3 to
+	-- ActionButton8 and nothing else, which is the whole point of measuring this.
+	local from = (firstLeft - barLeft) / barWidth
+	local to = (lastRight - barLeft) / barWidth
+	if to <= from then
+		return nil
+	end
+	return from, to
+end
+
+-- ---------------------------------------------------------------------------------------
 -- Whether the weapon sets can be swapped at all
 --
 -- Two reasons they cannot, and both are answered by the client rather than guessed at from an

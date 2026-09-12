@@ -39,7 +39,7 @@ function AdvanceFrame(ms) frameTime = frameTime + (ms or 1000) end
 function GetAddOnManager()
 	return {
 		GetNumAddOns = function() return 1 end,
-		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ConsoleHudCustomizer|r 1.9.0" end,
+		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ConsoleHudCustomizer|r 1.9.1" end,
 	}
 end
 
@@ -190,6 +190,7 @@ function Control:Rect()
 end
 function Control:GetLeft() local l = self:Rect(); return l end
 function Control:GetRight() local l, _, w = self:Rect(); return l + w end
+function Control:GetBottom() local _, t, _, h = self:Rect(); return t + h end
 function Control:GetTop() local _, t = self:Rect(); return t end
 
 -- Controls.xml, as far as the add-on reads it back: every template it asks for has an Icon, a

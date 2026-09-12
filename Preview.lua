@@ -174,6 +174,16 @@ function preview:Update()
 	end
 
 	-- The other weapon set's row, above the skill bar and scaled with it.
+	--
+	-- The row is six slots standing over the six buttons, not a band the width of the whole bar:
+	-- the bar's control is 606 wide and the buttons occupy rather less of it, with an invisible
+	-- weapon swap marker taking up the left-hand end (see FINDINGS, "The gaps along the bar").
+	-- Drawn at the bar's full width, as it was, the outline promised a row half again as wide as
+	-- the one that appears.
+	--
+	-- Where the buttons sit inside the bar is measured off the real controls as a fraction of the
+	-- bar's width, so it holds whatever the gaps are set to, and the fraction is free of scale --
+	-- both numbers are scaled the same, and it cancels.
 	if self.backFrame then
 		local control = self.backFrame.control
 		local shown = addon.BackBarEnabled and addon:BackBarEnabled()
@@ -184,10 +194,20 @@ function preview:Update()
 			local scale = barScale * addon:BackBarScale() / 100
 			local gap = addon:BackBar().gap
 			gap = (type(gap) == "number" and gap or 4) * barScale
+
+			local rowLeft, rowWidth = left, width
+			local from, to = addon:ButtonSpan()
+			if from and to then
+				rowLeft = left + from * width
+				rowWidth = (to - from) * width
+			end
+
+			-- The slot is 52 wide and 68 tall, so a row of six covers a little more than the
+			-- buttons do; the outline is the slots' own height.
 			local height = 68 * scale
 			control:ClearAnchors()
-			control:SetAnchor(BOTTOMLEFT, self.control, TOPLEFT, left, top - gap)
-			control:SetDimensions(width, height)
+			control:SetAnchor(BOTTOMLEFT, self.control, TOPLEFT, rowLeft, top - gap)
+			control:SetDimensions(rowWidth, height)
 			control:SetHidden(false)
 			self.backFrame.label:SetScale(scale)
 			if top - gap - height < highest then

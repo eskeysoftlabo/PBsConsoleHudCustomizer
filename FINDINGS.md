@@ -740,6 +740,22 @@ what `ZO_PlayerAttributeBar:RefreshColor` uses.
 The sliders were nearly shipped with the same labels as the position ones -- "Stamina: height"
 twice in one panel, the second unreachable. They are "bar width" and "bar height" now.
 
+## 41. The preview's row was the width of the whole bar
+
+From a PS5: the other weapon set's outline in the settings panel looked far too wide.
+
+It was drawn at the skill bar's full width, and the bar's control is 606 wide while the six slots
+of the row stand over `ActionButton3` to `ActionButton8` and nothing else -- the quickslot and, on
+the gamepad, the invisible weapon swap marker hold the left-hand end and have no row above them.
+Measured in the harness, the buttons begin a fifth of the way into the bar (61 for the marker's
+place, 45 for its width, 10 for the gap, of 606), so the outline promised a row a quarter again
+as wide as the one that appears.
+
+Where the buttons sit is now measured off the real controls and given back as **fractions of the
+bar's width**. Fractions rather than distances because they are free of scale -- both numbers are
+scaled the same and it cancels -- so the outline holds whatever size the bar is set to, and moves
+in when the gaps are closed.
+
 ---
 
 ## Still to measure on a PS5
