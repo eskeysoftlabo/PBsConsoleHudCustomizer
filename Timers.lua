@@ -381,6 +381,37 @@ function timers:OnAbilityUsed(_, slotNum)
 	lastUse.at = Now()
 	lastUse.expected = self:AbilityDuration(slotNum, hotbar)
 	self.casts = (self.casts or 0) + 1
+
+	-- Start counting at once, from what the game says the ability lasts, rather than waiting for
+	-- an effect that may never be reported. FancyActionBar+ does this for a list of abilities it
+	-- names (config.lua's onAbilityUsed entries, and main.lua where it sets
+	-- effect.endTime = duration + t); with no such list here it is done for any ability that
+	-- declares a length, and the first effect of the cast takes over from it.
+	if lastUse.expected and lastUse.expected >= CAST_EFFECT_MINIMUM_MS then
+		local slotKey = SlotKey(slotNum, hotbar)
+		local slotIcon = nil
+		if type(GetSlotTexture) == "function" then
+			local ok, texture = pcall(GetSlotTexture, slotNum, hotbar)
+			if ok then
+				slotIcon = IconKey(texture)
+			end
+		end
+		local entry = {
+			key = nil,
+			slotIcon = slotIcon,
+			beginMs = lastUse.at,
+			endMs = lastUse.at + lastUse.expected,
+			castAt = lastUse.at,
+			-- Anything the game actually reports beats a number worked out from the tooltip.
+			score = math.huge,
+			declared = true,
+		}
+		slotEffects[slotKey] = entry
+		if slotIcon then
+			linksByIcon[slotIcon] = entry
+		end
+		self.declared = (self.declared or 0) + 1
+	end
 end
 
 -- Called for every effect that arrives. One that turns up inside the window after a cast is
@@ -432,6 +463,21 @@ function timers:LinkToCast(key, icon, beginMs, endMs, now)
 end
 
 -- What the last cast of this slot produced, while it is still running.
+-- The same effect landing on another target carries the countdown out to whichever ends last,
+-- and never shortens it. That is what FancyActionBar+ keeps in effect.endTime through its
+-- RecordUnit / PruneUnits pair ("if maxEnd > effect.endTime then effect.endTime = maxEnd").
+function timers:ExtendLinks(key, endMs)
+	if not key or endMs == 0 then
+		return
+	end
+	for _, entry in pairs(slotEffects) do
+		if entry.key == key and endMs > entry.endMs then
+			entry.endMs = endMs
+			self.extended = (self.extended or 0) + 1
+		end
+	end
+end
+
 -- What is on record for this slot, running or not: the cast made from it, or -- for the same
 -- ability sitting in another slot or on the other weapon set -- the cast made from there.
 function timers:LinkFor(slot, hotbar, icon)
@@ -635,6 +681,7 @@ function timers:OnEffectChanged(_, changeType, effectSlot, effectName, unitTag, 
 		self.untargeted = (self.untargeted or 0) + 1
 	end
 	self:LinkToCast(key, icon, beginMs, endMs, now)
+	self:ExtendLinks(key, endMs)
 	self:Log((isSelf or isPet) and "self" or "gain", changeType, key, unitKey, endMs, now)
 end
 
@@ -1639,6 +1686,8 @@ function timers:PrintSlots()
 		self.sources or 0, self.dropped or 0)
 	Line("  casts seen=%d  effects tied to a cast=%d  shorter readings refused=%d",
 		self.casts or 0, self.linked or 0, self.shorterIgnored or 0)
+	Line("  counted from the tooltip's own length=%d  carried out to a later target=%d",
+		self.declared or 0, self.extended or 0)
 	Line("  clocks: frame=%d game=%d (they must agree for an effect's end time to mean anything)",
 		Round(Now()), Round(GetGameTimeMilliseconds and GetGameTimeMilliseconds() or 0))
 	Line("  effects: gains=%d fades=%d stale fades ignored=%d already-over on arrival=%d",

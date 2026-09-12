@@ -28,7 +28,7 @@ print("\n== 1. load ==")
 Fire(EVENT_ADD_ON_LOADED, "PBsConsoleHudCustomizer")
 local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 local health, magicka, stamina = addon.barByKey.health, addon.barByKey.magicka, addon.barByKey.stamina
-check("version read from manifest", addon.version, "1.10.3")
+check("version read from manifest", addon.version, "1.11.0")
 check("slash command registered", type(SLASH_COMMANDS["/pbhud"]), "function")
 check("short slash command registered", type(SLASH_COMMANDS["/pbhc"]), "function")
 check("HUD fragment callback registered", addon.hudRegistered, true)
@@ -1393,6 +1393,49 @@ FireEffect(EFFECT_RESULT_GAINED, "Rally", "reticleover", (now16 + 30000) / 1000,
 FireEffect(EFFECT_RESULT_GAINED, "Rally", "", (now16 + 30000) / 1000, 4, 191)
 RunUpdates()
 check("two enemies are", rallyCount:GetText(), "2")
+
+print("\n== 53. the countdown starts at the cast, and runs to the furthest target ==")
+-- Two things FancyActionBar+ does that this did not.
+--
+-- One: it starts counting at the cast, from the ability's own length, rather than waiting for an
+-- effect the client may never report (config.lua's onAbilityUsed entries; main.lua sets
+-- effect.endTime = duration + t). It has a list of the abilities that need it; with no list
+-- here, any ability that declares a length gets it, and the first effect of the cast takes over.
+addon.timers:Forget_All()
+addon.timers.timers = {}
+addon.timers.counts = {}
+SetSlot(HOTBAR_CATEGORY_PRIMARY, 4, { name = "Ritual", icon = "ritual.dds", id = 220, remaining = 0, duration = 0 })
+SetAbilityDuration(220, 16000)
+FireHud(SCENE_FRAGMENT_SHOWN)
+FireCast(4)
+RunUpdates()
+local ritual = addon.timers.labels[4].timer
+check("counting from the moment it is cast", ritual:GetText(), "16")
+check("even though the client reports nothing for the slot",
+	GetActionSlotEffectTimeRemaining(4, HOTBAR_CATEGORY_PRIMARY), 0)
+AdvanceFrame(4000)
+RunUpdates()
+check("and counting down", ritual:GetText(), "12")
+
+-- The real effect, when it comes, is what is followed: the game's number beats the tooltip's.
+local now17 = GetGameTimeMilliseconds()
+FireCast(4)
+FireEffect(EFFECT_RESULT_GAINED, "Ritual", "", (now17 + 20000) / 1000, 41, 221)
+RunUpdates()
+check("the effect takes over from the tooltip", ritual:GetText(), "20")
+
+-- Two: the same effect landing on another target carries the countdown out to whichever ends
+-- last, and never shortens it ("if maxEnd > effect.endTime then effect.endTime = maxEnd").
+AdvanceFrame(10000)
+local now18 = GetGameTimeMilliseconds()
+FireEffect(EFFECT_RESULT_GAINED, "Ritual", "", (now18 + 20000) / 1000, 42, 221)
+RunUpdates()
+check("a later target carries it out", ritual:GetText(), "20")
+-- And a shorter one does not pull it in.
+FireEffect(EFFECT_RESULT_GAINED, "Ritual", "", (now18 + 3000) / 1000, 43, 221)
+RunUpdates()
+check("a shorter one does not pull it in", ritual:GetText(), "20")
+check("all three are counted as targets", addon.timers.labels[4].count:GetText(), "3")
 
 print("")
 if failures == 0 then

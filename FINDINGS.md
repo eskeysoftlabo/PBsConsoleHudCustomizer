@@ -838,6 +838,30 @@ One thing worth noting about the reference: `GetAbilityTargetDescription(...) ==
 against an English string, so on a Japanese client that test never matches. The check here is
 `unitTag == "player"`, which holds in any language.
 
+## 47. The countdown against FancyActionBar+'s
+
+Asked the same question of the duration. Both start from `GetAbilityDuration` for the ability in
+the slot (§38); what differs is everything around it.
+
+| | FancyActionBar+ | here |
+| --- | --- | --- |
+| which effect is the slot's | its ability id, through a curated map of effect id to slotted id (`config.lua`, 1700 lines) | the effects that arrive within 1.5 s of the cast, the one whose length is nearest the ability's |
+| when the countdown starts | at the cast for the abilities its list names (`onAbilityUsed`: `effect.endTime = duration + t`) | **now** at the cast for any ability that declares a length, with the first effect of that cast taking over |
+| several targets | `effect.endTime = maxEnd`: carried out to whichever ends last, never pulled in | **now** the same |
+| toggles, ground effects, channels, banners | a handler each | none |
+| the client's per-slot timer | never called | the fallback where no cast is on record |
+
+The two marked "now" are taken in this release, and both are the reference's behaviour without
+its table: any ability that declares a length starts counting the moment it is cast, so an
+ability whose effect the client never reports still shows something, and a later target carries
+the countdown out rather than leaving it on the first one's end.
+
+What is deliberately not taken is the table. FancyActionBar+ can key an effect straight to a slot
+because it carries a hand-tuned map of ability ids, and a handler for each awkward family --
+toggles, grounds, channels, the banner. Seventeen hundred lines of it, maintained release by
+release. This add-on has the cast to work from instead: less exact for the families that need a
+handler, and nothing to keep up to date.
+
 ---
 
 ## Still to measure on a PS5
