@@ -726,6 +726,12 @@ local FALLBACK_PARTS = {
 	PBsConsoleHudCustomizerPlainBar = {
 		{ name = "Track", kind = "backdrop", point = "TOPLEFT", relative = "TOPLEFT", x = 0, y = 0, fill = true, level = 1 },
 		{ name = "Fill", kind = "backdrop", point = "TOPLEFT", relative = "TOPLEFT", x = 0, y = 0, level = 2 },
+		-- The outline: four thin rectangles, each held by two corners so it stretches with the
+		-- bar. A backdrop's own edge would need an edge texture, and no art ships with this.
+		{ name = "BorderTop", kind = "backdrop", point = "TOPLEFT", relative = "TOPLEFT", second = "TOPRIGHT", x = 0, y = 0, height = 1, level = 3 },
+		{ name = "BorderBottom", kind = "backdrop", point = "BOTTOMLEFT", relative = "BOTTOMLEFT", second = "BOTTOMRIGHT", x = 0, y = 0, height = 1, level = 3 },
+		{ name = "BorderLeft", kind = "backdrop", point = "TOPLEFT", relative = "TOPLEFT", second = "BOTTOMLEFT", x = 0, y = 0, width = 1, level = 3 },
+		{ name = "BorderRight", kind = "backdrop", point = "TOPRIGHT", relative = "TOPRIGHT", second = "BOTTOMRIGHT", x = 0, y = 0, width = 1, level = 3 },
 	},
 }
 
@@ -775,6 +781,9 @@ function timers:BuildFallback(name, parent, template)
 		end
 		if part.fill then
 			child:SetAnchor(BOTTOMRIGHT, control, BOTTOMRIGHT, 0, 0)
+		end
+		if part.second then
+			child:SetAnchor(_G[part.second], control, _G[part.second], 0, 0)
 		end
 		if part.coords and type(child.SetTextureCoords) == "function" then
 			child:SetTextureCoords(unpack(part.coords))

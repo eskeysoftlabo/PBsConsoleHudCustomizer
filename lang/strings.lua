@@ -22,8 +22,8 @@ local strings = {
 	SI_PBSCHC_STYLE_ROUNDED = "MURA-HIGE Style",
 	SI_PBSCHC_PLAIN_OPACITY = "How solid",
 	SI_PBSCHC_PLAIN_OPACITY_TOOLTIP = "How solid the rectangles are. 100% hides the game's own fill completely; below that it shows through, which is one way to keep a little of the original look.",
-	SI_PBSCHC_PLAIN_KEEP_FRAME = "Keep the game's frame",
-	SI_PBSCHC_PLAIN_KEEP_FRAME_TOOLTIP = "Leave the arrow-shaped frame and the background where they are, and draw the rectangle inside them. Off, they are put away for as long as this style is chosen, and come straight back when it is not.",
+	SI_PBSCHC_PLAIN_BORDER = "Draw an outline",
+	SI_PBSCHC_PLAIN_BORDER_TOOLTIP = "Draw a thin dark line round each bar. The game's own arrow-shaped frame is always put away while one of these styles is chosen -- a flat rectangle inside an arrow frame is neither one thing nor the other -- so this is the only frame on offer. Off, the bar is a block of colour with no line at all.",
 
 	-- ---- The shade over a skill ----------------------------------------------------------
 	SI_PBSCHC_SECTION_SHADE = "Shade over a skill in use",

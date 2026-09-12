@@ -22,8 +22,8 @@ local strings = {
 	SI_PBSCHC_STYLE_ROUNDED = "MURA-HIGE Style",
 	SI_PBSCHC_PLAIN_OPACITY = "不透明度",
 	SI_PBSCHC_PLAIN_OPACITY_TOOLTIP = "四角をどれだけ濃く描くかです。100%でゲーム本来の塗りを完全に隠します。下げると下のバーが透けるため、元の見た目を少し残したい場合に使えます。",
-	SI_PBSCHC_PLAIN_KEEP_FRAME = "ゲームの枠を残す",
-	SI_PBSCHC_PLAIN_KEEP_FRAME_TOOLTIP = "矢印型の枠と背景をそのまま残し、その内側に四角を描きます。オフの場合、このスタイルを選んでいる間だけ枠と背景を非表示にし、標準に戻すとすぐ元に戻ります。",
+	SI_PBSCHC_PLAIN_BORDER = "枠線を描く",
+	SI_PBSCHC_PLAIN_BORDER_TOOLTIP = "各バーの周囲に細い暗色の線を描きます。ゲーム本来の矢印型の枠は、これらのスタイルを選んでいる間は常に非表示になるため（平坦な四角を矢印型の枠に入れても中途半端なため）、枠としてはこれだけになります。オフにすると、線のない色の塊だけになります。",
 
 	-- ---- スキルの網掛け ------------------------------------------------------------------
 	SI_PBSCHC_SECTION_SHADE = "使用中スキルの網掛け",

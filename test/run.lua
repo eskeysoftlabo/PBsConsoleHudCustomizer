@@ -28,7 +28,7 @@ print("\n== 1. load ==")
 Fire(EVENT_ADD_ON_LOADED, "PBsConsoleHudCustomizer")
 local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 local health, magicka, stamina = addon.barByKey.health, addon.barByKey.magicka, addon.barByKey.stamina
-check("version read from manifest", addon.version, "1.10.0")
+check("version read from manifest", addon.version, "1.10.1")
 check("slash command registered", type(SLASH_COMMANDS["/pbhud"]), "function")
 check("short slash command registered", type(SLASH_COMMANDS["/pbhc"]), "function")
 check("HUD fragment callback registered", addon.hudRegistered, true)
@@ -587,11 +587,17 @@ check("as wide as the bar is full", magickaPlain.namedChildren.Fill:GetWidth(), 
 -- The game's arrow frame and background are put away while this style is on.
 check("the frame is put away", _G.ZO_PlayerAttributeMagickaFrameCenter:IsHidden(), true)
 check("and the background with it", _G.ZO_PlayerAttributeMagickaBgContainer:IsHidden(), true)
-Row(GetString(SI_PBSCHC_PLAIN_KEEP_FRAME)).setFunction(true)
+-- The game's frame is always put away now; the frame on offer is an outline of the add-on's own.
+local magickaOverlay = addon.plain.overlays["ZO_PlayerAttributeMagickaBar"]
+check("the outline is drawn by default", magickaOverlay.border.Top:IsHidden(), false)
+check("dark, and along the whole edge", magickaOverlay.border.Top.centerColor[4] > 0.5, true)
+Row(GetString(SI_PBSCHC_PLAIN_BORDER)).setFunction(false)
 RunUpdates()
-check("kept when that is asked for", _G.ZO_PlayerAttributeMagickaFrameCenter:IsHidden(), false)
-Row(GetString(SI_PBSCHC_PLAIN_KEEP_FRAME)).setFunction(false)
+check("and can be switched off", magickaOverlay.border.Top:IsHidden(), true)
+check("all four sides with it", magickaOverlay.border.Right:IsHidden(), true)
+Row(GetString(SI_PBSCHC_PLAIN_BORDER)).setFunction(true)
 RunUpdates()
+check("back on again", magickaOverlay.border.Bottom:IsHidden(), false)
 
 SetPower(COMBAT_MECHANIC_FLAGS_MAGICKA, 100, 1000)
 RunUpdates()
@@ -1325,6 +1331,15 @@ Row(GetString(SI_PBSCHC_GAP_ULTIMATE)).setFunction(65)
 
 -- The quickslot has no row above it, so it is not part of the span.
 check("the quickslot is not counted in", from > 0, true)
+
+print("\n== 50. an install that had kept the game's frame ==")
+-- 1.9.x offered to leave the arrow frame in place. It is always put away now, and the key goes
+-- with it rather than sitting in the saved variables for ever.
+SavedStore.PBsConsoleHudCustomizer_Data = { style = "plain", plainKeepFrame = true }
+addon.account = ZO_SavedVars:NewAccountWide("PBsConsoleHudCustomizer_Data", 1, nil, addon.accountDefaults)
+addon:Account()
+check("the old key is cleared away", addon.account.plainKeepFrame, nil)
+check("and the outline is on, which is the frame now", addon:PlainBorder(), true)
 
 print("")
 if failures == 0 then

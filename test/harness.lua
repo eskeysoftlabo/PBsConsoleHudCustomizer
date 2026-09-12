@@ -39,7 +39,7 @@ function AdvanceFrame(ms) frameTime = frameTime + (ms or 1000) end
 function GetAddOnManager()
 	return {
 		GetNumAddOns = function() return 1 end,
-		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ConsoleHudCustomizer|r 1.10.0" end,
+		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ConsoleHudCustomizer|r 1.10.1" end,
 	}
 end
 
@@ -199,8 +199,7 @@ local VIRTUAL_CHILDREN = {
 	PBsConsoleHudCustomizerBackBarSlot = { "BG", "Icon", "Overlay", "Shade", "Timer", "Count" },
 	PBsConsoleHudCustomizerSlotLabels = { "Timer", "Count" },
 	PBsConsoleHudCustomizerShade = {},
-	PBsConsoleHudCustomizerPlainBar = { "Track", "Fill", "RoundTrack", "RoundFill" },
-	PBsConsoleHudCustomizerRoundedBar = { "Left", "Right", "Center" },
+	PBsConsoleHudCustomizerPlainBar = { "Track", "Fill", "BorderTop", "BorderBottom", "BorderLeft", "BorderRight" },
 }
 
 function CreateControlFromVirtual(name, parent, template, suffix)
@@ -211,15 +210,7 @@ function CreateControlFromVirtual(name, parent, template, suffix)
 	control.template = template
 	control.namedChildren = {}
 	for _, child in ipairs(VIRTUAL_CHILDREN[template]) do
-		local made = MakeControl(fullName .. child, control, "control")
-		-- The rounded pieces are a control of their own with three children.
-		if child == "RoundTrack" or child == "RoundFill" then
-			made.namedChildren = {}
-			for _, piece in ipairs(VIRTUAL_CHILDREN.PBsConsoleHudCustomizerRoundedBar) do
-				made.namedChildren[piece] = MakeControl(fullName .. child .. piece, made, "texture")
-			end
-		end
-		control.namedChildren[child] = made
+		control.namedChildren[child] = MakeControl(fullName .. child, control, "control")
 	end
 	CreatedControls[fullName] = control
 	return control

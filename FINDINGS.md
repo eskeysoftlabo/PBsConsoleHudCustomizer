@@ -783,6 +783,16 @@ a **width and a height of the player's choosing** rather than a multiple of the 
 
 The saved key is still `rounded`, because that is what is in people's saved variables.
 
+## 44. An outline instead of the game's frame
+
+"Keep the game's frame" is gone: a flat rectangle inside an arrow-shaped frame is neither one
+thing nor the other, and nobody wanted it. The frame on offer is this add-on's own -- four thin
+rectangles round the bar, on or off.
+
+Four rectangles rather than a backdrop's own edge, because an edge needs an edge **texture** and
+no art ships with this add-on. Each side is held by two corners so it stretches with the bar,
+which also means the outline is right whatever size MURA-HIGE Style is set to.
+
 ---
 
 ## Still to measure on a PS5

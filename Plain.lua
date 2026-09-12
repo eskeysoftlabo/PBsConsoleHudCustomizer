@@ -100,6 +100,10 @@ local FALLBACK_COLOURS = {
 
 local TRACK_COLOUR = { 0.06, 0.06, 0.06 }
 
+-- The outline. Dark rather than black so it reads as a line drawn round the bar rather than a
+-- gap in it.
+local BORDER_COLOUR = { 0, 0, 0, 0.82 }
+
 -- ---------------------------------------------------------------------------------------
 -- Settings
 -- ---------------------------------------------------------------------------------------
@@ -145,10 +149,16 @@ function addon:SetPlainOpacity(value)
 	self:Account().plainOpacity = Clamp(Round(value), self.MIN_PLAIN_OPACITY, self.MAX_PLAIN_OPACITY)
 end
 
--- Whether the game's own frame and background are left where they are. Off by default: a plain
--- rectangle inside an arrow-shaped frame is neither one thing nor the other.
-function addon:PlainKeepsFrame()
-	return self:Account().plainKeepFrame == true
+-- Whether this add-on's bars carry an outline of their own. The game's arrow-shaped frame is
+-- always put away while one of these styles is on -- a flat rectangle inside an arrow frame is
+-- neither one thing nor the other -- so an outline is the only frame on offer, and it is this
+-- add-on's to draw.
+function addon:PlainBorder()
+	return self:Account().plainBorder ~= false
+end
+
+function addon:SetPlainBorder(value)
+	self:Account().plainBorder = value and true or false
 end
 
 -- True while this add-on draws the bars itself, in either of its two shapes.
@@ -272,7 +282,11 @@ function plain:Overlay(bar, entry)
 		track = control.Track or control:GetNamedChild("Track"),
 		fill = control.Fill or control:GetNamedChild("Fill"),
 		key = bar.key,
+		border = {},
 	}
+	for _, side in ipairs({ "Top", "Bottom", "Left", "Right" }) do
+		overlay.border[side] = control["Border" .. side] or control:GetNamedChild("Border" .. side)
+	end
 	self.overlays[entry.name] = overlay
 	self:AnchorOverlay(overlay, bar)
 	self:ColourOverlay(bar, overlay)
@@ -322,6 +336,17 @@ function plain:ColourOverlay(bar, overlay)
 		if type(overlay.fill.SetEdgeColor) == "function" then
 			overlay.fill:SetEdgeColor(0, 0, 0, 0)
 		end
+	end
+
+	local border = addon:PlainBorder()
+	for _, piece in pairs(overlay.border or {}) do
+		if type(piece.SetCenterColor) == "function" then
+			piece:SetCenterColor(BORDER_COLOUR[1], BORDER_COLOUR[2], BORDER_COLOUR[3], BORDER_COLOUR[4] * alpha)
+			if type(piece.SetEdgeColor) == "function" then
+				piece:SetEdgeColor(0, 0, 0, 0)
+			end
+		end
+		piece:SetHidden(not border)
 	end
 end
 
@@ -542,10 +567,9 @@ function plain:UpdateOverlay(overlay, fraction)
 end
 
 function plain:Update()
-	local keepFrame = addon:PlainKeepsFrame()
 	for _, bar in ipairs(self.bars) do
 		local fraction = self:Fraction(bar)
-		self:Dress(bar, not keepFrame)
+		self:Dress(bar, true)
 		self:RaiseNumbers(bar, true)
 		local sized = addon:BarSizeIsOwn(bar)
 		for _, entry in ipairs(bar.controls) do
@@ -571,8 +595,8 @@ end
 function plain:PrintStatus()
 	local Line = addon.Line
 	Line("|cFF69B4%s|r -- the bars this add-on draws", addon.title)
-	Line("  style=%s opacity=%d%% keep frame=%s running=%s hud=%s", addon:BarStyle(), addon:PlainOpacity(),
-		tostring(addon:PlainKeepsFrame()), tostring(self.running == true), tostring(self.hudShown ~= false))
+	Line("  style=%s opacity=%d%% outline=%s running=%s hud=%s", addon:BarStyle(), addon:PlainOpacity(),
+		tostring(addon:PlainBorder()), tostring(self.running == true), tostring(self.hudShown ~= false))
 	if addon:BarStyle() ~= "plain" then
 		Line("  the style is Standard, so nothing is drawn. Set it in the settings panel, or")
 		Line("  |cFFFFFF%s style plain|r", addon.slash)

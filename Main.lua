@@ -263,7 +263,7 @@ addon.accountDefaults = {
 	-- default, and while it is chosen nothing is built at all.
 	style = "standard",
 	plainOpacity = 100,
-	plainKeepFrame = false,
+	plainBorder = true,
 	-- The shade over a skill icon while its effect runs.
 	shade = {
 		enabled = true,
@@ -314,6 +314,11 @@ function addon:Account()
 	-- out. Anyone who had chosen it gets the plain one, at an opacity in the range this uses.
 	if account.style == "liquid" then
 		account.style = "plain"
+	end
+	-- 1.9.x offered to leave the game's arrow frame in place. It is always put away now, and an
+	-- outline of this add-on's own is the frame on offer instead.
+	if account.plainKeepFrame ~= nil then
+		account.plainKeepFrame = nil
 	end
 	if account.liquidStrength ~= nil then
 		if type(account.plainOpacity) ~= "number" then
@@ -1042,8 +1047,8 @@ function addon:PrintStatus()
 	end
 
 	if self.plain then
-		Line("|cFF69B4  bar style|r  %s  opacity=%d%% keep frame=%s  running=%s", self:BarStyle(),
-			self:PlainOpacity(), tostring(self:PlainKeepsFrame()), tostring(self.plain.running == true))
+		Line("|cFF69B4  bar style|r  %s  opacity=%d%% outline=%s  running=%s", self:BarStyle(),
+			self:PlainOpacity(), tostring(self:PlainBorder()), tostring(self.plain.running == true))
 	end
 	Line("|cFF69B4  icon shade|r  on=%s darkness=%d%% direction=%s leading edge=%s",
 		tostring(self:ShadeEnabled()), self:ShadeDarkness(), self:ShadeDirection(),

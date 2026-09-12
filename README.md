@@ -6,7 +6,7 @@ as a shade that clears down the icon, a countdown, and a target count -- in The 
 Online on console.
 
 - **Author:** PinkBanther
-- **Version:** 1.10.0
+- **Version:** 1.10.1
 - **Optional:** `LibHarvensAddonSettings` >= 20106 (for the settings panel; the chat commands work
   without it)
 
@@ -56,8 +56,9 @@ gives it the same size so the pair still lines up.
   own: the two extra sliders in each bar's section. The other styles scale the game's own bar
   instead, because the width of those controls is the game's to write. The game's arrow-shaped frame and background are put away while this is chosen, and come
   straight back when it is not. **How solid** takes the rectangles from fully opaque down to
-  letting the game's own fill show through, and **Keep the game's frame** leaves the arrows in
-  place if you want the rectangle inside them.
+  letting the game's own fill show through, and **Draw an outline** puts a thin dark line round
+  each bar — the game's arrow-shaped frame is always put away while one of these styles is on, so
+  that line is the only frame on offer.
 
 The bars themselves are left alone and still doing their work, so the damage shield overlay, the
 armour and possession effects, the low-health warning and the out-of-combat fade all still happen

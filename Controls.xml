@@ -122,6 +122,31 @@
                     <Anchor point="TOPLEFT"/>
                     <Anchor point="BOTTOMLEFT"/>
                 </Backdrop>
+                <!--
+                    An outline, drawn as four thin rectangles rather than a backdrop's own edge:
+                    an edge needs an edge texture, and this add-on ships no art. Shown or hidden
+                    together, and coloured from Lua.
+                -->
+                <Backdrop name="$(parent)BorderTop" centerColor="000000D0" edgeColor="00000000" level="3" hidden="true">
+                    <Dimensions y="1"/>
+                    <Anchor point="TOPLEFT"/>
+                    <Anchor point="TOPRIGHT"/>
+                </Backdrop>
+                <Backdrop name="$(parent)BorderBottom" centerColor="000000D0" edgeColor="00000000" level="3" hidden="true">
+                    <Dimensions y="1"/>
+                    <Anchor point="BOTTOMLEFT"/>
+                    <Anchor point="BOTTOMRIGHT"/>
+                </Backdrop>
+                <Backdrop name="$(parent)BorderLeft" centerColor="000000D0" edgeColor="00000000" level="3" hidden="true">
+                    <Dimensions x="1"/>
+                    <Anchor point="TOPLEFT"/>
+                    <Anchor point="BOTTOMLEFT"/>
+                </Backdrop>
+                <Backdrop name="$(parent)BorderRight" centerColor="000000D0" edgeColor="00000000" level="3" hidden="true">
+                    <Dimensions x="1"/>
+                    <Anchor point="TOPRIGHT"/>
+                    <Anchor point="BOTTOMRIGHT"/>
+                </Backdrop>
             </Controls>
         </Control>
     </Controls>

@@ -182,14 +182,14 @@ function addon:InitSettings()
 	settings:AddSetting(
 		{
 			type = LibHarvensAddonSettings.ST_CHECKBOX,
-			label = GetString(SI_PBSCHC_PLAIN_KEEP_FRAME),
-			tooltip = GetString(SI_PBSCHC_PLAIN_KEEP_FRAME_TOOLTIP),
-			default = false,
+			label = GetString(SI_PBSCHC_PLAIN_BORDER),
+			tooltip = GetString(SI_PBSCHC_PLAIN_BORDER_TOOLTIP),
+			default = true,
 			getFunction = function()
-				return self:PlainKeepsFrame()
+				return self:PlainBorder()
 			end,
 			setFunction = function(value)
-				self:Account().plainKeepFrame = value
+				self:SetPlainBorder(value)
 				self:Refresh()
 			end
 		}
