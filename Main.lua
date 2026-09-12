@@ -588,34 +588,49 @@ function addon:ScreenRect(control)
 	return left, top, width, height
 end
 
-function addon:CaptureGame(bar)
+-- The anchors and the scale a bar had before this add-on touched it. Taken once, before the
+-- first write, and the one thing that has to succeed: without it there would be nothing to put
+-- back, so a bar whose anchor cannot be read is left where the game has it.
+function addon:CaptureAnchors(bar)
 	local control = self:Control(bar)
 	if not control then
 		return false
 	end
-
-	-- The anchors and the scale, so there is something to put back. Taken once, before the
-	-- first write to this bar.
-	if not self.original[bar.key] then
-		if self.written[bar.key] then
-			return false
-		end
-		local anchor = ReadAnchor(control, 0)
-		if not anchor then
-			return false
-		end
-		local companion = self:Companion(bar)
-		self.original[bar.key] = {
-			anchors = { anchor, ReadAnchor(control, 1) },
-			scale = ReadScale(control) or 1,
-			companionScale = companion and ReadScale(companion) or 1,
-		}
-	end
-
-	-- The measurement. Only while the bar is at rest at its normal width, and only while our
-	-- own scale is not on it -- a scaled control's rectangle is not the one the game drew.
-	if self.written[bar.key] then
+	if self.original[bar.key] then
 		return true
+	end
+	if self.written[bar.key] then
+		return false
+	end
+	local anchor = ReadAnchor(control, 0)
+	if not anchor then
+		return false
+	end
+	local companion = self:Companion(bar)
+	self.original[bar.key] = {
+		anchors = { anchor, ReadAnchor(control, 1) },
+		scale = ReadScale(control) or 1,
+		companionScale = companion and ReadScale(companion) or 1,
+	}
+	return true
+end
+
+-- Where the game itself draws the bar, measured off the control. Best effort, and deliberately
+-- separate from CaptureAnchors: it can fail for reasons that have nothing to do with whether the
+-- add-on can do its job -- a control the client has not laid out yet reads back no rectangle at
+-- all, and a bar stretched by a buff reads back the wrong one. Until it succeeds the worked-out
+-- fallback stands in, and it is tried again on the next HUD show.
+--
+-- 1.3.1 and earlier folded this into the capture and returned its failure as the capture's, so a
+-- bar whose rectangle was not readable at that moment was never moved at all -- the position
+-- setting appearing to do nothing, on some logins and not others.
+function addon:MeasureGame(bar)
+	local control = self:Control(bar)
+	if not control then
+		return false
+	end
+	if self.written[bar.key] then
+		return false
 	end
 	local measured = self:Measured(bar)
 	if type(measured.x) == "number" and type(measured.y) == "number" then
@@ -623,17 +638,26 @@ function addon:CaptureGame(bar)
 	end
 	local left, top, width, height = self:ScreenRect(control)
 	if not left then
+		self.measureNote = "waiting for the bars to have a size on screen"
 		return false
 	end
 	if Round(width) ~= (bar.normalWidth or self.GAME.barWidth) then
 		self.measureNote = "waiting for the bars to be their normal width"
-		return true
+		return false
 	end
 	local rootWidth, rootHeight = self:RootSize()
 	measured.x = Round(left + width / 2 - rootWidth / 2)
 	measured.y = Round(rootHeight - (top + height / 2))
 	self.measureNote = nil
 	return true
+end
+
+-- Both, for the callers that want the bar looked at as a whole. The measurement's answer is not
+-- the one returned: only the capture decides whether this add-on may write.
+function addon:CaptureGame(bar)
+	local captured = self:CaptureAnchors(bar)
+	self:MeasureGame(bar)
+	return captured
 end
 
 function addon:CaptureAll()
@@ -712,17 +736,21 @@ function addon:ApplyBar(bar)
 			return self:RestoreBar(bar)
 		end
 		-- Still worth a look: the measurement may not have been takeable yet.
-		self:CaptureGame(bar)
+		self:CaptureAnchors(bar)
+		self:MeasureGame(bar)
 		return true
 	end
 
-	if not self:CaptureGame(bar) or not self.original[bar.key] then
+	if not self:CaptureAnchors(bar) then
 		-- Without the bar's own anchor there would be nothing to put back. Better not to move
 		-- it at all than to move it for good.
 		self.writeErrors = self.writeErrors or {}
-		self.writeErrors.capture = "could not read a bar's own anchor"
+		self.writeErrors.capture = "could not read " .. bar.key .. "'s own anchor"
 		return false
 	end
+	-- A measurement that is not ready yet only means the game's own position is still the
+	-- worked-out one. It never stops the bar being put where the player asked.
+	self:MeasureGame(bar)
 
 	local position = self:ClampedPosition(self:Position(bar))
 	local scale = self:ScalePercent(bar) / 100
@@ -730,6 +758,7 @@ function addon:ApplyBar(bar)
 		return true
 	end
 
+	self.writeCount = (self.writeCount or 0) + 1
 	self:Write("anchor", control.ClearAnchors, control)
 	self:Write("anchor", control.SetAnchor, control, CENTER, GuiRoot, BOTTOM, position.x, -position.y)
 	self:Write("scale", control.SetScale, control, scale)
@@ -754,6 +783,67 @@ function addon:Apply()
 	end
 	if self.skillbar then
 		self.skillbar:Apply()
+	end
+	return true
+end
+
+-- ---------------------------------------------------------------------------------------
+-- Keeping it put
+--
+-- Everything this add-on writes is checked once a second while the HUD is up, and written again
+-- if it is no longer there. PB's MiniMap has had the same watch since its first release, for the
+-- same reason: on a console there is no way to see what moved something, and a layout that puts
+-- itself back is worth more than knowing.
+--
+-- It is nearly free -- an anchor and a scale read per control, and nothing written while they
+-- match -- and it counts what it had to put back, so status can say whether anything really is
+-- fighting this add-on or whether a write simply never landed.
+-- ---------------------------------------------------------------------------------------
+
+local WATCH_INTERVAL_MS = 1000
+
+function addon:AnythingWritten()
+	for _, bar in ipairs(self.elements) do
+		if self.written[bar.key] then
+			return true
+		end
+	end
+	return self.skillbar ~= nil and self.skillbar.written == true
+end
+
+function addon:Verify()
+	if not self:BarsReady() then
+		return
+	end
+	if not self:AnythingDiffers() and not self:AnythingWritten() then
+		return
+	end
+	local before = self.writeCount or 0
+	self:Apply()
+	if (self.writeCount or 0) > before then
+		self.repairs = (self.repairs or 0) + 1
+		self.lastRepair = GetGameTimeMilliseconds and GetGameTimeMilliseconds() or 0
+	end
+end
+
+function addon:Watch(start)
+	if not EVENT_MANAGER or type(EVENT_MANAGER.RegisterForUpdate) ~= "function" then
+		return false
+	end
+	if start then
+		if self.watching then
+			return true
+		end
+		EVENT_MANAGER:RegisterForUpdate(self.name .. "Watch", WATCH_INTERVAL_MS, function()
+			addon:Verify()
+		end)
+		self.watching = true
+	else
+		if not self.watching then
+			return true
+		end
+		EVENT_MANAGER:UnregisterForUpdate(self.name .. "Watch")
+		self.watching = false
 	end
 	return true
 end
@@ -795,6 +885,7 @@ function addon:OnHudShowing()
 		return
 	end
 	self:Apply()
+	self:Watch(true)
 	if self.timers then
 		self.timers:OnHudStateChange(true)
 	end
@@ -804,6 +895,7 @@ function addon:OnHudShowing()
 end
 
 function addon:OnHudHidden()
+	self:Watch(false)
 	if self.timers then
 		self.timers:OnHudStateChange(false)
 	end
@@ -852,6 +944,9 @@ function addon:PrintStatus()
 	if self.measureNote then
 		Line("  %s", self.measureNote)
 	end
+	Line("  watch=%s  put back %d time(s)%s", tostring(self.watching == true), self.repairs or 0,
+		self.lastRepair and string.format(" (last %ds ago)",
+			Round(((GetGameTimeMilliseconds and GetGameTimeMilliseconds() or 0) - self.lastRepair) / 1000)) or "")
 
 	for _, bar in ipairs(self.elements) do
 		local position = self:ClampedPosition(self:Position(bar))
@@ -1153,7 +1248,11 @@ function addon:TryFirstApply(attempt)
 		Later(function()
 			self:TryFirstApply(attempt + 1)
 		end, RETRY_DELAY_MS)
+		return
 	end
+	-- Out of attempts. Letting the flag go means the next zone load starts again rather than the
+	-- add-on sitting there having given up for the session.
+	self.firstApplyScheduled = false
 end
 
 local function OnPlayerActivated()

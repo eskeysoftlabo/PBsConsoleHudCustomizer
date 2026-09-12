@@ -383,6 +383,42 @@ are full and the player is out of combat, and anything parented to them fades wi
 effect checked at full health outside a fight is invisible for a reason that has nothing to do
 with the liquid.
 
+## 22. A measurement must never be able to stop a write
+
+Reported from a PS5: the attribute bars' position setting sometimes did not take effect. Nothing
+in the client was moving them -- the attribute visualiser's modules (armour, possession,
+unwavering, power shield, arrow regeneration) all anchor overlay controls **to** a bar and never
+re-anchor the bar itself, and `ApplyStyle` only touches the group, the sub-bars and the textures.
+It was this add-on's own doing.
+
+`CaptureGame` did two jobs: remember the anchor the bar had (which has to succeed, or there would
+be nothing to put back) and measure where the game draws it (which is only ever a nicety, because
+the fallback is worked out from the client's own constants). It returned one answer for both, and
+`ApplyBar` refused to write unless that answer was true:
+
+```lua
+local left, top, width, height = self:ScreenRect(control)
+if not left then
+    return false        -- and ApplyBar then wrote nothing at all
+end
+```
+
+`ScreenRect` returns nothing while a control has no size on screen, which depends on how far the
+UI has got when the first apply runs -- so the position applied on one login and not on the next.
+The two are separate calls from 1.3.2: `CaptureAnchors` gates the write, `MeasureGame` is best
+effort and is tried again on every HUD show.
+
+## 23. Putting it back, and counting
+
+Everything written is now checked once a second while the HUD is up, and written again if it is
+no longer there -- the same watch PB's MiniMap has had since its first release. An anchor and a
+scale read per control, nothing written while they match.
+
+It counts what it had to put back, and `/pbhud status` prints that count. That is the measurement
+that answers the next report of this kind: a count that climbs means something really is moving
+the bars and the watch is fighting it; a count that stays at zero while the bars are wrong means
+the write never landed at all, which is a different bug in a different place.
+
 ---
 
 ## Still to measure on a PS5

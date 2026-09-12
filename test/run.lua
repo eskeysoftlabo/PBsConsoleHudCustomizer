@@ -28,7 +28,7 @@ print("\n== 1. load ==")
 Fire(EVENT_ADD_ON_LOADED, "PBsConsoleHudCustomizer")
 local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 local health, magicka, stamina = addon.barByKey.health, addon.barByKey.magicka, addon.barByKey.stamina
-check("version read from manifest", addon.version, "1.3.1")
+check("version read from manifest", addon.version, "1.3.2")
 check("slash command registered", type(SLASH_COMMANDS["/pbhud"]), "function")
 check("short slash command registered", type(SLASH_COMMANDS["/pbhc"]), "function")
 check("HUD fragment callback registered", addon.hudRegistered, true)
@@ -604,6 +604,66 @@ addon.liquid:PrintStatus()
 Row(GetString(SI_PBSCHC_STYLE)).setFunction(nil, nil, { data = "standard" })
 addon.liquid:PrintStatus()
 check("the diagnostic runs in either style", true, true)
+
+print("\n== 28. a rectangle that cannot be read must not stop the move ==")
+-- The bug behind "the position setting does not take effect, sometimes": the measurement and the
+-- capture were one call, so a control whose rectangle was not readable at that moment -- which
+-- depends on how far the UI has got at login -- made the add-on refuse to write at all.
+SavedStore.PBsConsoleHudCustomizer_Data = nil
+addon.account = ZO_SavedVars:NewAccountWide("PBsConsoleHudCustomizer_Data", 1, nil, addon.accountDefaults)
+addon:Account()
+addon.written, addon.original = {}, {}
+addon.skillbar.original, addon.skillbar.written = nil, false
+BuildAttributeBars()
+SetAllSlots()
+
+-- As if the client had not laid the bars out yet.
+local health = _G[HEALTH]
+local realWidth, realHeight = health.width, health.height
+health.width, health.height = 0, 0
+addon:CaptureAll()
+check("the measurement is refused", addon:Measured(health_bar or addon.barByKey.health).x, nil)
+check("but the anchor was still captured", addon.original.health ~= nil, true)
+
+Row(GetString(SI_PBSCHC_POSITION_Y):gsub("<<1>>", GetString(SI_PBSCHC_BAR_HEALTH))).setFunction(500)
+check("and the bar still moves", BarAnchor(HEALTH), "128->GuiRoot 4 (0,-500)")
+check("no capture error was recorded", (addon.writeErrors or {}).capture, nil)
+
+-- The rectangle turns up later; the game's own position is only then known.
+health.width, health.height = realWidth, realHeight
+FireHud(SCENE_FRAGMENT_SHOWN)
+check("the measurement is not taken once ours is on the bar", addon:Measured(addon.barByKey.health).x, nil)
+check("and the bar has not moved because of it", BarAnchor(HEALTH), "128->GuiRoot 4 (0,-500)")
+
+print("\n== 29. anything that moves a bar back is put right again ==")
+check("the watch runs while the HUD is up", addon.watching, true)
+local repairs = addon.repairs or 0
+-- Something else re-anchors the health bar, the way a client update or another add-on might.
+_G[HEALTH]:ClearAnchors()
+_G[HEALTH]:SetAnchor(CENTER, _G.ZO_PlayerAttribute, CENTER, 0, 0)
+addon:Verify()
+check("it is put back", BarAnchor(HEALTH), "128->GuiRoot 4 (0,-500)")
+check("and counted", (addon.repairs or 0) > repairs, true)
+addon:Verify()
+check("a second look writes nothing", addon.repairs, repairs + 1)
+FireHud(SCENE_FRAGMENT_HIDDEN)
+check("the watch stops with the HUD", addon.watching, false)
+FireHud(SCENE_FRAGMENT_SHOWN)
+check("and comes back with it", addon.watching, true)
+
+print("\n== 30. the first apply can try again on a later zone load ==")
+addon.firstApplyDone, addon.firstApplyScheduled = false, false
+PLAYER_ATTRIBUTE_BARS = nil
+Fire(EVENT_PLAYER_ACTIVATED)
+for _ = 1, 12 do
+	FlushCallLater()
+end
+check("it gives up after its attempts", addon.firstApplyDone, false)
+check("but does not stay given up", addon.firstApplyScheduled, false)
+PLAYER_ATTRIBUTE_BARS = { bars = {} }
+Fire(EVENT_PLAYER_ACTIVATED)
+FlushCallLater()
+check("so the next zone load applies it", addon.firstApplyDone, true)
 
 print("")
 if failures == 0 then

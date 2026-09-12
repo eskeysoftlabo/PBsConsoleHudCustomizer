@@ -6,7 +6,7 @@ as a shade that clears down the icon, a countdown, and a target count -- in The 
 Online on console.
 
 - **Author:** PinkBanther
-- **Version:** 1.3.1
+- **Version:** 1.3.2
 - **Optional:** `LibHarvensAddonSettings` >= 20106 (for the settings panel; the chat commands work
   without it)
 
@@ -221,6 +221,13 @@ whether each bar control was found and its overlay built, how full the bar is, a
 game has the bar at. That last one is the usual answer — **the game fades the resource bars out
 while they are full and you are out of combat**, and the liquid is drawn inside them, so look at a
 bar that is part-empty or wait until a fight.
+
+### If a bar will not move
+
+Everything this add-on writes is checked once a second while the HUD is up and put back if it is
+no longer there, so a bar that is moved by something else comes back on its own. `/pbhud status`
+prints how many times it had to do that, along with each bar's position, whether it differs from
+the game's, and whether it has been written.
 
 ## If something is not showing
 
