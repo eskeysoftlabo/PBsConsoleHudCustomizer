@@ -89,7 +89,7 @@ function addon:SetGap(key, value)
 end
 
 function addon:SpacingDiffers()
-	if not self:Account().enabled then
+	if not self:SkillBarAllowed() then
 		return false
 	end
 	for _, key in ipairs(self.GAP_KEYS) do

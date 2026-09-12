@@ -37,6 +37,8 @@ local strings = {
 	SI_PBSCHC_SHADE_DIRECTION_UP = "Upwards",
 	SI_PBSCHC_SHADE_EDGE = "Bright edge on the sweep",
 	SI_PBSCHC_SHADE_EDGE_TOOLTIP = "A lit line along the edge of the shade as it moves, the same one the game uses on its ability cooldowns.",
+	SI_PBSCHC_SKILLBAR_ENABLED = "Let this add-on touch the skill bar",
+	SI_PBSCHC_SKILLBAR_ENABLED_TOOLTIP = "Turn this off to hand the skill bar back to the game, and to any other add-on that lays it out. Its position and size, the spacing along it, the other weapon set's row, the countdown and target count on the icons and the shade over a skill in use are all put back and stay off; the settings are kept for when you turn it on again. The health, magicka and stamina bars are not affected.",
 
 	-- ---- The gaps along the skill bar ----------------------------------------------------
 	SI_PBSCHC_SECTION_GAPS = "Spacing along the skill bar",

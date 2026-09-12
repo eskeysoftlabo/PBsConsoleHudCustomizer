@@ -236,6 +236,11 @@ addon.POSITION_KEYS = { "x", "y" }
 addon.accountDefaults = {
 	enabled = true,
 	preview = true,
+	-- Whether the skill bar is this add-on's to touch at all. Off, everything it does to the
+	-- bar -- the place, the size, the gaps, the other weapon set's row, the text on the icons and
+	-- the shade -- is put back and stays off, so another add-on that lays the bar out has it to
+	-- itself. The three attribute bars are unaffected.
+	skillBar = true,
 	bars = {},
 	spacing = {},
 	measured = {},
@@ -292,6 +297,9 @@ function addon:Account()
 	end
 	if account.preview == nil then
 		account.preview = true
+	end
+	if account.skillBar == nil then
+		account.skillBar = true
 	end
 	if type(account.bars) ~= "table" then
 		account.bars = {}
@@ -360,6 +368,17 @@ end
 
 function addon:Measured(bar)
 	return self:Account().measured[bar.key]
+end
+
+-- Whether this add-on touches the skill bar. Everything it draws on or writes to the bar asks
+-- this first, and everything it has already written is put back the moment the answer changes.
+function addon:SkillBarAllowed()
+	local account = self:Account()
+	return account.enabled == true and account.skillBar ~= false
+end
+
+function addon:SetSkillBarAllowed(allowed)
+	self:Account().skillBar = allowed and true or false
 end
 
 -- ---------------------------------------------------------------------------------------
@@ -495,6 +514,9 @@ function addon:BarDiffers(bar)
 	if not self:Account().enabled then
 		return false
 	end
+	if bar.isActionBar and not self:SkillBarAllowed() then
+		return false
+	end
 	if self:ScalePercent(bar) ~= self.DEFAULT_SCALE then
 		return true
 	end
@@ -551,7 +573,9 @@ function addon:BarsReady()
 		return false
 	end
 	for _, bar in ipairs(self.elements) do
-		if not self:Control(bar) then
+		-- A skill bar this add-on has been told to leave alone is not a reason to wait: the
+		-- attribute bars are still its to place.
+		if not (bar.isActionBar and not self:SkillBarAllowed()) and not self:Control(bar) then
 			return false
 		end
 	end
@@ -967,8 +991,9 @@ function addon:PrintStatus()
 	local rootWidth, rootHeight = self:RootSize()
 
 	Line("|cFF69B4%s|r", self.title)
-	Line("  bars ready=%s  screen=%dx%d  enabled=%s preview=%s", tostring(self:BarsReady()),
-		Round(rootWidth), Round(rootHeight), tostring(account.enabled), tostring(account.preview))
+	Line("  bars ready=%s  screen=%dx%d  enabled=%s preview=%s  skill bar=%s", tostring(self:BarsReady()),
+		Round(rootWidth), Round(rootHeight), tostring(account.enabled), tostring(account.preview),
+		self:SkillBarAllowed() and "controlled" or "|cFFFF80left alone|r")
 	if self.measureNote then
 		Line("  %s", self.measureNote)
 	end
@@ -1072,6 +1097,7 @@ local function Usage()
 	Line("  %s slots                  -- what is on each slot, and why", SLASH)
 	Line("  %s plain                  -- what the plain look is really doing", SLASH)
 	Line("  %s backbar [on|off|empty|<scale>] -- the other weapon set's row", SLASH)
+	Line("  %s skillbar on|off        -- whether the skill bar is this add-on's to touch", SLASH)
 	Line("  %s on | off               -- switch every change on or off", SLASH)
 	Line("  %s preview                -- show or hide the preview frames", SLASH)
 	Line("  %s reset [bar]            -- back to the game's own", SLASH)
@@ -1234,6 +1260,16 @@ local function OnSlash(argumentString)
 		addon:Refresh()
 		Line("back bar: on=%s empty=%s scale=%d%%", tostring(back.enabled ~= false),
 			tostring(back.showEmpty ~= false), addon:BackBarScale())
+	elseif command == "skillbar" then
+		local what = (args[2] or ""):lower()
+		if what ~= "on" and what ~= "off" then
+			Line("usage: %s skillbar on|off", SLASH)
+			return
+		end
+		addon:SetSkillBarAllowed(what == "on")
+		addon:Refresh()
+		Line("the skill bar is %s", addon:SkillBarAllowed() and "this add-on's to touch"
+			or "left alone -- position, size, gaps, the other set's row, the text and the shade are all off")
 	elseif command == "on" or command == "off" then
 		account.enabled = command == "on"
 		addon:Refresh()

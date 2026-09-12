@@ -200,6 +200,30 @@ function addon:InitSettings()
 		local barName = GetString(_G[bar.stringId])
 		AddHeading(settings, LibHarvensAddonSettings, barName)
 
+		-- The skill bar can be handed back whole, for an install that has another add-on laying
+		-- it out. Everything below in this section, and the gaps, the other weapon set's row, the
+		-- text on the icons and the shade, all go with it.
+		if bar.isActionBar then
+			settings:AddSetting(
+				{
+					type = LibHarvensAddonSettings.ST_CHECKBOX,
+					label = GetString(SI_PBSCHC_SKILLBAR_ENABLED),
+					tooltip = GetString(SI_PBSCHC_SKILLBAR_ENABLED_TOOLTIP),
+					default = true,
+					getFunction = function()
+						return self:Account().skillBar ~= false
+					end,
+					setFunction = function(value)
+						self:SetSkillBarAllowed(value)
+						self:Refresh()
+						if settings.UpdateControls then
+							settings:UpdateControls()
+						end
+					end
+				}
+			)
+		end
+
 		AddPositionSlider(self, settings, LibHarvensAddonSettings, bar, "x",
 			zo_strformat(GetString(SI_PBSCHC_POSITION_X), barName), GetString(SI_PBSCHC_POSITION_X_TOOLTIP),
 			-halfWidth, halfWidth)

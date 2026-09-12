@@ -151,19 +151,25 @@ function preview:Update()
 
 	for index, bar in ipairs(addon.elements) do
 		local frame = self:Frame(bar, index)
-		local position = addon:EffectivePosition(bar)
-		local scale = addon:EffectiveScalePercent(bar) / 100
 		local control = frame.control
-		control:ClearAnchors()
-		control:SetAnchor(CENTER, self.control, BOTTOM, position.x, -position.y)
-		control:SetDimensions(addon.GAME.barWidth * scale, addon.GAME.barHeight * scale)
-		-- The name is drawn at the same scale as the bar, so a bar shrunk to half size looks
-		-- half size here too rather than being filled by its own label.
-		frame.label:SetScale(scale)
+		-- A skill bar this add-on has been told to leave alone is not drawn here either: the
+		-- outline would promise something the panel no longer does.
+		local drawn = not (bar.isActionBar and not addon:SkillBarAllowed())
+		control:SetHidden(not drawn)
+		if drawn then
+			local position = addon:EffectivePosition(bar)
+			local scale = addon:EffectiveScalePercent(bar) / 100
+			control:ClearAnchors()
+			control:SetAnchor(CENTER, self.control, BOTTOM, position.x, -position.y)
+			control:SetDimensions(addon.GAME.barWidth * scale, addon.GAME.barHeight * scale)
+			-- The name is drawn at the same scale as the bar, so a bar shrunk to half size looks
+			-- half size here too rather than being filled by its own label.
+			frame.label:SetScale(scale)
 
-		local top = rootHeight - position.y - (addon.GAME.barHeight * scale) / 2
-		if top < highest then
-			highest = top
+			local top = rootHeight - position.y - (addon.GAME.barHeight * scale) / 2
+			if top < highest then
+				highest = top
+			end
 		end
 	end
 

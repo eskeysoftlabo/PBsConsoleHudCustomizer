@@ -28,7 +28,7 @@ print("\n== 1. load ==")
 Fire(EVENT_ADD_ON_LOADED, "PBsConsoleHudCustomizer")
 local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 local health, magicka, stamina = addon.barByKey.health, addon.barByKey.magicka, addon.barByKey.stamina
-check("version read from manifest", addon.version, "1.5.0")
+check("version read from manifest", addon.version, "1.6.0")
 check("slash command registered", type(SLASH_COMMANDS["/pbhud"]), "function")
 check("short slash command registered", type(SLASH_COMMANDS["/pbhc"]), "function")
 check("HUD fragment callback registered", addon.hudRegistered, true)
@@ -47,7 +47,9 @@ check("HUD fragment callback registered", addon.hudRegistered, true)
 -- 3 checkboxes, 2 more size sliders and the button that puts the other set back to following),
 -- the shade (heading, label, 2 checkboxes, slider, dropdown) and the general section (heading,
 -- button, hint)
-check("settings rows", #PanelRows, 3 + 4 + 4 * 5 + 5 + 6 + 11 + 6 + 3)
+-- ... and the skill bar's section carries one more row than the other three: the switch that
+-- hands the whole bar back.
+check("settings rows", #PanelRows, 3 + 4 + 4 * 5 + 1 + 5 + 6 + 11 + 6 + 3)
 
 print("\n== 2. the first apply waits for the bars ==")
 Fire(EVENT_PLAYER_ACTIVATED)
@@ -790,6 +792,56 @@ check("the old key is cleared away", addon.account.liquidStrength, nil)
 SLASH_COMMANDS["/pbhud"]("style liquid")
 check("so does the command", addon:BarStyle(), "plain")
 SLASH_COMMANDS["/pbhud"]("style standard")
+
+print("\n== 36. handing the skill bar back to another add-on ==")
+SavedStore.PBsConsoleHudCustomizer_Data = nil
+addon.account = ZO_SavedVars:NewAccountWide("PBsConsoleHudCustomizer_Data", 1, nil, addon.accountDefaults)
+addon:Account()
+addon.written, addon.original = {}, {}
+addon.skillbar.original, addon.skillbar.written = nil, false
+BuildAttributeBars()
+SetAllSlots()
+SetSlot(HOTBAR_CATEGORY_PRIMARY, 3, { name = "Front 3", icon = "front3.dds", id = 103, remaining = 9000, duration = 20000 })
+addon:CaptureAll()
+FireHud(SCENE_FRAGMENT_SHOWN)
+
+-- Everything the add-on does to the bar, on.
+Row(GetString(SI_PBSCHC_POSITION_Y):gsub("<<1>>", GetString(SI_PBSCHC_BAR_SKILLBAR))).setFunction(300)
+Row(GetString(SI_PBSCHC_SCALE):gsub("<<1>>", GetString(SI_PBSCHC_BAR_SKILLBAR))).setFunction(80)
+Row(GetString(SI_PBSCHC_GAP_ULTIMATE)).setFunction(12)
+RunUpdates()
+check("the bar is moved", BarAnchor(SKILLBAR), "128->GuiRoot 4 (0,-300)")
+check("the gaps are ours", BarAnchor("ActionButton8"), "2->ActionButton7 8 (12,0)")
+check("the other set's row is drawn", CreatedControls["PBsConsoleHudCustomizerBack3"]:IsHidden(), false)
+check("the game's countdown is faded", _G["ActionButton3"].namedChildren.TimerText:GetAlpha(), 0)
+
+-- Handed back.
+Row(GetString(SI_PBSCHC_SKILLBAR_ENABLED)).setFunction(false)
+check("the bar goes back where the game has it", BarAnchor(SKILLBAR), "4->GuiRoot 4 (0,-25)")
+check("at the game's size", _G[SKILLBAR]:GetScale(), 1)
+check("the gaps go back too", BarAnchor("ActionButton8"), "2->ActionButton7 8 (65,0)")
+check("the row goes", CreatedControls["PBsConsoleHudCustomizerBack3"]:IsHidden(), true)
+check("the game's countdown is handed back", _G["ActionButton3"].namedChildren.TimerText:GetAlpha(), 1)
+check("the shade goes", CreatedControls["PBsConsoleHudCustomizerShade3"]:IsHidden(), true)
+check("and the loop stops", UpdateRegistered("PBsConsoleHudCustomizerTimers"), false)
+check("nothing of ours differs any more", addon:AnythingDiffers(), false)
+-- Another add-on lays the bar out its own way; the watch must not take it back.
+_G[SKILLBAR]:ClearAnchors()
+_G[SKILLBAR]:SetAnchor(TOP, GuiRoot, TOP, 0, 40)
+addon:Verify()
+RunUpdates()
+check("and the watch leaves it alone", BarAnchor(SKILLBAR), "1->GuiRoot 1 (0,40)")
+
+-- The attribute bars are none of its business.
+Row(GetString(SI_PBSCHC_POSITION_Y):gsub("<<1>>", GetString(SI_PBSCHC_BAR_HEALTH))).setFunction(420)
+check("the health bar still moves", BarAnchor(HEALTH), "128->GuiRoot 4 (0,-420)")
+
+-- And back: the settings were kept.
+Row(GetString(SI_PBSCHC_SKILLBAR_ENABLED)).setFunction(true)
+RunUpdates()
+check("the bar is placed again", BarAnchor(SKILLBAR), "128->GuiRoot 4 (0,-300)")
+check("the gaps come back", BarAnchor("ActionButton8"), "2->ActionButton7 8 (12,0)")
+check("and so does the row", CreatedControls["PBsConsoleHudCustomizerBack3"]:IsHidden(), false)
 
 print("")
 if failures == 0 then

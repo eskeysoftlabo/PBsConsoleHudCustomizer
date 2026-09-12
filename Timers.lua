@@ -162,7 +162,7 @@ function addon:TimerMode()
 end
 
 function addon:ShowsTimerOn(isBackBar)
-	if not self:Account().enabled then
+	if not self:SkillBarAllowed() then
 		return false
 	end
 	-- The game never writes a number on the set you are not on, so that one is always ours.
@@ -184,11 +184,11 @@ function addon:DimsGameTimer()
 end
 
 function addon:ShowsCount()
-	return self:Account().enabled and self:Text().showCounts ~= false
+	return self:SkillBarAllowed() and self:Text().showCounts ~= false
 end
 
 function addon:BackBarEnabled()
-	if not (self:Account().enabled and self:BackBar().enabled ~= false) then
+	if not (self:SkillBarAllowed() and self:BackBar().enabled ~= false) then
 		return false
 	end
 	-- Welded to one bar -- the Oakensoul Ring and anything like it, or a character that has not
@@ -221,7 +221,7 @@ function addon:Shade()
 end
 
 function addon:ShadeEnabled()
-	return self:Account().enabled and self:Shade().enabled ~= false
+	return self:SkillBarAllowed() and self:Shade().enabled ~= false
 end
 
 function addon:ShadeDarkness()
@@ -1058,7 +1058,7 @@ end
 -- update behind a menu would be work for nothing, and on console every frame of it is billed to
 -- the pool every add-on shares.
 function timers:Wanted()
-	if not addon:Account().enabled then
+	if not addon:SkillBarAllowed() then
 		return false
 	end
 	-- Moving a slider in the settings panel calls Refresh, and the HUD is not up there: without

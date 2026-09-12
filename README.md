@@ -6,7 +6,7 @@ as a shade that clears down the icon, a countdown, and a target count -- in The 
 Online on console.
 
 - **Author:** PinkBanther
-- **Version:** 1.5.0
+- **Version:** 1.6.0
 - **Optional:** `LibHarvensAddonSettings` >= 20106 (for the settings panel; the chat commands work
   without it)
 
@@ -73,6 +73,15 @@ runs on both weapon sets.
 The sweep is the game's own `Cooldown` control — the same machinery as an ability cooldown — given
 the effect's real length, so it is always exactly as long as the effect and costs nothing per
 frame. How dark it is, whether the moving edge is lit, and which way it clears are all settings.
+
+### Leaving the skill bar alone
+
+**Let this add-on touch the skill bar**, at the top of the skill bar's section, hands the whole
+bar back to the game and to any other add-on that lays it out. Its position and size, the spacing
+along it, the other weapon set's row, the countdown and target count on the icons and the shade
+over a skill in use are all put back and stay off — including the watch that would otherwise put
+them back. Your settings are kept for when you turn it on again, and the health, magicka and
+stamina bars are not affected.
 
 ### Spacing along the skill bar
 
@@ -172,6 +181,7 @@ which is the quickest way to check the two agree.
 /pbhud timers addon|both|game      whose countdown goes on the front bar
 /pbhud slots                       what is on each slot, and why
 /pbhud backbar [on|off|empty|<n>]  the other weapon set's row
+/pbhud skillbar on|off             whether the skill bar is this add-on's to touch
 /pbhud on | off                    switch every change on or off
 /pbhud preview                     show or hide the preview outlines
 /pbhud reset [bar]                 back to the game's own

@@ -517,6 +517,27 @@ put back the moment it is not.
 
 `/pbhud plain` prints the same chain the liquid one did.
 
+## 30. One switch that really does hand the bar back
+
+Another add-on laying out the skill bar has to be able to have it. "Off" here cannot mean "stop
+writing": this add-on re-anchors the bar and its buttons, fades a client label, builds controls
+parented to the buttons, and has a watch that puts all of that back once a second. Any one of
+those left running is a fight.
+
+So `SkillBarAllowed()` is asked by all of them, and the existing paths do the rest without a
+special case:
+
+| | asks it through | what happens when it says no |
+| --- | --- | --- |
+| position, size | `BarDiffers` | `ApplyBar` restores the anchor and the scale |
+| the gaps | `SpacingDiffers` | `skillbar:Apply` restores every button's anchor |
+| the row, the text, the shade | `Wanted`, `ShowsTimerOn`, `ShowsCount`, `BackBarEnabled`, `ShadeEnabled` | the loop hides its controls, hands the client's countdown back its alpha, and unregisters |
+| the watch | `AnythingDiffers` | nothing differs, so it writes nothing |
+| the preview | drawn per element | the skill bar's outline is not drawn |
+
+`BarsReady()` stops asking for `ZO_ActionBar1` as well: a bar this add-on has been told to leave
+alone is not a reason to hold up the three attribute bars.
+
 ---
 
 ## Still to measure on a PS5
