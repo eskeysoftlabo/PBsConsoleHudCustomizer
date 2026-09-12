@@ -943,6 +943,7 @@ local function Usage()
 	Line("  %s style standard|liquid  -- the look of the three resource bars", SLASH)
 	Line("  %s shade [on|off|up|down|<n>] -- the shade over a skill while its effect runs", SLASH)
 	Line("  %s slots                  -- what is on each slot, and why", SLASH)
+	Line("  %s liquid                 -- what the liquid look is really doing", SLASH)
 	Line("  %s backbar [on|off|empty|<scale>] -- the other weapon set's row", SLASH)
 	Line("  %s on | off               -- switch every change on or off", SLASH)
 	Line("  %s preview                -- show or hide the preview frames", SLASH)
@@ -961,6 +962,10 @@ local function OnSlash(argumentString)
 
 	if command == "status" then
 		addon:PrintStatus()
+	elseif command == "liquid" then
+		if addon.liquid then
+			addon.liquid:PrintStatus()
+		end
 	elseif command == "slots" or command == "skills" then
 		if addon.timers then
 			addon.timers:PrintSlots()

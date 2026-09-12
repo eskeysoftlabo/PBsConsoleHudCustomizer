@@ -44,11 +44,11 @@ local UPDATE_INTERVAL_MS = 50
 -- One band's travel in milliseconds, and how wide it is. Two of them, at different speeds, is
 -- what stops the movement from looking like a single sliding object.
 local BANDS = {
-	{ name = "Band1", periodMs = 5200, width = 48, alpha = 0.25 },
-	{ name = "Band2", periodMs = 8300, width = 80, alpha = 0.18 },
+	{ name = "Band1", periodMs = 5200, width = 70, alpha = 0.45 },
+	{ name = "Band2", periodMs = 8300, width = 120, alpha = 0.3 },
 }
 
-local SURFACE_WIDTH = 11
+local SURFACE_WIDTH = 14
 local SURFACE_PERIOD_MS = 2600
 
 -- Which bar control belongs to which attribute, and which way it fills. The two halves of the
@@ -276,7 +276,7 @@ function liquid:UpdateOverlay(overlay, fraction, now, strength)
 	control:SetWidth(fillWidth)
 
 	if overlay.depth then
-		overlay.depth:SetAlpha(0.3 * strength)
+		overlay.depth:SetAlpha(0.45 * strength)
 	end
 
 	for index, band in ipairs(BANDS) do
@@ -288,7 +288,7 @@ function liquid:UpdateOverlay(overlay, fraction, now, strength)
 	-- part of the frame.
 	local surface = overlay.surface
 	if surface then
-		local pulse = 0.55 + 0.2 * math.sin(now / SURFACE_PERIOD_MS * 2 * math.pi)
+		local pulse = 0.75 + 0.25 * math.sin(now / SURFACE_PERIOD_MS * 2 * math.pi)
 		surface:ClearAnchors()
 		if overlay.reverse then
 			surface:SetAnchor(TOPLEFT, control, TOPLEFT, 0, 0)
@@ -366,6 +366,61 @@ function liquid:Refresh()
 	else
 		self:Stop()
 	end
+end
+
+-- ---------------------------------------------------------------------------------------
+-- What the liquid is really doing
+--
+-- "It is not working" has several answers -- the style is still Standard, the bar control was
+-- not found, the overlay was never built, the bar itself is faded out because the game hides
+-- full bars out of combat -- and they look identical from the HUD. This prints all of them.
+-- ---------------------------------------------------------------------------------------
+
+function liquid:PrintStatus()
+	local Line = addon.Line
+	Line("|cFF69B4%s|r -- the liquid look", addon.title)
+	Line("  style=%s strength=%d%% wanted=%s running=%s hud=%s", addon:BarStyle(), addon:LiquidStrength(),
+		tostring(addon:LiquidWanted()), tostring(self.running == true), tostring(self.hudShown ~= false))
+	if addon:BarStyle() ~= "liquid" then
+		Line("  the style is Standard, so nothing is drawn. Set it in the settings panel, or")
+		Line("  |cFFFFFF%s style liquid|r", addon.slash)
+	end
+
+	for _, bar in ipairs(self.bars) do
+		local fraction = self:Fraction(bar)
+		Line("|cFF69B4  %s|r  full=%s", bar.key, fraction and string.format("%d%%", Round(fraction * 100)) or "unknown")
+		for _, entry in ipairs(bar.controls) do
+			local control = _G[entry.name]
+			if not control then
+				Line("    %s: not on this client", entry.name)
+			else
+				local okWidth, width = pcall(control.GetWidth, control)
+				local okAlpha, alpha = pcall(control.GetAlpha, control)
+				local okHidden, hidden = pcall(control.IsHidden, control)
+				local overlay = self.overlays[entry.name]
+				Line("    %s: bar %s wide, alpha=%s hidden=%s", entry.name,
+					okWidth and tostring(Round(width)) or "?", okAlpha and string.format("%.2f", alpha) or "?",
+					okHidden and tostring(hidden) or "?")
+				if overlay then
+					local okOverlay, overlayWidth = pcall(overlay.control.GetWidth, overlay.control)
+					Line("      overlay: %s wide, hidden=%s, fills %s",
+						okOverlay and tostring(Round(overlayWidth)) or "?", tostring(overlay.control:IsHidden()),
+						overlay.reverse and "leftwards" or "rightwards")
+				else
+					Line("      overlay: |cFF4040not built|r")
+				end
+			end
+		end
+	end
+
+	if addon.writeErrors and addon.writeErrors.PBsConsoleHudCustomizerLiquid then
+		Line("  |cFF4040the template was refused|r: %s", tostring(addon.writeErrors.PBsConsoleHudCustomizerLiquid))
+	end
+	if addon.timers and addon.timers.usedFallback then
+		Line("  controls were built in plain Lua: Controls.xml did not load")
+	end
+	Line("  the bars themselves fade out when they are full and you are out of combat, and this")
+	Line("  is drawn inside them -- so check it with a bar part-empty, or in a fight.")
 end
 
 function liquid:OnHudStateChange(shown)

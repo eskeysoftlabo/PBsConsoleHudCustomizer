@@ -399,6 +399,22 @@ local FALLBACK_PARTS = {
 		{ name = "Count", kind = "label", point = "TOPRIGHT", relative = "TOPRIGHT", x = 2, y = -4, level = 3 },
 	},
 	PBsConsoleHudCustomizerShade = {},
+	-- The liquid overlay. Anchors and widths are all set from Lua every tick, so the parts only
+	-- need to exist with the right textures on them.
+	PBsConsoleHudCustomizerLiquid = {
+		{ name = "Depth", kind = "texture", point = "TOPLEFT", relative = "TOPLEFT", x = 0, y = 0, fill = true,
+			file = "EsoUI/Art/UnitAttributeVisualizer/attributeBar_dynamic_fill_gloss.dds",
+			colour = { 0, 0, 0, 0.45 }, coords = { 0, 1, 0.53125, 0 }, level = 1 },
+		{ name = "Band1", kind = "texture", point = "TOPLEFT", relative = "TOPLEFT", x = 0, y = 0,
+			file = "EsoUI/Art/Miscellaneous/progressbar_genericFill_gloss.dds",
+			colour = { 1, 1, 1, 0.45 }, width = 70, level = 2 },
+		{ name = "Band2", kind = "texture", point = "TOPLEFT", relative = "TOPLEFT", x = 0, y = 0,
+			file = "EsoUI/Art/Miscellaneous/progressbar_genericFill_gloss.dds",
+			colour = { 1, 1, 1, 0.3 }, width = 120, level = 2 },
+		{ name = "Surface", kind = "texture", point = "TOPRIGHT", relative = "TOPRIGHT", x = 0, y = 0,
+			file = "EsoUI/Art/UnitAttributeVisualizer/attributeBar_dynamic_leadingEdge_gloss.dds",
+			colour = { 1, 1, 1, 1 }, width = 14, level = 3 },
+	},
 }
 
 -- A template whose own control is not a plain one.
@@ -442,8 +458,14 @@ function timers:BuildFallback(name, parent, template)
 		if part.file then
 			child:SetTexture(part.file)
 		end
+		if part.fill then
+			child:SetAnchor(BOTTOMRIGHT, control, BOTTOMRIGHT, 0, 0)
+		end
 		if part.coords and type(child.SetTextureCoords) == "function" then
 			child:SetTextureCoords(unpack(part.coords))
+		end
+		if part.colour and type(child.SetColor) == "function" then
+			child:SetColor(unpack(part.colour))
 		end
 		if part.level and type(child.SetDrawLevel) == "function" then
 			child:SetDrawLevel(part.level)

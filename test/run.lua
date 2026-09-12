@@ -28,7 +28,7 @@ print("\n== 1. load ==")
 Fire(EVENT_ADD_ON_LOADED, "PBsConsoleHudCustomizer")
 local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 local health, magicka, stamina = addon.barByKey.health, addon.barByKey.magicka, addon.barByKey.stamina
-check("version read from manifest", addon.version, "1.3.0")
+check("version read from manifest", addon.version, "1.3.1")
 check("slash command registered", type(SLASH_COMMANDS["/pbhud"]), "function")
 check("short slash command registered", type(SLASH_COMMANDS["/pbhc"]), "function")
 check("HUD fragment callback registered", addon.hudRegistered, true)
@@ -577,6 +577,33 @@ FireHud(SCENE_FRAGMENT_SHOWN)
 check("and comes back", UpdateRegistered("PBsConsoleHudCustomizerLiquid"), true)
 Row(GetString(SI_PBSCHC_STYLE)).setFunction(nil, nil, { data = "standard" })
 check("standard puts it away again", UpdateRegistered("PBsConsoleHudCustomizerLiquid"), false)
+
+print("\n== 27. the liquid survives a template that did not load ==")
+-- Every other control of this add-on falls back to plain Lua when Controls.xml is not there.
+-- The liquid did not, which is exactly the shape of "everything works except the liquid".
+Row(GetString(SI_PBSCHC_STYLE)).setFunction(nil, nil, { data = "liquid" })
+addon.liquid.overlays["ZO_PlayerAttributeStaminaBar"] = nil
+CreatedControls["PBsConsoleHudCustomizerLiquidZO_PlayerAttributeStaminaBar"] = nil
+addon.timers.usedFallback = false
+addon.writeErrors = nil
+local realCreate = CreateControlFromVirtual
+CreateControlFromVirtual = function() error("no such template") end
+local overlay = addon.liquid:Overlay({ name = "ZO_PlayerAttributeStaminaBar", reverse = false })
+CreateControlFromVirtual = realCreate
+check("the overlay is built anyway", overlay ~= nil, true)
+check("with its bands", overlay ~= nil and overlay.bands[1] ~= nil, true)
+check("and its surface", overlay ~= nil and overlay.surface ~= nil, true)
+check("the refusal is recorded", (addon.writeErrors or {}).PBsConsoleHudCustomizerLiquid ~= nil, true)
+RunUpdates()
+check("and it draws", overlay ~= nil and not overlay.control:IsHidden(), true)
+addon.writeErrors = nil
+addon.timers.usedFallback = false
+
+-- The diagnostic has to work in every one of those states, because it is what says which.
+addon.liquid:PrintStatus()
+Row(GetString(SI_PBSCHC_STYLE)).setFunction(nil, nil, { data = "standard" })
+addon.liquid:PrintStatus()
+check("the diagnostic runs in either style", true, true)
 
 print("")
 if failures == 0 then

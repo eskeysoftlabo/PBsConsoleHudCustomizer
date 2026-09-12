@@ -6,7 +6,7 @@ as a shade that clears down the icon, a countdown, and a target count -- in The 
 Online on console.
 
 - **Author:** PinkBanther
-- **Version:** 1.3.0
+- **Version:** 1.3.1
 - **Optional:** `LibHarvensAddonSettings` >= 20106 (for the settings panel; the chat commands work
   without it)
 
@@ -209,6 +209,18 @@ back.
   the game's settings under Settings > Interface.
 - **The order or the colours of the bars**, the werewolf / mount / siege bars' own positions, and
   anything else on the HUD.
+
+### If the liquid does not appear
+
+```
+/pbhud liquid
+```
+
+prints what it is doing: whether the style is actually Liquid, whether the loop is running,
+whether each bar control was found and its overlay built, how full the bar is, and the alpha the
+game has the bar at. That last one is the usual answer — **the game fades the resource bars out
+while they are full and you are out of combat**, and the liquid is drawn inside them, so look at a
+bar that is part-empty or wait until a fight.
 
 ## If something is not showing
 

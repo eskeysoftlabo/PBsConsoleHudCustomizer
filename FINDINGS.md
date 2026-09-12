@@ -370,6 +370,19 @@ Two things have to be worked out rather than read:
 At 20 updates a second, and only while the HUD is up and the style is chosen: on Standard, the
 default, nothing is built and no update is registered.
 
+## 21. Every control needs the fallback, not most of them
+
+1.3.0 shipped the liquid overlay as the only control without a plain-Lua fallback for a template
+that did not build, and the shape of that bug is exactly what came back from the PS5: everything
+else working, the liquid doing nothing, and nothing to read anywhere. The fallback list now
+covers every template this add-on has, and `/pbhud liquid` prints the whole chain -- style, loop,
+each bar control, each overlay, the fraction, and the alpha the game has the bar at.
+
+The last of those is worth knowing on its own: the attribute bars fade themselves out while they
+are full and the player is out of combat, and anything parented to them fades with them. A liquid
+effect checked at full health outside a fight is invisible for a reason that has nothing to do
+with the liquid.
+
 ---
 
 ## Still to measure on a PS5
