@@ -6,7 +6,7 @@ as a shade that clears down the icon, a countdown, and a target count -- in The 
 Online on console.
 
 - **Author:** PinkBanther
-- **Version:** 1.6.0
+- **Version:** 1.6.1
 - **Optional:** `LibHarvensAddonSettings` >= 20106 (for the settings panel; the chat commands work
   without it)
 
@@ -51,7 +51,7 @@ gives it the same size so the pair still lines up.
 
 - **Standard** — the game's own bars, untouched. Nothing is built and nothing runs.
 - **Plain** — each bar as a flat rectangle: a dark track, and a solid block in that power's own
-  colour. The game's arrow-shaped frame and background are put away while this is chosen, and come
+  colour, with the game's own resource numbers lifted over it. The game's arrow-shaped frame and background are put away while this is chosen, and come
   straight back when it is not. **How solid** takes the rectangles from fully opaque down to
   letting the game's own fill show through, and **Keep the game's frame** leaves the arrows in
   place if you want the rectangle inside them.

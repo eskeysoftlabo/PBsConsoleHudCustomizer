@@ -28,7 +28,7 @@ print("\n== 1. load ==")
 Fire(EVENT_ADD_ON_LOADED, "PBsConsoleHudCustomizer")
 local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 local health, magicka, stamina = addon.barByKey.health, addon.barByKey.magicka, addon.barByKey.stamina
-check("version read from manifest", addon.version, "1.6.0")
+check("version read from manifest", addon.version, "1.6.1")
 check("slash command registered", type(SLASH_COMMANDS["/pbhud"]), "function")
 check("short slash command registered", type(SLASH_COMMANDS["/pbhc"]), "function")
 check("HUD fragment callback registered", addon.hudRegistered, true)
@@ -842,6 +842,64 @@ RunUpdates()
 check("the bar is placed again", BarAnchor(SKILLBAR), "128->GuiRoot 4 (0,-300)")
 check("the gaps come back", BarAnchor("ActionButton8"), "2->ActionButton7 8 (12,0)")
 check("and so does the row", CreatedControls["PBsConsoleHudCustomizerBack3"]:IsHidden(), false)
+
+print("\n== 37. the three things the PS5 came back with ==")
+-- (a) A target count that appeared and vanished again in the same breath. Re-applying a
+-- damage-over-time on a target that already has it sends the new application first and the old
+-- one's fade after it, and the fade was taken at face value.
+addon.timers:Forget_All()
+addon.account.text.countFromOne = true
+SetAllSlots()
+SetSlot(HOTBAR_CATEGORY_PRIMARY, 5, { name = "Twin Slashes", icon = "slash.dds", id = 150, remaining = 10000, duration = 10000 })
+FireHud(SCENE_FRAGMENT_SHOWN)
+local now3 = GetGameTimeMilliseconds()
+FireEffect(EFFECT_RESULT_GAINED, "Twin Slashes", "", (now3 + 10000) / 1000, 55, 150)
+RunUpdates()
+local count5 = addon.timers.labels[5].count
+check("the count is written", count5:GetText(), "1")
+-- Cast again: a new application, then the old one's fade.
+FireEffect(EFFECT_RESULT_GAINED, "Twin Slashes", "", (now3 + 20000) / 1000, 55, 150)
+FireEffect(EFFECT_RESULT_FADED, "Twin Slashes", "", (now3 + 10000) / 1000, 55, 150)
+RunUpdates()
+check("a fade for the instance just replaced is ignored", count5:IsHidden(), false)
+check("and the count still stands", count5:GetText(), "1")
+check("it was counted as stale", addon.timers.staleFades >= 1, true)
+-- A real fade, of the instance on record, does end it.
+FireEffect(EFFECT_RESULT_FADED, "Twin Slashes", "", (now3 + 20000) / 1000, 55, 150)
+RunUpdates()
+check("the real fade ends it", count5:IsHidden(), true)
+-- An effect whose end time has already gone by is the two clocks disagreeing, not an effect that
+-- is over: kept until its own fade rather than dropped the moment it is looked at.
+FireEffect(EFFECT_RESULT_GAINED, "Twin Slashes", "", (now3 - 5000) / 1000, 55, 150)
+RunUpdates()
+check("an effect that arrives already over is kept", count5:GetText(), "1")
+check("and counted as the oddity it is", (addon.timers.pastEffects or 0) >= 1, true)
+FireEffect(EFFECT_RESULT_FADED, "Twin Slashes", "", 0, 55, 150)
+RunUpdates()
+
+-- (b) The game's own countdown came back from behind ours. ActionButton:ApplyStyle re-applies
+-- the platform template on every HandleSlotChanged -- a weapon swap, a zone load, a slot change
+-- -- and hands the label its alpha back.
+addon.account.text.timerMode = "addon"
+SetSlot(HOTBAR_CATEGORY_PRIMARY, 3, { name = "Front 3", icon = "front3.dds", id = 103, remaining = 9000, duration = 20000 })
+RunUpdates()
+local gameTimer3 = _G["ActionButton3"].namedChildren.TimerText
+check("faded to begin with", gameTimer3:GetAlpha(), 0)
+gameTimer3:SetAlpha(1) -- the client's template, re-applied
+RunUpdates()
+check("and faded again the moment it is back", gameTimer3:GetAlpha(), 0)
+check("which is counted", (addon.timers.redims or 0) >= 2, true)
+
+-- (c) The resource numbers were behind the plain rectangle: the numbers are drawn at the
+-- default tier and the rectangles at HIGH.
+Row(GetString(SI_PBSCHC_STYLE)).setFunction(nil, nil, { data = "plain" })
+RunUpdates()
+local numbers = _G.ZO_PlayerAttributeMagickaResourceNumbers
+check("the numbers are lifted to the rectangle's tier", numbers:GetDrawTier(), DT_HIGH)
+check("and above it", numbers:GetDrawLevel() > 1, true)
+Row(GetString(SI_PBSCHC_STYLE)).setFunction(nil, nil, { data = "standard" })
+check("and put back when the style is", numbers:GetDrawTier(), "medium")
+check("at the level the client had them", numbers:GetDrawLevel(), 0)
 
 print("")
 if failures == 0 then

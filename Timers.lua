@@ -328,12 +328,32 @@ function timers:Track(key, abilityId, icon, unitKey, endMs, now)
 	end
 end
 
-function timers:Forget(key, unitKey)
+-- How far apart two instances' end times have to be before a fade is taken for a stale one.
+local FADE_TOLERANCE_MS = 250
+
+-- A fade is not always the end of the effect. Re-applying a damage-over-time on a target that
+-- already has it sends the new application first and the old one's fade **after** it, and
+-- dropping the unit on that fade is what makes a target count appear and vanish again in the
+-- same breath -- which is exactly what came back from the PS5.
+--
+-- The fade carries the end time of the instance that faded, so the two can be told apart: a fade
+-- whose instance was due to end well before what is on record is a fade for something that has
+-- already been replaced, and it is ignored.
+function timers:Forget(key, unitKey, fadedEnd, now)
 	local entry = effects[key]
 	if not entry then
 		return
 	end
+	local stored = entry.units[unitKey]
+	if stored == nil then
+		return
+	end
+	if stored ~= 0 and fadedEnd and fadedEnd ~= 0 and stored > fadedEnd + FADE_TOLERANCE_MS and stored > (now or 0) then
+		self.staleFades = (self.staleFades or 0) + 1
+		return
+	end
 	entry.units[unitKey] = nil
+	self.fades = (self.fades or 0) + 1
 	if next(entry.units) == nil then
 		effects[key] = nil
 		effectCount = effectCount - 1
@@ -356,12 +376,23 @@ function timers:OnEffectChanged(_, changeType, _, effectName, unitTag, beginTime
 	local now = GetGameTimeMilliseconds and GetGameTimeMilliseconds() or 0
 	local unitKey = (type(unitId) == "number" and unitId ~= 0) and unitId or (unitTag ~= "" and unitTag or "?")
 
-	if changeType == EFFECT_RESULT_FADED then
-		self:Forget(key, unitKey)
-		return
-	end
 	-- endTime is in seconds on the game clock, and 0 for something that does not expire.
 	local endMs = (type(endTime) == "number" and endTime > 0) and math.floor(endTime * 1000) or 0
+
+	if changeType == EFFECT_RESULT_FADED then
+		self:Forget(key, unitKey, endMs, now)
+		return
+	end
+	self.gains = (self.gains or 0) + 1
+
+	-- An effect that arrives already over is not an effect that is over: it is the two clocks
+	-- disagreeing, and taken at face value it would be dropped the moment it is looked at, which
+	-- is the other way a count can flash. Kept as one that does not expire instead, to be ended
+	-- by its own fade, and counted so that status can say it is happening.
+	if endMs ~= 0 and endMs < now - 1000 then
+		self.pastEffects = (self.pastEffects or 0) + 1
+		endMs = 0
+	end
 	self:Track(key, abilityId, IconKey(iconName), unitKey, endMs, now)
 end
 
@@ -847,18 +878,28 @@ function timers:DimGameTimer(slot, dim)
 	if not label then
 		return false
 	end
+
+	-- Read it rather than remember it. ActionButton:ApplyStyle re-applies the platform template
+	-- to the button and its children, and that hands the label its alpha back -- and it runs on
+	-- every HandleSlotChanged, which is every weapon swap, every zone load and every change to
+	-- what is in a slot. A cache of "already faded" is wrong within a minute of play, and the
+	-- game's number comes back from behind ours.
+	local wanted = dim and 0 or 1
+	local okRead, current = pcall(label.GetAlpha, label)
 	local faded = self.dimmed[slot]
-	if dim and faded == label then
+	if okRead and type(current) == "number" and math.abs(current - wanted) < 0.01 then
+		self.dimmed[slot] = dim and label or nil
 		return true
 	end
-	if not dim and faded == nil then
-		return true
-	end
-	local ok, err = pcall(label.SetAlpha, label, dim and 0 or 1)
+
+	local ok, err = pcall(label.SetAlpha, label, wanted)
 	if not ok then
 		addon.writeErrors = addon.writeErrors or {}
 		addon.writeErrors["game timer"] = tostring(err)
 		return false
+	end
+	if dim then
+		self.redims = (self.redims or 0) + 1
 	end
 	-- Anything faded earlier and since replaced is handed back as well.
 	if faded and faded ~= label then
@@ -1158,6 +1199,9 @@ function timers:PrintSlots()
 		Line("  weapon swap available=%s%s  -> other set row=%s", tostring(available),
 			why and (" (" .. why .. ")") or "", tostring(addon:BackBarEnabled()))
 	end
+	Line("  effects: gains=%d fades=%d stale fades ignored=%d already-over on arrival=%d",
+		self.gains or 0, self.fades or 0, self.staleFades or 0, self.pastEffects or 0)
+	Line("  the game's countdown faded back %d time(s)", self.redims or 0)
 	Line("  effects tracked=%d  counts shown from %d target(s)  controls from %s", self:TrackedCount(),
 		addon:Text().countFromOne and 1 or 2, self.usedFallback and "plain Lua (Controls.xml did not load)" or "Controls.xml")
 	local names = self:TrackedNames(6)

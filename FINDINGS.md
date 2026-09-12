@@ -538,6 +538,34 @@ special case:
 `BarsReady()` stops asking for `ZO_ActionBar1` as well: a bar this add-on has been told to leave
 alone is not a reason to hold up the three attribute bars.
 
+## 31. Three from one PS5 round
+
+**The target count appeared and vanished again.** Re-applying a damage-over-time on a target that
+already has it sends `EFFECT_RESULT_GAINED` for the new application and `EFFECT_RESULT_FADED` for
+the old one **after** it. Taking that fade at face value drops the unit that was just added. The
+fade carries the end time of the instance that faded, so the two are told apart: a fade whose
+instance was due to end well before what is on record (250 ms of tolerance) is for something
+already replaced, and is ignored. `/pbhud slots` counts the ones it ignored.
+
+The same line has a second guard: an effect that arrives with an end time already gone by is the
+two clocks disagreeing, not an effect that is over, and taking it at face value would drop it the
+moment it is looked at. It is kept as one that does not expire, ended by its own fade, and
+counted.
+
+**The game's own countdown came back from behind ours.** `ActionButton:ApplyStyle` calls
+`ApplyTemplateToControl` on the button, which re-applies the platform template to its children --
+and a template carries an alpha. It runs from `HandleSlotChanged`, which is every weapon swap,
+every zone load and every change to what is in a slot. So "we faded it once" is wrong within a
+minute of play. The fade is now decided by reading the label's alpha each time rather than by
+remembering, and status prints how often it had to put it back.
+
+**The resource numbers were behind the plain rectangle.** `ZO_PlayerAttributeBarText`, which the
+numbers inherit, sets no tier at all, and the rectangles are `tier="HIGH"`. The numbers are lifted
+to `DT_HIGH` at a level above the rectangle while the style is on, and put back at the client's own
+tier and level when it is not -- re-asserted every update, because the client re-applies its
+templates to those labels too. The low-health warner needs no such help: `ZO_PlayerAttributeWarner`
+is layer `OVERLAY`, tier `HIGH`, level 500.
+
 ---
 
 ## Still to measure on a PS5

@@ -39,7 +39,7 @@ function AdvanceFrame(ms) frameTime = frameTime + (ms or 1000) end
 function GetAddOnManager()
 	return {
 		GetNumAddOns = function() return 1 end,
-		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ConsoleHudCustomizer|r 1.6.0" end,
+		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ConsoleHudCustomizer|r 1.6.1" end,
 	}
 end
 
@@ -52,7 +52,7 @@ CD_TYPE_VERTICAL_REVEAL, CD_TYPE_RADIAL = 1, 2
 CD_TIME_TYPE_TIME_UNTIL, CD_TIME_TYPE_TIME_REMAINING = 1, 2
 COMBAT_MECHANIC_FLAGS_HEALTH, COMBAT_MECHANIC_FLAGS_MAGICKA, COMBAT_MECHANIC_FLAGS_STAMINA = 1, 2, 4
 TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP, TEXT_ALIGN_BOTTOM = 1, 2, 3
-DL_OVERLAY, DT_HIGH = "overlay", "high"
+DL_OVERLAY, DT_HIGH, DT_MEDIUM = "overlay", "high", "medium"
 SCENE_FRAGMENT_SHOWING, SCENE_FRAGMENT_SHOWN, SCENE_FRAGMENT_HIDING, SCENE_FRAGMENT_HIDDEN = "showing", "shown", "hiding", "hidden"
 
 -- ---- events -------------------------------------------------------------------------
@@ -163,6 +163,8 @@ function Control:SetFillColor(r, g, b, a) self.fillColor = { r, g, b, a } end
 function Control:SetVerticalCooldownLeadingEdgeHeight(h) self.edgeHeight = h end
 function Control:SetDesaturation(v) self.desaturation = v end
 function Control:SetDrawLevel(v) self.drawLevel = v end
+function Control:GetDrawLevel() return self.drawLevel or 0 end
+function Control:GetDrawTier() return self.drawTier or "medium" end
 function Control:SetCenterColor(r, g, b, a) self.centerColor = { r, g, b, a } end
 function Control:SetEdgeColor(r, g, b, a) self.edgeColor = { r, g, b, a } end
 function Control:GetAlpha() return self.alpha or 1 end
@@ -255,6 +257,8 @@ function BuildAttributeBars()
 
 	-- The frame pieces and the background container the plain style hides.
 	for _, container in ipairs({ health, magicka, stamina }) do
+		local numbers = MakeControl(container.name .. "ResourceNumbers", container, "label")
+		_G[container.name .. "ResourceNumbers"] = numbers
 		for _, suffix in ipairs({ "FrameLeft", "FrameCenter", "FrameRight", "BgContainer" }) do
 			local piece = MakeControl(container.name .. suffix, container, "texture")
 			_G[container.name .. suffix] = piece

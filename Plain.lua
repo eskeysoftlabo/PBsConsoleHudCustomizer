@@ -32,6 +32,7 @@ local Clamp = addon.Clamp
 local plain = {
 	overlays = {},
 	hidden = {},
+	numbers = {},
 }
 addon.plain = plain
 
@@ -73,6 +74,15 @@ plain.bars = {
 -- What the game draws around the fill, and what this style puts away: the three frame pieces
 -- (the arrow ends and the middle) and the whole background container.
 local DRESSING = { "FrameLeft", "FrameCenter", "FrameRight", "BgContainer" }
+
+-- The label the game writes the current and maximum on, when the player has it switched on under
+-- Settings > Interface. It is drawn at the default tier, and the rectangles are at HIGH, so
+-- without this it ends up behind them -- which is what came back from the PS5.
+--
+-- The low-health warner needs no such help: it is layer OVERLAY, tier HIGH, level 500
+-- (ZO_PlayerAttributeWarner), which is above anything here.
+local NUMBERS = "ResourceNumbers"
+local NUMBERS_LEVEL = 10
 
 -- Used only if the client will not say what colour a power is.
 local FALLBACK_COLOURS = {
@@ -267,6 +277,49 @@ function plain:DressAll(hide)
 	end
 end
 
+-- The numbers, lifted over the rectangle while this style is on and put back where the client
+-- had them when it is not. Re-asserted on every update rather than remembered as done: the
+-- client re-applies its own templates to these controls, and a template carries a draw tier.
+function plain:RaiseNumbers(bar, raise)
+	local control = Control(bar.container .. NUMBERS)
+	if not control or type(control.SetDrawTier) ~= "function" or type(control.SetDrawLevel) ~= "function" then
+		return false
+	end
+
+	if raise then
+		if not self.numbers[bar.key] then
+			local okTier, tier = pcall(control.GetDrawTier, control)
+			local okLevel, level = pcall(control.GetDrawLevel, control)
+			self.numbers[bar.key] = {
+				tier = okTier and tier or nil,
+				level = okLevel and level or nil,
+			}
+		end
+		addon:Write("numbers", control.SetDrawTier, control, DT_HIGH)
+		addon:Write("numbers", control.SetDrawLevel, control, NUMBERS_LEVEL)
+		return true
+	end
+
+	local saved = self.numbers[bar.key]
+	if not saved then
+		return false
+	end
+	if saved.tier ~= nil then
+		addon:Write("numbers", control.SetDrawTier, control, saved.tier)
+	end
+	if saved.level ~= nil then
+		addon:Write("numbers", control.SetDrawLevel, control, saved.level)
+	end
+	self.numbers[bar.key] = nil
+	return true
+end
+
+function plain:RaiseAllNumbers(raise)
+	for _, bar in ipairs(self.bars) do
+		self:RaiseNumbers(bar, raise)
+	end
+end
+
 -- ---------------------------------------------------------------------------------------
 -- How full the bar is
 -- ---------------------------------------------------------------------------------------
@@ -322,6 +375,7 @@ function plain:Update()
 	for _, bar in ipairs(self.bars) do
 		local fraction = self:Fraction(bar)
 		self:Dress(bar, not keepFrame)
+		self:RaiseNumbers(bar, true)
 		for _, entry in ipairs(bar.controls) do
 			local overlay = self:Overlay(bar, entry)
 			if overlay then
@@ -366,6 +420,14 @@ function plain:PrintStatus()
 					local okFill, fillWidth = pcall(overlay.fill.GetWidth, overlay.fill)
 					Line("      rectangle: hidden=%s, fill %s wide, fills %s", tostring(overlay.control:IsHidden()),
 						okFill and tostring(Round(fillWidth)) or "?", overlay.reverse and "leftwards" or "rightwards")
+					local numbers = Control(bar.container .. NUMBERS)
+					if numbers and type(numbers.GetDrawTier) == "function" then
+						local okTier, tier = pcall(numbers.GetDrawTier, numbers)
+						local okLevel, level = pcall(numbers.GetDrawLevel, numbers)
+						Line("      numbers: tier=%s level=%s (lifted over the rectangle=%s)",
+							okTier and tostring(tier) or "?", okLevel and tostring(level) or "?",
+							tostring(self.numbers[bar.key] ~= nil))
+					end
 				else
 					Line("      rectangle: |cFF4040not built|r")
 				end
@@ -407,6 +469,7 @@ function plain:Stop()
 	self.running = false
 	self:HideAll()
 	self:DressAll(false)
+	self:RaiseAllNumbers(false)
 	return true
 end
 
