@@ -39,7 +39,7 @@ function AdvanceFrame(ms) frameTime = frameTime + (ms or 1000) end
 function GetAddOnManager()
 	return {
 		GetNumAddOns = function() return 1 end,
-		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ConsoleHudCustomizer|r 1.12.1" end,
+		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ConsoleHudCustomizer|r 1.13.0" end,
 	}
 end
 
@@ -487,8 +487,6 @@ end
 -- EVENT_EFFECT_CHANGED, and the update loop.
 EVENT_EFFECT_CHANGED = "EVENT_EFFECT_CHANGED"
 EVENT_ACTION_SLOT_ABILITY_USED = "EVENT_ACTION_SLOT_ABILITY_USED"
-EVENT_ENTER_GROUND_TARGET_MODE = "EVENT_ENTER_GROUND_TARGET_MODE"
-EVENT_LEAVE_GROUND_TARGET_MODE = "EVENT_LEAVE_GROUND_TARGET_MODE"
 EFFECT_RESULT_GAINED, EFFECT_RESULT_FADED, EFFECT_RESULT_UPDATED = 1, 2, 3
 REGISTER_FILTER_SOURCE_COMBAT_UNIT_TYPE, COMBAT_UNIT_TYPE_PLAYER = "source", 1
 COMBAT_UNIT_TYPE_PLAYER_PET = 2
@@ -508,24 +506,6 @@ function UpdateRegistered(name) return updates[name] ~= nil end
 -- The slot the player pressed.
 function FireCast(slotNum)
 	Fire(EVENT_ACTION_SLOT_ABILITY_USED, slotNum)
-end
-
--- Aiming a ground-targeted ability, and what the client says about it. A cast puts the slot on a
--- cooldown, if only the global one, which is what tells a placement from a cancelled one.
-GroundTargeting = false
-SlotCooldowns = {}
-function IsPlayerGroundTargeting() return GroundTargeting end
-function GetSlotCooldownInfo(slot, hotbar) return SlotCooldowns[slot] or 0, 0 end
-function SetSlotCooldown(slot, remaining) SlotCooldowns[slot] = remaining end
-
-function EnterGroundTargeting()
-	GroundTargeting = true
-	Fire(EVENT_ENTER_GROUND_TARGET_MODE)
-end
-
-function LeaveGroundTargeting()
-	GroundTargeting = false
-	Fire(EVENT_LEAVE_GROUND_TARGET_MODE)
 end
 
 -- The effect event, in the client's argument order, delivered only to the registrations whose

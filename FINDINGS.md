@@ -889,46 +889,30 @@ FancyActionBar+ gets all three from its table of ability ids. This gets them fro
 `GetAbilityDuration` and one rule, which is the trade named in §47: no table to keep up to date,
 and less exact where an ability's real duration is not what the game declares.
 
-## 49. Aiming is not casting
+## 49. Ground targeting: tried twice, withdrawn
 
-A ground-targeted ability -- the ones that put a circle on the floor and wait -- is pressed once
-to start aiming and again to place it, and the seconds in between are the player's. Counting from
-the press (§47) has the countdown running while the circle is still on the ground.
+A ground-targeted ability is pressed once to start aiming and again to place it, and counting
+from the press has the countdown running while the circle is still on the floor. 1.12.0 held such
+a press until the aiming ended, the way FancyActionBar+ holds its slot updates
+(`main.lua`, `groundTargetMode`, across `EVENT_ENTER_GROUND_TARGET_MODE` and its `LEAVE`).
 
-The client says when that is happening: `EVENT_ENTER_GROUND_TARGET_MODE` and its `LEAVE`, with
-`IsPlayerGroundTargeting()` for the state in between. FancyActionBar+ holds its own slot updates
-across the same pair (`main.lua`, `groundTargetMode`, which queues them and replays them when the
-aiming ends).
+On a PS5 it took **every** countdown in the add-on with it. 1.12.1 answered the three ways that
+could happen -- the gate also asked `IsPlayerGroundTargeting()`, a held press had nothing but the
+`LEAVE` event to release it, and an ended cast was remembered for ever, which silences the client
+for that slot (§34) -- and it still showed nothing. So the cause is something else, and the code
+is out: 1.13.0 is 1.11.1's implementation exactly, which is the last one known to display.
 
-A press made while aiming is held rather than counted, and let go when the aiming ends. Backing
-out of a placement ends the aiming too, and the difference is the **cooldown**: an ability that
-fired is on one, if only the global one, and an ability that was cancelled is not. Asked a moment
-later, because the cooldown does not start in the same frame.
+What a third attempt would need first, rather than another guess:
 
-`/pbhud effects` counts the presses held and the placements cancelled.
+- whether `EVENT_ENTER_GROUND_TARGET_MODE` arrives at all on console, and whether its `LEAVE`
+  follows. `/pbhud effects` printed "aiming now", presses held, and holds that timed out; a
+  screenshot of that line while the countdowns were missing would have said which of the three it
+  was, or that it was none of them.
+- whether `EVENT_ACTION_SLOT_ABILITY_USED` fires at the press or at the placement for those
+  abilities. If it fires at the placement there is nothing to fix in the first place.
 
-## 50. A gate that can stick is a gate that will
-
-1.12.0's hold for ground targeting (§49) took every countdown in the add-on with it on a PS5.
-Three things were wrong with it, and they are the same mistake three times: trusting a state that
-cannot be checked from here.
-
-- **It asked `IsPlayerGroundTargeting()` as well as watching the events.** One client answering
-  that differently -- or an `ENTER` whose `LEAVE` never arrives -- holds every press there is.
-  Only the events are watched now.
-- **A held press had nothing to release it but the `LEAVE` event.** It now lets go by itself
-  after three seconds and is taken as an ordinary cast, counted from the press. A countdown that
-  starts a second early is a nuisance; one that never starts is a broken add-on.
-- **An ended cast was remembered for ever.** While one is on record a client reading much shorter
-  than it was is refused (§34), so every slot that had ever been cast fell silent as well. A
-  record is dropped five seconds after its effect ends, and the client is believed again.
-
-And the loop that draws all of it now runs behind a `pcall`: an error in a `RegisterForUpdate`
-callback has the client unregister it, which takes everything on the skill bar away for the rest
-of the session with nothing said. The first error is kept and `/pbhud slots` prints it.
-
-`/pbhud effects` says whether the gate thinks the player is aiming, how many presses were held,
-how many placements were cancelled, and how many holds timed out.
+Two rounds of a PS5's time went on this, and the feature is worth less than the countdown it
+broke.
 
 ---
 

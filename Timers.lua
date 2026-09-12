@@ -378,52 +378,14 @@ function timers:AbilityDuration(slot, hotbar)
 	return 0
 end
 
--- ---------------------------------------------------------------------------------------
--- Aiming is not casting
---
--- A ground-targeted ability -- the ones that put a circle on the floor and wait -- is pressed
--- once to start aiming and again to place it, and the time in between is the player's. Counting
--- from the press has the countdown running while the circle is still on the ground.
---
--- The client says when that is happening: EVENT_ENTER_GROUND_TARGET_MODE and its LEAVE, with
--- IsPlayerGroundTargeting() for the state. FancyActionBar+ holds its own slot updates the same
--- way (main.lua, groundTargetMode).
---
--- A press made while aiming is held rather than counted, and let go when the aiming ends -- but
--- only if the ability really went off. Backing out of a placement ends the aiming too, and the
--- difference is the cooldown: an ability that fired is on one, an ability that was cancelled is
--- not. Looked at a moment later, because the cooldown does not start in the same frame.
--- ---------------------------------------------------------------------------------------
-
-local GROUND_CONFIRM_MS = 150
-
--- A press is never held longer than this. Whatever the client does with its ground-target
--- events, a countdown that starts a second early is a nuisance and one that never starts at all
--- is a broken add-on: if the aiming never ends, the press is taken as an ordinary cast.
-local GROUND_HOLD_MAX_MS = 3000
-
-local groundPending = nil
-
-local function Later(fn, delay)
-	if zo_callLater then
-		zo_callLater(fn, delay)
-	else
-		fn()
+function timers:OnAbilityUsed(_, slotNum)
+	if type(slotNum) ~= "number" or slotNum < FIRST_SLOT or slotNum > LAST_SLOT then
+		return
 	end
-end
-
--- Only what the events said. IsPlayerGroundTargeting() was asked as well until 1.12.1, and a
--- client that answers it differently -- or an ENTER whose LEAVE never arrives -- held every press
--- there was, which is every countdown in the add-on gone.
-function timers:GroundTargeting()
-	return self.groundActive == true
-end
-
--- The cast itself, once it is known to have happened.
-function timers:StartCast(slotNum, hotbar, at)
+	local _, hotbar = self:BackHotbar()
 	lastUse.slot = slotNum
 	lastUse.hotbar = hotbar
-	lastUse.at = at
+	lastUse.at = Now()
 	lastUse.expected = self:AbilityDuration(slotNum, hotbar)
 	self.casts = (self.casts or 0) + 1
 
@@ -444,9 +406,9 @@ function timers:StartCast(slotNum, hotbar, at)
 		local entry = {
 			key = nil,
 			slotIcon = slotIcon,
-			beginMs = at,
-			endMs = at + lastUse.expected,
-			castAt = at,
+			beginMs = lastUse.at,
+			endMs = lastUse.at + lastUse.expected,
+			castAt = lastUse.at,
 			-- Anything the game actually reports beats a number worked out from the tooltip.
 			score = math.huge,
 			declared = true,
@@ -457,66 +419,6 @@ function timers:StartCast(slotNum, hotbar, at)
 		end
 		self.declared = (self.declared or 0) + 1
 	end
-end
-
-function timers:OnAbilityUsed(_, slotNum)
-	if type(slotNum) ~= "number" or slotNum < FIRST_SLOT or slotNum > LAST_SLOT then
-		return
-	end
-	local _, hotbar = self:BackHotbar()
-
-	-- Pressed while the circle is on the ground: held until it is placed.
-	if self:GroundTargeting() then
-		local pending = { slot = slotNum, hotbar = hotbar, at = Now() }
-		groundPending = pending
-		self.groundHeld = (self.groundHeld or 0) + 1
-		Later(function()
-			-- Still held after all this time: the aiming is not going to end in any way this
-			-- add-on will hear about, so it is taken as the ordinary cast it probably was.
-			if groundPending == pending then
-				groundPending = nil
-				timers.groundActive = false
-				timers.groundStuck = (timers.groundStuck or 0) + 1
-				timers:StartCast(pending.slot, pending.hotbar, pending.at)
-			end
-		end, GROUND_HOLD_MAX_MS)
-		return
-	end
-
-	self:StartCast(slotNum, hotbar, Now())
-end
-
--- Whether the ability in a slot has just gone off, which is what tells a placement from a
--- cancelled one: a cast puts the slot on a cooldown, if only the global one.
-function timers:SlotWentOff(slot, hotbar)
-	if type(GetSlotCooldownInfo) ~= "function" then
-		-- Nothing to ask: better a countdown that starts on a cancelled placement than none at
-		-- all on a real one.
-		return true
-	end
-	local ok, remaining = pcall(GetSlotCooldownInfo, slot, hotbar)
-	return ok and type(remaining) == "number" and remaining > 0
-end
-
-function timers:OnGroundTargetMode(eventCode)
-	if eventCode == EVENT_ENTER_GROUND_TARGET_MODE then
-		self.groundActive = true
-		return
-	end
-	self.groundActive = false
-
-	local pending = groundPending
-	groundPending = nil
-	if not pending then
-		return
-	end
-	Later(function()
-		if not timers:SlotWentOff(pending.slot, pending.hotbar) then
-			timers.groundCancelled = (timers.groundCancelled or 0) + 1
-			return
-		end
-		timers:StartCast(pending.slot, pending.hotbar, Now())
-	end, GROUND_CONFIRM_MS)
 end
 
 -- Called for every effect that arrives. One that turns up inside the window after a cast is
@@ -598,37 +500,15 @@ function timers:ExtendLinks(key, endMs)
 	end
 end
 
--- How long an ended effect is remembered. While it is, a client reading much shorter than it was
--- is refused (§34) -- and that is worth nothing once the effect is long over, so the record is
--- dropped and the client is believed again.
-local LINK_KEEP_AFTER_MS = 5000
-
-local function Alive(entry, now)
-	if not entry then
-		return nil
-	end
-	if now and entry.endMs + LINK_KEEP_AFTER_MS < now then
-		return nil
-	end
-	return entry
-end
-
 -- What is on record for this slot, running or not: the cast made from it, or -- for the same
 -- ability sitting in another slot or on the other weapon set -- the cast made from there.
-function timers:LinkFor(slot, hotbar, icon, now)
-	local slotKey = SlotKey(slot, hotbar)
-	local entry = Alive(slotEffects[slotKey], now)
-	if not entry then
-		slotEffects[slotKey] = nil
-	end
+function timers:LinkFor(slot, hotbar, icon)
+	local entry = slotEffects[SlotKey(slot, hotbar)]
 	if entry and (entry.slotIcon == nil or icon == nil or entry.slotIcon == icon) then
 		return entry
 	end
 	if icon then
-		local byIcon = Alive(linksByIcon[icon], now)
-		if not byIcon then
-			linksByIcon[icon] = nil
-		end
+		local byIcon = linksByIcon[icon]
 		if byIcon then
 			return byIcon
 		end
@@ -645,7 +525,7 @@ function timers:LinkedEffect(slot, hotbar, now)
 			icon = IconKey(texture)
 		end
 	end
-	local linked = self:LinkFor(slot, hotbar, icon, now)
+	local linked = self:LinkFor(slot, hotbar, icon)
 	if not linked or linked.endMs <= now then
 		return nil
 	end
@@ -1480,7 +1360,7 @@ function timers:SlotTimer(slot, hotbar, now)
 	-- other weapon set. While that is running the client's own reading is not asked at all: it
 	-- is the reading that hands over to another effect, and it answers differently for the two
 	-- bars, which is how one skill ends up counting down to two different numbers.
-	local linked = self:LinkFor(slot, hotbar, icon, now)
+	local linked = self:LinkFor(slot, hotbar, icon)
 	if linked then
 		local linkedDuration = math.max(1, linked.endMs - linked.beginMs)
 		if linked.endMs > now then
@@ -1705,21 +1585,8 @@ function timers:Start()
 	if not EVENT_MANAGER or type(EVENT_MANAGER.RegisterForUpdate) ~= "function" then
 		return false
 	end
-	-- Behind a pcall: a loop that errors is unregistered by the client, and everything this
-	-- add-on draws on the skill bar would go with it and stay gone for the session. The first
-	-- error is kept for status to print.
 	EVENT_MANAGER:RegisterForUpdate(addon.name .. "Timers", UPDATE_INTERVAL_MS, function()
-		local ok, err = pcall(function()
-			timers:Update()
-		end)
-		if not ok then
-			timers.updateErrors = (timers.updateErrors or 0) + 1
-			if not timers.lastUpdateError then
-				timers.lastUpdateError = tostring(err)
-				addon.writeErrors = addon.writeErrors or {}
-				addon.writeErrors["update loop"] = timers.lastUpdateError
-			end
-		end
+		timers:Update()
 	end)
 	self.running = true
 	self:Update()
@@ -1841,12 +1708,6 @@ function timers:PrintSlots()
 		self.sources or 0, self.dropped or 0)
 	Line("  casts seen=%d  effects tied to a cast=%d  shorter readings refused=%d",
 		self.casts or 0, self.linked or 0, self.shorterIgnored or 0)
-	Line("  aiming now=%s  presses held=%d  placements cancelled=%d  holds that timed out=%d",
-		tostring(self:GroundTargeting()), self.groundHeld or 0, self.groundCancelled or 0, self.groundStuck or 0)
-	if (self.updateErrors or 0) > 0 then
-		Line("  |cFF4040the update loop has failed %d time(s)|r: %s", self.updateErrors,
-			tostring(self.lastUpdateError))
-	end
 	Line("  counted from the tooltip's own length=%d  carried out to a later target=%d  effects refused as the wrong length=%d",
 		self.declared or 0, self.extended or 0, self.mismatched or 0)
 	Line("  clocks: frame=%d game=%d (they must agree for an effect's end time to mean anything)",
@@ -1873,7 +1734,7 @@ function timers:PrintSlots()
 				Round(raw or SlotNumber(GetActionSlotEffectTimeRemaining, slot, activeHotbar)),
 				Round(SlotNumber(GetActionSlotEffectDuration, slot, activeHotbar)))
 		end
-		local linked = self:LinkFor(slot, activeHotbar, IconKey(SlotString(GetSlotTexture, slot, activeHotbar)), now)
+		local linked = self:LinkFor(slot, activeHotbar, IconKey(SlotString(GetSlotTexture, slot, activeHotbar)))
 		if linked then
 			local held = effects[linked.key]
 			local units = 0
@@ -1941,15 +1802,6 @@ function timers:Register()
 		EVENT_MANAGER:RegisterForEvent(addon.name .. "Used", EVENT_ACTION_SLOT_ABILITY_USED, function(...)
 			timers:OnAbilityUsed(...)
 		end)
-	end
-
-	-- And when the player is aiming rather than casting.
-	for _, event in ipairs({ EVENT_ENTER_GROUND_TARGET_MODE, EVENT_LEAVE_GROUND_TARGET_MODE }) do
-		if event then
-			EVENT_MANAGER:RegisterForEvent(addon.name .. "Ground" .. tostring(event), event, function(eventCode)
-				timers:OnGroundTargetMode(eventCode)
-			end)
-		end
 	end
 
 	self.registered = true
