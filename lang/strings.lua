@@ -16,9 +16,10 @@ local strings = {
 	-- ---- The look of the resource bars ---------------------------------------------------
 	SI_PBSCHC_SECTION_STYLE = "The look of the bars",
 	SI_PBSCHC_STYLE = "Bar style",
-	SI_PBSCHC_STYLE_TOOLTIP = "Standard is the game's own bars, untouched. Plain draws each bar as a flat rectangle -- a dark track and a solid block of the power's own colour -- with the game's arrow-shaped frame and background put away. The bars themselves are left in place and still doing their work, so damage shields, armour changes and the low-health warning all still show on top.",
+	SI_PBSCHC_STYLE_TOOLTIP = "Standard is the game's own bars, untouched. Square draws each bar as a flat rectangle -- a dark track and a solid block of the power's own colour -- with the game's arrow-shaped frame and background put away. Rounded is the same, with the round ends the gamepad interface uses for every bar of its own. Either way the bars themselves are left in place and still doing their work, so damage shields, armour changes and the low-health warning all still show on top.",
 	SI_PBSCHC_STYLE_STANDARD = "Standard",
-	SI_PBSCHC_STYLE_PLAIN = "Plain",
+	SI_PBSCHC_STYLE_PLAIN = "Square",
+	SI_PBSCHC_STYLE_ROUNDED = "Rounded",
 	SI_PBSCHC_PLAIN_OPACITY = "How solid",
 	SI_PBSCHC_PLAIN_OPACITY_TOOLTIP = "How solid the rectangles are. 100% hides the game's own fill completely; below that it shows through, which is one way to keep a little of the original look.",
 	SI_PBSCHC_PLAIN_KEEP_FRAME = "Keep the game's frame",

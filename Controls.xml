@@ -117,6 +117,24 @@
                     <Anchor point="TOPLEFT"/>
                     <Anchor point="BOTTOMLEFT"/>
                 </Backdrop>
+                <!--
+                    The same two again for the rounded shape, in the art the gamepad UI uses for
+                    every bar of its own (gp_dynamicBar_medium_fill, with the client's own
+                    texture coordinates): a capsule with round ends, stretched across the bar the
+                    way ZO_GamepadStatusBarMedium stretches it. Tinted from Lua, and only one of
+                    the two pairs is ever shown.
+                -->
+                <Texture name="$(parent)TrackTexture" level="1" hidden="true"
+                         textureFile="EsoUI/Art/Miscellaneous/Gamepad/gp_dynamicBar_medium_fill.dds">
+                    <AnchorFill/>
+                    <TextureCoords left="0" right="1" top="0.15625" bottom="0.84375"/>
+                </Texture>
+                <Texture name="$(parent)FillTexture" level="2" hidden="true"
+                         textureFile="EsoUI/Art/Miscellaneous/Gamepad/gp_dynamicBar_medium_fill.dds">
+                    <Anchor point="TOPLEFT"/>
+                    <Anchor point="BOTTOMLEFT"/>
+                    <TextureCoords left="0" right="1" top="0.15625" bottom="0.84375"/>
+                </Texture>
             </Controls>
         </Control>
     </Controls>

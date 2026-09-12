@@ -28,7 +28,7 @@ print("\n== 1. load ==")
 Fire(EVENT_ADD_ON_LOADED, "PBsConsoleHudCustomizer")
 local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 local health, magicka, stamina = addon.barByKey.health, addon.barByKey.magicka, addon.barByKey.stamina
-check("version read from manifest", addon.version, "1.7.2")
+check("version read from manifest", addon.version, "1.8.0")
 check("slash command registered", type(SLASH_COMMANDS["/pbhud"]), "function")
 check("short slash command registered", type(SLASH_COMMANDS["/pbhc"]), "function")
 check("HUD fragment callback registered", addon.hudRegistered, true)
@@ -1151,6 +1151,97 @@ for index = 1, 200 do
 end
 check("the one being watched is still there", count4b:GetText(), "2")
 check("and something was dropped to make room", (addon.timers.dropped or 0) > 0, true)
+
+print("\n== 44. the rounded shape ==")
+Row(GetString(SI_PBSCHC_STYLE)).setFunction(nil, nil, { data = "plain" })
+RunUpdates()
+-- Taken from the add-on: an overlay built through the fallback path earlier in this run keeps
+-- its parts on the control itself rather than under a named child.
+local plainOverlay = addon.plain.overlays["ZO_PlayerAttributeStaminaBar"]
+local plainBar = plainOverlay.control
+check("square shows the backdrops", plainOverlay.fill:IsHidden(), false)
+check("and not the rounded art", plainOverlay.roundFill:IsHidden(), true)
+
+Row(GetString(SI_PBSCHC_STYLE)).setFunction(nil, nil, { data = "rounded" })
+RunUpdates()
+check("rounded shows the gamepad bar art", plainOverlay.roundFill:IsHidden(), false)
+check("and puts the backdrops away", plainOverlay.fill:IsHidden(), true)
+check("tinted with the power's own colour", plainOverlay.roundFill.color[3], 0.2)
+-- Same geometry as the square one: a quarter full is a quarter of the bar.
+SetPower(COMBAT_MECHANIC_FLAGS_STAMINA, 250, 1000)
+RunUpdates()
+check("and the same width", plainOverlay.roundFill:GetWidth(), 56)
+check("the frame is still put away", _G.ZO_PlayerAttributeStaminaFrameCenter:IsHidden(), true)
+check("and the numbers still lifted over it", _G.ZO_PlayerAttributeStaminaResourceNumbers:GetDrawTier(), DT_HIGH)
+
+-- The command takes it too, and "round" as well.
+SLASH_COMMANDS["/pbhud"]("style round")
+check("the command understands round", addon:BarStyle(), "rounded")
+SLASH_COMMANDS["/pbhud"]("style standard")
+RunUpdates()
+check("standard puts both away", plainBar:IsHidden(), true)
+
+print("\n== 45. the effect the ability is, not the longest one it brings ==")
+-- From a PS5: Templar's Power of the Light lasts 6 seconds and showed 20. One cast puts more
+-- than one effect on the world -- the ability's own, and Major Breach for twenty seconds -- and
+-- "the longest of that cast" is the wrong one of the two.
+--
+-- FancyActionBar+ does not guess: it reads GetAbilityDuration for the ability in the slot. With
+-- that in hand the right effect is the one whose length is the ability's.
+addon.timers:Forget_All()
+addon.timers.timers = {}
+addon.timers.counts = {}
+SetSlot(HOTBAR_CATEGORY_PRIMARY, 5, { name = "Power of the Light", icon = "potl.dds", id = 103003, remaining = 0, duration = 0 })
+SetAbilityDuration(103003, 6000)
+FireHud(SCENE_FRAGMENT_SHOWN)
+
+local now12 = GetGameTimeMilliseconds()
+FireCast(5)
+-- Both arrive, the long one first.
+FireEffect(EFFECT_RESULT_GAINED, "Major Breach", "", (now12 + 20000) / 1000, 71, 61743)
+FireEffect(EFFECT_RESULT_GAINED, "Power of the Light", "", (now12 + 6000) / 1000, 71, 103003)
+RunUpdates()
+local potl = addon.timers.labels[5].timer
+check("six seconds, not twenty", potl:GetText(), "6.0")
+-- ... and the other way round, in case the game sends them in the other order.
+addon.timers:Forget_All()
+local now13 = GetGameTimeMilliseconds()
+FireCast(5)
+FireEffect(EFFECT_RESULT_GAINED, "Power of the Light", "", (now13 + 6000) / 1000, 71, 103003)
+FireEffect(EFFECT_RESULT_GAINED, "Major Breach", "", (now13 + 20000) / 1000, 71, 61743)
+RunUpdates()
+check("whichever order they arrive in", potl:GetText(), "6.0")
+
+-- An ability the game gives no duration for falls back to the longest, which is all there is.
+addon.timers:Forget_All()
+SetSlot(HOTBAR_CATEGORY_PRIMARY, 6, { name = "Mystery", icon = "mystery.dds", id = 104004, remaining = 0, duration = 0 })
+local now14 = GetGameTimeMilliseconds()
+FireCast(6)
+FireEffect(EFFECT_RESULT_GAINED, "Short Thing", "player", (now14 + 4000) / 1000, 1, 1041)
+FireEffect(EFFECT_RESULT_GAINED, "Long Thing", "player", (now14 + 18000) / 1000, 1, 1042)
+RunUpdates()
+check("with nothing to compare against, the longest still wins", addon.timers.labels[6].timer:GetText(), "18")
+
+print("\n== 46. targets the game reports without a unit id ==")
+-- Some area effects report no unit id at all. Keyed by the unit tag alone, every target
+-- collapsed onto one key: a count of 1 however many were hit, and one fade clearing the lot.
+-- The effect's own slot tells them apart, which is what FancyActionBar+ uses.
+addon.timers:Forget_All()
+addon.timers.counts = {}
+addon.account.text.countFromOne = true
+SetSlot(HOTBAR_CATEGORY_PRIMARY, 4, { name = "Caltrops", icon = "caltrops.dds", id = 140, remaining = 0, duration = 0 })
+SetAbilityDuration(140, 20000)
+local now15 = GetGameTimeMilliseconds()
+FireCast(4)
+FireEffect(EFFECT_RESULT_GAINED, "Caltrops", "", (now15 + 20000) / 1000, 0, 141, nil, 11)
+FireEffect(EFFECT_RESULT_GAINED, "Caltrops", "", (now15 + 20000) / 1000, 0, 141, nil, 12)
+FireEffect(EFFECT_RESULT_GAINED, "Caltrops", "", (now15 + 20000) / 1000, 0, 141, nil, 13)
+RunUpdates()
+check("three targets, not one", addon.timers.labels[4].count:GetText(), "3")
+AdvanceFrame(1000)
+FireEffect(EFFECT_RESULT_FADED, "Caltrops", "", (now15 + 20000) / 1000, 0, 141, nil, 12)
+RunUpdates()
+check("and one fade takes one of them", addon.timers.labels[4].count:GetText(), "2")
 
 print("")
 if failures == 0 then

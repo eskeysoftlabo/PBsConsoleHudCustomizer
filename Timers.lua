@@ -349,6 +349,28 @@ end
 
 timers.SlotKey = SlotKey
 
+-- What the game says the ability in a slot lasts. This is the piece that was missing: one cast
+-- puts several effects on the world, and the longest of them is not the ability's own.
+--
+-- Templar's Power of the Light lasts 6 seconds and applies Major Breach for 20, so "the longest
+-- effect of that cast" showed 20. FancyActionBar+ does not guess: it reads GetAbilityDuration
+-- for the ability in the slot (main.lua, FancyActionBar.GetAbilityDuration) and works from
+-- there. So does this now.
+function timers:AbilityDuration(slot, hotbar)
+	if type(GetSlotBoundId) ~= "function" or type(GetAbilityDuration) ~= "function" then
+		return 0
+	end
+	local okId, abilityId = pcall(GetSlotBoundId, slot, hotbar)
+	if not okId or type(abilityId) ~= "number" or abilityId == 0 then
+		return 0
+	end
+	local okDuration, duration = pcall(GetAbilityDuration, abilityId)
+	if okDuration and type(duration) == "number" and duration > 0 then
+		return duration
+	end
+	return 0
+end
+
 function timers:OnAbilityUsed(_, slotNum)
 	if type(slotNum) ~= "number" or slotNum < FIRST_SLOT or slotNum > LAST_SLOT then
 		return
@@ -357,6 +379,7 @@ function timers:OnAbilityUsed(_, slotNum)
 	lastUse.slot = slotNum
 	lastUse.hotbar = hotbar
 	lastUse.at = Now()
+	lastUse.expected = self:AbilityDuration(slotNum, hotbar)
 	self.casts = (self.casts or 0) + 1
 end
 
@@ -371,6 +394,12 @@ function timers:LinkToCast(key, icon, beginMs, endMs, now)
 	end
 	local slotKey = SlotKey(lastUse.slot, lastUse.hotbar)
 	local current = slotEffects[slotKey]
+	local duration = endMs - beginMs
+	-- How wrong this effect's length is for the ability that was cast. With nothing to compare
+	-- against -- an ability the game gives no duration for -- the longest effect is still the
+	-- best guess, which is what a negative score gives.
+	local expected = lastUse.expected or 0
+	local score = expected > 0 and math.abs(duration - expected) or -duration
 	-- Read here rather than through the slot readers further down the file: those are defined
 	-- after this, and an effect can arrive before anything else has run.
 	local slotIcon = nil
@@ -380,11 +409,13 @@ function timers:LinkToCast(key, icon, beginMs, endMs, now)
 			slotIcon = IconKey(texture)
 		end
 	end
-	if current and current.castAt == lastUse.at and current.endMs >= endMs then
+	if current and current.castAt == lastUse.at and current.score and current.score <= score then
 		return
 	end
 	local entry = {
 		key = key,
+		score = score,
+		expected = expected,
 		-- The icon of the *slot* as it was when the cast happened, not the effect's: what this
 		-- is for is noticing that the slot now holds another ability, and an effect's own art is
 		-- often not the ability's.
@@ -541,7 +572,7 @@ end
 -- EVENT_EFFECT_CHANGED. The signature is the client's, and only a few of its arguments matter
 -- here: what the effect is called, which unit it is on, when it ends, and whether it has just
 -- gone away.
-function timers:OnEffectChanged(_, changeType, _, effectName, unitTag, beginTime, endTime, _, iconName, _, _, _, _, _, unitId, abilityId)
+function timers:OnEffectChanged(_, changeType, effectSlot, effectName, unitTag, beginTime, endTime, _, iconName, _, _, _, _, _, unitId, abilityId)
 	-- A group member's copy of a buff is the same effect on the same name; counting those would
 	-- turn a self-buff into "12".
 	if type(unitTag) == "string" and unitTag:find("group", 1, true) then
@@ -552,7 +583,19 @@ function timers:OnEffectChanged(_, changeType, _, effectName, unitTag, beginTime
 		return
 	end
 	local now = Now()
-	local unitKey = (type(unitId) == "number" and unitId ~= 0) and unitId or (unitTag ~= "" and unitTag or "?")
+	-- One key per target. unitId is the one to use where there is one; where there is not -- some
+	-- area effects report none -- the effect's own slot tells two instances apart, which is what
+	-- FancyActionBar+ does (ResolveUnitKey). Falling back to the unit tag alone, as this did,
+	-- collapses every target onto one key: a count of 1 however many are hit, and one fade
+	-- clearing the lot.
+	local unitKey
+	if type(unitId) == "number" and unitId ~= 0 then
+		unitKey = unitId
+	elseif type(effectSlot) == "number" and effectSlot ~= 0 then
+		unitKey = "slot:" .. effectSlot
+	else
+		unitKey = unitTag ~= "" and unitTag or "?"
+	end
 
 	-- endTime is in seconds on the game clock, and 0 for something that does not expire.
 	local endMs = (type(endTime) == "number" and endTime > 0) and math.floor(endTime * 1000) or 0
@@ -683,6 +726,12 @@ local FALLBACK_PARTS = {
 	PBsConsoleHudCustomizerPlainBar = {
 		{ name = "Track", kind = "backdrop", point = "TOPLEFT", relative = "TOPLEFT", x = 0, y = 0, fill = true, level = 1 },
 		{ name = "Fill", kind = "backdrop", point = "TOPLEFT", relative = "TOPLEFT", x = 0, y = 0, level = 2 },
+		{ name = "TrackTexture", kind = "texture", point = "TOPLEFT", relative = "TOPLEFT", x = 0, y = 0, fill = true, level = 1,
+			file = "EsoUI/Art/Miscellaneous/Gamepad/gp_dynamicBar_medium_fill.dds",
+			coords = { 0, 1, 0.15625, 0.84375 } },
+		{ name = "FillTexture", kind = "texture", point = "TOPLEFT", relative = "TOPLEFT", x = 0, y = 0, level = 2,
+			file = "EsoUI/Art/Miscellaneous/Gamepad/gp_dynamicBar_medium_fill.dds",
+			coords = { 0, 1, 0.15625, 0.84375 } },
 	},
 }
 
@@ -1589,6 +1638,8 @@ function timers:PrintSlots()
 			end
 			Line("      counting \"%s\" -- %s, %d unit(s) on record", tostring(linked.key),
 				held and "tracked" or "|cFF4040not tracked|r", units)
+			Line("      that effect runs %ds; the game says the ability lasts %ds",
+				Round((linked.endMs - linked.beginMs) / 1000), Round((linked.expected or 0) / 1000))
 		end
 		Line("|cFF69B4  %d|r %s  left=%dms -> %s  targets=%d%s -> %s  label=%s h=%s", slot, name, Round(remaining),
 			tostring(timerText), count or 0, matchedBy and (" by " .. matchedBy) or "",

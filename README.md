@@ -6,7 +6,7 @@ as a shade that clears down the icon, a countdown, and a target count -- in The 
 Online on console.
 
 - **Author:** PinkBanther
-- **Version:** 1.7.2
+- **Version:** 1.8.0
 - **Optional:** `LibHarvensAddonSettings` >= 20106 (for the settings panel; the chat commands work
   without it)
 
@@ -50,8 +50,9 @@ gives it the same size so the pair still lines up.
 **Bar style** switches the three resource bars between:
 
 - **Standard** — the game's own bars, untouched. Nothing is built and nothing runs.
-- **Plain** — each bar as a flat rectangle: a dark track, and a solid block in that power's own
-  colour, with the game's own resource numbers lifted over it. The game's arrow-shaped frame and background are put away while this is chosen, and come
+- **Square** — each bar as a flat rectangle: a dark track, and a solid block in that power's own
+  colour, with the game's own resource numbers lifted over it.
+- **Rounded** — the same, with the round ends the gamepad interface uses for every bar of its own. The game's arrow-shaped frame and background are put away while this is chosen, and come
   straight back when it is not. **How solid** takes the rectangles from fully opaque down to
   letting the game's own fill show through, and **Keep the game's frame** leaves the arrows in
   place if you want the rectangle inside them.
@@ -134,9 +135,10 @@ Until you move one of the row's two sliders it **follows the bar's**, so one siz
 one slider. **Match the other set to this bar** puts it back to following.
 
 The countdown is **the effect your cast produced**. When you press a slot, the effects that appear
-in the moment after it are that slot's, and the longest of them is what is counted down — so Blue
-Betty shows its 22-second buff all the way out, rather than handing over to the five-second thing
-the netch does, which is what the game's own per-slot timer does near the end. The same ability on both weapon sets shows the same number on both, because it is one effect: a
+in the moment after it are that slot's, and the one that is counted down is the one whose length
+matches what the game says that ability lasts — so Power of the Light shows its 6 seconds rather
+than the 20 of the Major Breach it also applies, and Blue Betty shows its 22-second buff all the
+way out rather than handing over to the five-second thing the netch does. The same ability on both weapon sets shows the same number on both, because it is one effect: a
 cast is on record against the ability, not just the slot it was made from. For a slot whose effect
 this add-on has not seen cast at all, the game's own number is used instead.
 
@@ -180,7 +182,7 @@ which is the quickest way to check the two agree.
 /pbhud pos <bar> <x> <y>           x from the middle of the screen, y up from the bottom
 /pbhud scale <bar> <n>             size in per cent (50-200)
 /pbhud gap skill|ult|item <n>      the space along the skill bar (0-150)
-/pbhud style standard|plain        the look of the three resource bars
+/pbhud style standard|plain|rounded the look of the three resource bars
 /pbhud shade [on|off|up|down|<n>]  the shade over a skill while its effect runs
 /pbhud text [back] timer|count <n> size of the text on the skill bar (12-48)
 /pbhud timers addon|both|game      whose countdown goes on the front bar

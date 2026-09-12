@@ -36,7 +36,10 @@ local plain = {
 }
 addon.plain = plain
 
-addon.BAR_STYLES = { "standard", "plain" }
+-- Standard is the game's own. The other two are this add-on's, and differ only in shape: square
+-- corners drawn as a backdrop, or round ends drawn in the art the gamepad UI uses for every bar
+-- of its own.
+addon.BAR_STYLES = { "standard", "plain", "rounded" }
 
 -- Nothing animates, so this only has to keep up with the numbers changing.
 local UPDATE_INTERVAL_MS = 100
@@ -144,8 +147,17 @@ function addon:PlainKeepsFrame()
 	return self:Account().plainKeepFrame == true
 end
 
+-- True while this add-on draws the bars itself, in either of its two shapes.
 function addon:PlainWanted()
-	return self:Account().enabled and self:BarStyle() == "plain"
+	if not self:Account().enabled then
+		return false
+	end
+	local style = self:BarStyle()
+	return style == "plain" or style == "rounded"
+end
+
+function addon:BarsAreRounded()
+	return self:BarStyle() == "rounded"
 end
 
 -- ---------------------------------------------------------------------------------------
@@ -197,8 +209,11 @@ function plain:Overlay(bar, entry)
 		control = control,
 		bar = barControl,
 		reverse = entry.reverse,
+		-- One pair of each shape; only the pair the style calls for is ever shown.
 		track = control.Track or control:GetNamedChild("Track"),
 		fill = control.Fill or control:GetNamedChild("Fill"),
+		roundTrack = control.TrackTexture or control:GetNamedChild("TrackTexture"),
+		roundFill = control.FillTexture or control:GetNamedChild("FillTexture"),
 		key = bar.key,
 	}
 	self.overlays[entry.name] = overlay
@@ -217,18 +232,33 @@ end
 
 function plain:ColourOverlay(bar, overlay)
 	local alpha = addon:PlainOpacity() / 100
+	local rounded = addon:BarsAreRounded()
+	local r, g, b = self:PowerColour(bar)
+
 	if overlay.track and type(overlay.track.SetCenterColor) == "function" then
 		overlay.track:SetCenterColor(TRACK_COLOUR[1], TRACK_COLOUR[2], TRACK_COLOUR[3], alpha)
 		if type(overlay.track.SetEdgeColor) == "function" then
 			overlay.track:SetEdgeColor(0, 0, 0, 0)
 		end
+		overlay.track:SetHidden(rounded)
 	end
 	if overlay.fill and type(overlay.fill.SetCenterColor) == "function" then
-		local r, g, b = self:PowerColour(bar)
 		overlay.fill:SetCenterColor(r, g, b, alpha)
 		if type(overlay.fill.SetEdgeColor) == "function" then
 			overlay.fill:SetEdgeColor(0, 0, 0, 0)
 		end
+		overlay.fill:SetHidden(rounded)
+	end
+
+	-- The rounded pair is the same two rectangles in the gamepad UI's own bar art, tinted the
+	-- same way: the track darker than the square one, because the art carries its own shading.
+	if overlay.roundTrack and type(overlay.roundTrack.SetColor) == "function" then
+		overlay.roundTrack:SetColor(TRACK_COLOUR[1] * 2, TRACK_COLOUR[2] * 2, TRACK_COLOUR[3] * 2, alpha)
+		overlay.roundTrack:SetHidden(not rounded)
+	end
+	if overlay.roundFill and type(overlay.roundFill.SetColor) == "function" then
+		overlay.roundFill:SetColor(r, g, b, alpha)
+		overlay.roundFill:SetHidden(not rounded)
 	end
 end
 
@@ -349,7 +379,8 @@ function plain:UpdateOverlay(overlay, fraction)
 	end
 	control:SetHidden(false)
 
-	local fill = overlay.fill
+	local rounded = addon:BarsAreRounded()
+	local fill = rounded and overlay.roundFill or overlay.fill
 	if not fill then
 		return
 	end
@@ -379,6 +410,7 @@ function plain:Update()
 		for _, entry in ipairs(bar.controls) do
 			local overlay = self:Overlay(bar, entry)
 			if overlay then
+				self:ColourOverlay(bar, overlay)
 				if fraction then
 					self:UpdateOverlay(overlay, fraction)
 				else
@@ -395,7 +427,7 @@ end
 
 function plain:PrintStatus()
 	local Line = addon.Line
-	Line("|cFF69B4%s|r -- the plain look", addon.title)
+	Line("|cFF69B4%s|r -- the bars this add-on draws", addon.title)
 	Line("  style=%s opacity=%d%% keep frame=%s running=%s hud=%s", addon:BarStyle(), addon:PlainOpacity(),
 		tostring(addon:PlainKeepsFrame()), tostring(self.running == true), tostring(self.hudShown ~= false))
 	if addon:BarStyle() ~= "plain" then

@@ -39,7 +39,7 @@ function AdvanceFrame(ms) frameTime = frameTime + (ms or 1000) end
 function GetAddOnManager()
 	return {
 		GetNumAddOns = function() return 1 end,
-		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ConsoleHudCustomizer|r 1.7.2" end,
+		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ConsoleHudCustomizer|r 1.8.0" end,
 	}
 end
 
@@ -197,7 +197,7 @@ local VIRTUAL_CHILDREN = {
 	PBsConsoleHudCustomizerBackBarSlot = { "BG", "Icon", "Overlay", "Shade", "Timer", "Count" },
 	PBsConsoleHudCustomizerSlotLabels = { "Timer", "Count" },
 	PBsConsoleHudCustomizerShade = {},
-	PBsConsoleHudCustomizerPlainBar = { "Track", "Fill" },
+	PBsConsoleHudCustomizerPlainBar = { "Track", "Fill", "TrackTexture", "FillTexture" },
 }
 
 function CreateControlFromVirtual(name, parent, template, suffix)
@@ -449,6 +449,11 @@ end
 function GetSlotName(slot, hotbar) local s = Slot(slot, hotbar); return s and s.name or "" end
 function GetSlotTexture(slot, hotbar) local s = Slot(slot, hotbar); return s and s.icon or "" end
 function GetSlotBoundId(slot, hotbar) local s = Slot(slot, hotbar); return s and s.id or 0 end
+-- What the game says an ability lasts. FancyActionBar+ works from this rather than from whatever
+-- effect happens to be longest, and so does this add-on.
+AbilityDurations = {}
+function GetAbilityDuration(abilityId) return AbilityDurations[abilityId] or 0 end
+function SetAbilityDuration(abilityId, ms) AbilityDurations[abilityId] = ms end
 function GetSlotType(slot, hotbar) local s = Slot(slot, hotbar); return s and ACTION_TYPE_ABILITY or ACTION_TYPE_NOTHING end
 function GetActionSlotEffectTimeRemaining(slot, hotbar) local s = Slot(slot, hotbar); return s and s.remaining or 0 end
 function GetActionSlotEffectDuration(slot, hotbar) local s = Slot(slot, hotbar); return s and s.duration or 0 end
@@ -490,17 +495,21 @@ end
 -- The effect event, in the client's argument order, delivered only to the registrations whose
 -- filter matches the source -- which is how the client behaves, and the whole point of the pet
 -- registration.
-function FireEffectFrom(source, changeType, effectName, unitTag, endTimeSec, unitId, abilityId, icon)
+EffectSlotSeed = 0
+function FireEffectFrom(source, changeType, effectName, unitTag, endTimeSec, unitId, abilityId, icon, effectSlot, beginTimeSec)
+	EffectSlotSeed = EffectSlotSeed + 1
 	for name, fn in pairs(handlers[EVENT_EFFECT_CHANGED] or {}) do
 		if EventFilters[name] == nil or EventFilters[name] == source then
-			fn(EVENT_EFFECT_CHANGED, changeType, 1, effectName, unitTag, 0, endTimeSec, 0,
-				icon or "icon.dds", nil, 1, 1, 0, "someone", unitId, abilityId, source)
+			fn(EVENT_EFFECT_CHANGED, changeType, effectSlot or EffectSlotSeed, effectName, unitTag,
+				beginTimeSec or 0, endTimeSec, 0, icon or "icon.dds", nil, 1, 1, 0, "someone",
+				unitId, abilityId, source)
 		end
 	end
 end
 
-function FireEffect(changeType, effectName, unitTag, endTimeSec, unitId, abilityId, icon)
-	FireEffectFrom(COMBAT_UNIT_TYPE_PLAYER, changeType, effectName, unitTag, endTimeSec, unitId, abilityId, icon)
+function FireEffect(changeType, effectName, unitTag, endTimeSec, unitId, abilityId, icon, effectSlot, beginTimeSec)
+	FireEffectFrom(COMBAT_UNIT_TYPE_PLAYER, changeType, effectName, unitTag, endTimeSec, unitId,
+		abilityId, icon, effectSlot, beginTimeSec)
 end
 
 -- ---- scenes -------------------------------------------------------------------------

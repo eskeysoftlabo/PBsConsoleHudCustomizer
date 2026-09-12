@@ -690,6 +690,33 @@ mid-fight for no reason the player can see. Reading an entry now counts as using
 the least recently used entry with **nothing live in it**, and only if every entry is live does a
 live one go. The cap is 128 rather than 96, and `/pbhud effects` counts what has been dropped.
 
+## 38. The ability's own length, from the game
+
+From a PS5: Templar's Power of the Light lasts 6 seconds and the countdown read 20.
+
+One cast puts more than one effect on the world -- the ability's own, and Major Breach for twenty
+seconds -- and 1.7.0's rule, "the longest effect of that cast", picks the wrong one of the two.
+Blue Betty needed the longest; Power of the Light needs the shorter. Nothing about the effects
+themselves says which.
+
+FancyActionBar+, which the add-on was given to read, does not guess: it reads
+**`GetAbilityDuration`** for the ability in the slot (`main.lua`,
+`FancyActionBar.GetAbilityDuration`) and works from there, with a curated table for the ids where
+that is not enough. The general half of that is free, and it is what this add-on now does: a cast
+records what the game says its ability lasts, and the effect that is followed is the one whose
+length is closest to it. With no duration to compare against -- an ability the game gives none for
+-- the longest is still the best guess, which is where this started.
+
+## 39. A target without a unit id
+
+Some area effects report `unitId` 0. Keyed by the unit tag alone, as this did, every target of
+such an effect collapses onto one key: a count of 1 however many were hit, and one fade clearing
+the lot -- another way the target count came to nothing.
+
+The effect's own `effectSlot` tells two instances apart, and is what FancyActionBar+ keys on
+(`ResolveUnitKey`). The key is the unit id where there is one, the effect slot where there is not,
+and the unit tag only as a last resort.
+
 ---
 
 ## Still to measure on a PS5
