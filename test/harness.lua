@@ -39,7 +39,7 @@ function AdvanceFrame(ms) frameTime = frameTime + (ms or 1000) end
 function GetAddOnManager()
 	return {
 		GetNumAddOns = function() return 1 end,
-		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ConsoleHudCustomizer|r 1.0.0" end,
+		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ConsoleHudCustomizer|r 1.1.1" end,
 	}
 end
 
@@ -47,6 +47,7 @@ end
 TOP, LEFT, BOTTOM, RIGHT, CENTER = 1, 2, 4, 8, 128
 TOPLEFT, TOPRIGHT, BOTTOMLEFT, BOTTOMRIGHT = 3, 9, 6, 12
 CT_LABEL, CT_TEXTURE, CT_CONTROL = "label", "texture", "control"
+TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP, TEXT_ALIGN_BOTTOM = 1, 2, 3
 DL_OVERLAY, DT_HIGH = "overlay", "high"
 SCENE_FRAGMENT_SHOWING, SCENE_FRAGMENT_SHOWN, SCENE_FRAGMENT_HIDING, SCENE_FRAGMENT_HIDDEN = "showing", "shown", "hiding", "hidden"
 
@@ -146,6 +147,11 @@ function Control:SetColor(r, g, b, a) self.color = { r, g, b, a } end
 function Control:SetText(t) self.text = t end
 function Control:SetFont(f) self.font = f end
 function Control:SetTexture(t) self.texture = t end
+function Control:SetAlpha(a) self.alpha = a end
+function Control:SetTextureCoords() end
+function Control:SetDrawLevel(v) self.drawLevel = v end
+function Control:GetAlpha() return self.alpha or 1 end
+function Control:GetFontHeight() local size = tonumber((self.font or ""):match("|(%d+)|")) or 0; return math.ceil(size * 1.25) end
 function Control:GetText() return self.text end
 function Control:SetHorizontalAlignment() end
 function Control:SetVerticalAlignment() end
@@ -272,7 +278,8 @@ function BuildActionBar()
 		local icon = MakeControl("ActionButton" .. slot .. "Icon", button, "texture")
 		icon:SetAnchor(CENTER, button, CENTER, 0, 0)
 		icon.width, icon.height = 64, 64
-		button.namedChildren = { Icon = icon }
+		local timerText = MakeControl("ActionButton" .. slot .. "TimerText", button, "label")
+		button.namedChildren = { Icon = icon, TimerText = timerText }
 		_G["ActionButton" .. slot] = button
 	end
 	return bar

@@ -28,7 +28,7 @@ print("\n== 1. load ==")
 Fire(EVENT_ADD_ON_LOADED, "PBsConsoleHudCustomizer")
 local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 local health, magicka, stamina = addon.barByKey.health, addon.barByKey.magicka, addon.barByKey.stamina
-check("version read from manifest", addon.version, "1.0.0")
+check("version read from manifest", addon.version, "1.1.1")
 check("slash command registered", type(SLASH_COMMANDS["/pbhud"]), "function")
 check("short slash command registered", type(SLASH_COMMANDS["/pbhc"]), "function")
 check("HUD fragment callback registered", addon.hudRegistered, true)
@@ -277,7 +277,12 @@ local frontCount = CreatedControls["PBsConsoleHudCustomizerLabels3"].namedChildr
 local now = GetGameTimeMilliseconds()
 FireEffect(EFFECT_RESULT_GAINED, "Front 3", "reticleover", (now + 9000) / 1000, 11, 303)
 RunUpdates()
-check("one target is not written by default", frontCount:IsHidden(), true)
+-- One target is written: "nothing is showing" is a worse first impression than a 1.
+check("a single target is written by default", frontCount:GetText(), "1")
+Row(GetString(SI_PBSCHC_COUNT_FROM_ONE)).setFunction(false)
+RunUpdates()
+check("and can be switched to two or more", frontCount:IsHidden(), true)
+Row(GetString(SI_PBSCHC_COUNT_FROM_ONE)).setFunction(true)
 FireEffect(EFFECT_RESULT_GAINED, "Front 3", "", (now + 9000) / 1000, 12, 303)
 FireEffect(EFFECT_RESULT_GAINED, "Front 3", "", (now + 9000) / 1000, 13, 303)
 RunUpdates()
@@ -289,10 +294,9 @@ check("two after one falls off", frontCount:GetText(), "2")
 FireEffect(EFFECT_RESULT_GAINED, "Front 3", "group3", (now + 9000) / 1000, 14, 303)
 RunUpdates()
 check("a group member's copy is not counted", frontCount:GetText(), "2")
-Row(GetString(SI_PBSCHC_COUNT_FROM_ONE)).setFunction(true)
 FireEffect(EFFECT_RESULT_GAINED, "Back 4", "", (now + 9000) / 1000, 21, 404)
 RunUpdates()
-check("a single target is written when that is asked for", CreatedControls["PBsConsoleHudCustomizerBack4"].namedChildren.Count:GetText(), "1")
+check("the other set is counted too", CreatedControls["PBsConsoleHudCustomizerBack4"].namedChildren.Count:GetText(), "1")
 -- The count is matched by name; an ability with no effect of its own has none.
 check("an untouched slot has no count", CreatedControls["PBsConsoleHudCustomizerLabels6"].namedChildren.Count:IsHidden(), true)
 -- Expiry is by the clock, not by an event.
@@ -306,21 +310,30 @@ Row(GetString(SI_PBSCHC_COUNT_ENABLED)).setFunction(true)
 
 print("\n== 20. the game's own numbers, the text size, and the loop ==")
 SetSlot(HOTBAR_CATEGORY_PRIMARY, 3, { name = "Front 3", icon = "front3.dds", id = 103, remaining = 8400 })
+local gameTimer = _G["ActionButton3"].namedChildren.TimerText
 GameBarTimers = true
 RunUpdates()
-check("automatic keeps off the bar the game is writing on", frontTimer:IsHidden(), true)
-check("but still writes on the other set", backTimer:IsHidden(), false)
-Row(GetString(SI_PBSCHC_TIMER_MODE)).setFunction(nil, nil, { data = "always" })
+-- The whole point of the default: ours is on the icon, so the size slider does something, and
+-- the game's own number -- which no add-on can resize -- is faded out of the way.
+check("ours is written even while the game writes its own", frontTimer:GetText(), "8.4")
+check("and the game's is faded out", gameTimer:GetAlpha(), 0)
+check("the other set is ours as always", backTimer:IsHidden(), false)
+Row(GetString(SI_PBSCHC_TIMER_MODE)).setFunction(nil, nil, { data = "both" })
 RunUpdates()
-check("always writes anyway", frontTimer:GetText(), "8.4")
-Row(GetString(SI_PBSCHC_TIMER_MODE)).setFunction(nil, nil, { data = "never" })
+check("both leaves the game's alone", gameTimer:GetAlpha(), 1)
+check("and still writes ours", frontTimer:GetText(), "8.4")
+Row(GetString(SI_PBSCHC_TIMER_MODE)).setFunction(nil, nil, { data = "game" })
 RunUpdates()
-check("never writes on either", frontTimer:IsHidden(), true)
-check("nor on the other set", backTimer:IsHidden(), true)
-Row(GetString(SI_PBSCHC_TIMER_MODE)).setFunction(nil, nil, { data = "auto" })
-GameBarTimers = false
+check("the game alone means nothing of ours on the front bar", frontTimer:IsHidden(), true)
+check("the game's own is back to full", gameTimer:GetAlpha(), 1)
+check("but the other set keeps ours, because the game draws none there", backTimer:IsHidden(), false)
+Row(GetString(SI_PBSCHC_TIMER_MODE)).setFunction(nil, nil, { data = "addon" })
 RunUpdates()
 check("and back", frontTimer:GetText(), "8.4")
+check("faded again", gameTimer:GetAlpha(), 0)
+GameBarTimers = false
+RunUpdates()
+check("nothing to fade when the game is not writing", gameTimer:GetAlpha(), 1)
 
 Row(GetString(SI_PBSCHC_TIMER_SIZE)).setFunction(36)
 check("the countdown font follows the slider", frontTimer.font, "$(GAMEPAD_BOLD_FONT)|36|thick-outline")
@@ -345,9 +358,43 @@ check("and comes back", UpdateRegistered("PBsConsoleHudCustomizerTimers"), true)
 Row(GetString(SI_PBSCHC_ENABLED)).setFunction(false)
 check("the master switch stops it too", UpdateRegistered("PBsConsoleHudCustomizerTimers"), false)
 check("and puts the skill bar back", BarAnchor(SKILLBAR), "4->GuiRoot 4 (0,-25)")
+check("the game's own countdown is handed back", _G["ActionButton3"].namedChildren.TimerText:GetAlpha(), 1)
 check("at its own size", _G[SKILLBAR]:GetScale(), 1)
 Row(GetString(SI_PBSCHC_ENABLED)).setFunction(true)
 check("on again", UpdateRegistered("PBsConsoleHudCustomizerTimers"), true)
+
+print("\n== 21. a setting saved by 1.1.0 ==")
+-- 1.1.0 called the three modes auto / always / never. A player's choice is carried over rather
+-- than reset to the default.
+addon.account.text.timerMode = "never"
+addon:Account()
+check("never became the game", addon:TimerMode(), "game")
+addon.account.text.timerMode = "auto"
+addon:Account()
+check("auto became this add-on", addon:TimerMode(), "addon")
+addon.account.text.timerMode = "nonsense"
+check("and anything else falls back", addon:TimerMode(), "addon")
+addon.account.text.timerMode = "addon"
+
+print("\n== 22. a template that did not load is survived, and said out loud ==")
+-- Controls.xml not loading on a console is a whole session lost if it leaves nothing on screen
+-- and nothing to read. The controls are built in plain Lua instead, and status says so.
+addon.writeErrors = nil
+addon.timers.labels[3] = nil
+addon.timers.usedFallback = false
+-- As it would be in a session where the XML never loaded: the name has not been taken.
+CreatedControls["PBsConsoleHudCustomizerLabels3"] = nil
+local realCreate = CreateControlFromVirtual
+CreateControlFromVirtual = function() error("no such template") end
+local pair = addon.timers:Labels(3)
+CreateControlFromVirtual = realCreate
+check("the failure is recorded", (addon.writeErrors or {}).PBsConsoleHudCustomizerSlotLabels ~= nil, true)
+check("but the labels are still built", pair ~= nil and pair.timer ~= nil, true)
+check("and say so", addon.timers.usedFallback, true)
+addon.timers:StyleLabels(pair)
+check("with the chosen font on them", pair.timer.font, "$(GAMEPAD_BOLD_FONT)|30|thick-outline")
+addon.writeErrors = nil
+addon.timers.usedFallback = false
 
 print("")
 if failures == 0 then

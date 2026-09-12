@@ -229,6 +229,32 @@ most twenty-four short strings. It runs only while the HUD is up and only while 
 draws is switched on: `SCENE_FRAGMENT_HIDDEN` unregisters it, and so does the master switch. Two
 fonts are built, one per text size in use.
 
+## 15. The game's own countdown, and why it is faded rather than left alone
+
+`ActionButton<n>TimerText` is the client's own number on the front bar, written by
+`ActionButton:SetTimer` and sized by the platform template (`ZoFontGamepad27` on the gamepad).
+Its size is not an add-on's to change, and the setting that turns it on
+(`UI_SETTING_SHOW_ACTION_BAR_TIMERS`) is read-only from here. So with that setting on and this
+add-on drawing its own number, the icon carries two.
+
+1.1.0 answered that by not drawing ours while the game's was on. That was wrong in the way that
+matters: the text size slider then did nothing at all, on the bar the player is looking at, and
+the only clue was a tooltip. From 1.1.1 the default is to draw ours and set the client label's
+**alpha to 0** instead.
+
+Alpha is the right lever because `SetTimer` and `UpdateTimer` only ever write that label's text
+and its hidden state -- alpha is never touched, so there is nothing to fight and nothing to
+re-apply per frame. It is restored to 1 the moment ours stops being drawn: the mode is changed,
+the master switch goes off, or the loop stops.
+
+## 16. Controls.xml not loading is survivable
+
+`CreateControlFromVirtual` raises if the template is not there -- a manifest that missed the XML,
+or a client that would not parse it. On a console that is a whole session lost for nothing on
+screen and nothing to read, so the failure is recorded (status prints it) and the same controls
+are built from plain `CreateControl` calls instead, with the anchors and sizes the XML would have
+given them. `/pbhud slots` says which of the two was used.
+
 ---
 
 ## Still to measure on a PS5
@@ -270,14 +296,22 @@ fonts are built, one per text size in use.
     numbers on the front bar must agree. Then swap weapons -- the number must carry on counting
     down on the row, which is the half the game does not draw.
 12. **Is the target count right?** Hit three enemies with one damage-over-time ability: the icon
-    must read 3, and fall to 2 as the first one dies or the effect drops. A self-buff must read
-    1 (with "show it for a single target" on) and not the size of the group.
-13. **Is the text legible over the icons?** The labels are `thick-outline` at the chosen size,
+    must read 3, and fall to 2 as the first one dies or the effect drops. A self-buff must read 1
+    and not the size of the group. If nothing is written at all, `/pbhud slots` says whether the
+    effect is being tracked and under what name -- the name on the left of each slot has to
+    appear in the tracked list, and on a Japanese client both are Japanese, so a mismatch there
+    is the answer.
+13. **Does the text size actually bite?** `/pbhud slots` prints `h=` for each front label, the
+    font height the client made of our descriptor. Move the countdown size slider and run it
+    again: if `h=` does not move, `$(GAMEPAD_BOLD_FONT)|<n>|thick-outline` is not being
+    understood and the face has to change. With the game's own action bar timers on, the default
+    mode must also leave exactly one number on the icon, ours.
+14. **Is the text legible over the icons?** The labels are `thick-outline` at the chosen size,
     the countdown gold and the count white, over the game's own icon art.
-14. **Does the whole lot still fade out of combat?** The labels and the row are children of the
+15. **Does the whole lot still fade out of combat?** The labels and the row are children of the
     action bar's buttons, so they should fade with it. If they stay solid over a faded bar, the
     parenting is wrong.
-15. **Does the preview come and go with the panel?** Open the panel (the three outlines must
+16. **Does the preview come and go with the panel?** Open the panel (the three outlines must
    appear straight away), back out to the list and open it again (they must appear again), open
    another add-on's panel (they must not), and leave with the menu button straight to the HUD
    (they must go). `/pbhud preview` on the HUD draws them over the real bars, which is the

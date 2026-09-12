@@ -39,6 +39,7 @@ local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 local timers = {
 	back = {},
 	labels = {},
+	dimmed = {},
 }
 addon.timers = timers
 
@@ -74,8 +75,18 @@ addon.MAX_TEXT_SIZE = 48
 addon.DEFAULT_TIMER_SIZE = 27
 addon.DEFAULT_COUNT_SIZE = 22
 
--- auto: only while the game is not already drawing its own numbers on the bar.
-addon.TIMER_MODES = { "auto", "always", "never" }
+-- What to do about the countdown on the bar the player is on. The game draws one of its own
+-- there when Settings > Interface > Action Bar Timers is on, at a size of its own that no add-on
+-- can change -- so "draw ours as well" would mean two numbers on one icon.
+--
+--   addon   ours, and the game's own number faded out of the way. The default: it is the only
+--           one of the three where the text size setting always does something.
+--   both    ours and the game's, side by side.
+--   game    the front bar is left to the game. The other weapon set still gets ours, because the
+--           game never draws a number there at all.
+--
+-- The old names for these (auto / always / never) are migrated in Account().
+addon.TIMER_MODES = { "addon", "both", "game" }
 
 function addon:Text()
 	return self:Account().text
@@ -111,21 +122,31 @@ end
 
 -- The game only ever draws its numbers on the bar you are on, so "auto" is about the front bar
 -- alone: the back bar's numbers are always ours to draw.
+function addon:TimerMode()
+	local mode = self:Text().timerMode
+	for _, known in ipairs(self.TIMER_MODES) do
+		if mode == known then
+			return mode
+		end
+	end
+	return "addon"
+end
+
 function addon:ShowsTimerOn(isBackBar)
 	if not self:Account().enabled then
 		return false
 	end
-	local mode = self:Text().timerMode
-	if mode == "never" then
-		return false
-	end
+	-- The game never writes a number on the set you are not on, so that one is always ours.
 	if isBackBar then
 		return true
 	end
-	if mode == "always" then
-		return true
-	end
-	return not self:GameShowsBarTimers()
+	return self:TimerMode() ~= "game"
+end
+
+-- True while the game's own number on the front bar should be got out of the way, because ours
+-- is going on the same icon.
+function addon:DimsGameTimer()
+	return self:ShowsTimerOn(false) and self:TimerMode() == "addon" and self:GameShowsBarTimers()
 end
 
 function addon:ShowsCount()
@@ -288,6 +309,104 @@ local function Font(size)
 	return string.format("$(GAMEPAD_BOLD_FONT)|%d|thick-outline", size)
 end
 
+-- ---------------------------------------------------------------------------------------
+-- Building a control
+--
+-- From Controls.xml where the template is there, and from plain controls where it is not. The
+-- fallback exists because the alternative is a silent nothing on a machine that costs a whole
+-- session to test: a manifest that did not pick the XML up, or a client that would not parse it,
+-- would otherwise leave no text and no row and no way to tell from the HUD. status says which of
+-- the two was used.
+-- ---------------------------------------------------------------------------------------
+
+local FALLBACK_PARTS = {
+	PBsConsoleHudCustomizerSlotLabels = {
+		{ name = "Timer", kind = "label", point = "BOTTOM", relative = "BOTTOM", x = 0, y = 4 },
+		{ name = "Count", kind = "label", point = "TOPRIGHT", relative = "TOPRIGHT", x = 2, y = -4 },
+	},
+	PBsConsoleHudCustomizerBackBarSlot = {
+		{ name = "BG", kind = "texture", point = "CENTER", relative = "CENTER", x = 0, y = 0,
+			file = "EsoUI/Art/ActionBar/Gamepad/gp_backrow_abilityFrame_BLANK.dds",
+			width = 52, height = 68, coords = { 0, 0.8125, 0, 1.0625 }, level = 0 },
+		{ name = "Icon", kind = "texture", point = "CENTER", relative = "CENTER", x = 0, y = 0,
+			width = 44, height = 44, level = 1 },
+		{ name = "Overlay", kind = "texture", point = "CENTER", relative = "CENTER", x = 0, y = 0,
+			file = "EsoUI/Art/ActionBar/Gamepad/gp_backrow_abilityFrame_overlay.dds",
+			width = 52, height = 68, coords = { 0, 0.8125, 0, 1.0625 }, level = 2 },
+		{ name = "Timer", kind = "label", point = "BOTTOM", relative = "BOTTOM", x = 0, y = 4, level = 3 },
+		{ name = "Count", kind = "label", point = "TOPRIGHT", relative = "TOPRIGHT", x = 2, y = -4, level = 3 },
+	},
+}
+
+local FALLBACK_SIZE = { PBsConsoleHudCustomizerBackBarSlot = { 52, 68 } }
+
+function timers:BuildFallback(name, parent, template)
+	local parts = FALLBACK_PARTS[template]
+	if not parts or not WINDOW_MANAGER then
+		return nil
+	end
+	local ok, control = pcall(WINDOW_MANAGER.CreateControl, WINDOW_MANAGER, name, parent, CT_CONTROL)
+	if not ok or not control then
+		return nil
+	end
+	local size = FALLBACK_SIZE[template]
+	if size then
+		control:SetDimensions(size[1], size[2])
+	end
+	for _, part in ipairs(parts) do
+		local child = WINDOW_MANAGER:CreateControl(name .. part.name, control,
+			part.kind == "label" and CT_LABEL or CT_TEXTURE)
+		child:SetAnchor(_G[part.point], control, _G[part.relative], part.x, part.y)
+		if part.width then
+			child:SetDimensions(part.width, part.height)
+		end
+		if part.file then
+			child:SetTexture(part.file)
+		end
+		if part.coords and type(child.SetTextureCoords) == "function" then
+			child:SetTextureCoords(unpack(part.coords))
+		end
+		if part.level and type(child.SetDrawLevel) == "function" then
+			child:SetDrawLevel(part.level)
+		end
+		if part.kind == "label" then
+			child:SetHorizontalAlignment(TEXT_ALIGN_CENTER)
+			child:SetVerticalAlignment(part.name == "Timer" and TEXT_ALIGN_BOTTOM or TEXT_ALIGN_TOP)
+		end
+		control[part.name] = child
+	end
+	self.usedFallback = true
+	return control
+end
+
+-- The template where it loaded, plain controls where it did not.
+function timers:Build(name, parent, template, slot)
+	if type(CreateControlFromVirtual) == "function" then
+		local ok, control = pcall(CreateControlFromVirtual, name, parent, template, slot)
+		if ok and control then
+			return control, false
+		end
+		addon.writeErrors = addon.writeErrors or {}
+		addon.writeErrors[template] = tostring(control or "no control")
+	end
+	local control = self:BuildFallback(name .. tostring(slot), parent, template)
+	return control, control ~= nil
+end
+
+-- The children of a built control, whichever way it was built.
+local function Child(control, name)
+	if control[name] then
+		return control[name]
+	end
+	if type(control.GetNamedChild) == "function" then
+		local ok, child = pcall(control.GetNamedChild, control, name)
+		if ok then
+			return child
+		end
+	end
+	return nil
+end
+
 function timers:FrontButton(slot)
 	local control = _G["ActionButton" .. slot]
 	if type(control) ~= "table" and type(control) ~= "userdata" then
@@ -310,16 +429,16 @@ function timers:Labels(slot)
 	if not button or type(CreateControlFromVirtual) ~= "function" then
 		return nil
 	end
-	local ok, control = pcall(CreateControlFromVirtual, "PBsConsoleHudCustomizerLabels", button, "PBsConsoleHudCustomizerSlotLabels", slot)
-	if not ok or not control then
+	local control = self:Build("PBsConsoleHudCustomizerLabels", button, "PBsConsoleHudCustomizerSlotLabels", slot)
+	if not control then
 		return nil
 	end
 	control:SetAnchor(TOPLEFT, button, TOPLEFT, 0, 0)
 	control:SetAnchor(BOTTOMRIGHT, button, BOTTOMRIGHT, 0, 0)
 	local pair = {
 		control = control,
-		timer = control:GetNamedChild("Timer"),
-		count = control:GetNamedChild("Count"),
+		timer = Child(control, "Timer"),
+		count = Child(control, "Count"),
 	}
 	self.labels[slot] = pair
 	self:StyleLabels(pair)
@@ -337,15 +456,15 @@ function timers:BackSlot(slot)
 	if not button or type(CreateControlFromVirtual) ~= "function" then
 		return nil
 	end
-	local ok, control = pcall(CreateControlFromVirtual, "PBsConsoleHudCustomizerBack", button, "PBsConsoleHudCustomizerBackBarSlot", slot)
-	if not ok or not control then
+	local control = self:Build("PBsConsoleHudCustomizerBack", button, "PBsConsoleHudCustomizerBackBarSlot", slot)
+	if not control then
 		return nil
 	end
 	local entry = {
 		control = control,
-		icon = control:GetNamedChild("Icon"),
-		timer = control:GetNamedChild("Timer"),
-		count = control:GetNamedChild("Count"),
+		icon = Child(control, "Icon"),
+		timer = Child(control, "Timer"),
+		count = Child(control, "Count"),
 		button = button,
 	}
 	self.back[slot] = entry
@@ -354,13 +473,33 @@ function timers:BackSlot(slot)
 	return entry
 end
 
+local function ApplyFont(label, size, what)
+	if not label then
+		return
+	end
+	local descriptor = Font(size)
+	local ok, err = pcall(label.SetFont, label, descriptor)
+	if not ok then
+		addon.writeErrors = addon.writeErrors or {}
+		addon.writeErrors[what .. " font"] = tostring(err)
+		return
+	end
+	-- What the client made of the descriptor. A size that never moves when the slider does is
+	-- the one symptom that says the descriptor was not understood, and status prints it.
+	if type(label.GetFontHeight) == "function" then
+		local okHeight, height = pcall(label.GetFontHeight, label)
+		label.pbsHeight = okHeight and height or nil
+	end
+	label.pbsDescriptor = descriptor
+end
+
 function timers:StyleLabels(pair)
+	ApplyFont(pair.timer, addon:TextSize("timer"), "timer")
 	if pair.timer then
-		pair.timer:SetFont(Font(addon:TextSize("timer")))
 		pair.timer:SetColor(TIMER_COLOUR[1], TIMER_COLOUR[2], TIMER_COLOUR[3], 1)
 	end
+	ApplyFont(pair.count, addon:TextSize("count"), "count")
 	if pair.count then
-		pair.count:SetFont(Font(addon:TextSize("count")))
 		pair.count:SetColor(COUNT_COLOUR[1], COUNT_COLOUR[2], COUNT_COLOUR[3], 1)
 	end
 end
@@ -404,6 +543,53 @@ function timers:HideAll()
 	end
 	for _, entry in pairs(self.back) do
 		entry.control:SetHidden(true)
+	end
+end
+
+-- ---------------------------------------------------------------------------------------
+-- The game's own number on the front bar
+--
+-- ActionButton<n>TimerText is the client's countdown, written by ActionButton:SetTimer and sized
+-- by the client's own template -- an add-on cannot change its size, and the setting that turns it
+-- on is private. When this add-on draws its own number on the same icon, the client's is faded
+-- out instead: alpha is not something the client writes on that label (SetTimer only ever sets
+-- its text and its hidden state), so it stays out of the way without a fight, and goes back to
+-- full the moment ours is switched off.
+-- ---------------------------------------------------------------------------------------
+
+function timers:GameTimerLabel(slot)
+	local button = self:FrontButton(slot)
+	if not button or type(button.GetNamedChild) ~= "function" then
+		return nil
+	end
+	local ok, label = pcall(button.GetNamedChild, button, "TimerText")
+	if ok and label and type(label.SetAlpha) == "function" then
+		return label
+	end
+	return nil
+end
+
+function timers:DimGameTimer(slot, dim)
+	if self.dimmed[slot] == dim then
+		return true
+	end
+	local label = self:GameTimerLabel(slot)
+	if not label then
+		return false
+	end
+	local ok, err = pcall(label.SetAlpha, label, dim and 0 or 1)
+	if not ok then
+		addon.writeErrors = addon.writeErrors or {}
+		addon.writeErrors["game timer"] = tostring(err)
+		return false
+	end
+	self.dimmed[slot] = dim
+	return true
+end
+
+function timers:UndimAll()
+	for slot in pairs(self.dimmed) do
+		self:DimGameTimer(slot, false)
 	end
 end
 
@@ -524,8 +710,11 @@ function timers:Update()
 	local showCount = addon:ShowsCount()
 	local backEnabled = addon:BackBarEnabled() and backHotbar ~= nil
 	local showEmpty = addon:BackBar().showEmpty ~= false
+	local dim = addon:DimsGameTimer()
 
 	for slot = FIRST_SLOT, LAST_SLOT do
+		self:DimGameTimer(slot, dim)
+
 		-- The game's own bar.
 		if showTimer or showCount then
 			local pair = self:Labels(slot)
@@ -601,6 +790,7 @@ function timers:Stop()
 	EVENT_MANAGER:UnregisterForUpdate(addon.name .. "Timers")
 	self.running = false
 	self:HideAll()
+	self:UndimAll()
 	return true
 end
 
@@ -625,6 +815,66 @@ function timers:OnHudStateChange(shown)
 	else
 		self:Stop()
 	end
+end
+
+-- ---------------------------------------------------------------------------------------
+-- What is really on the bar
+--
+-- One command that answers the two questions a report of "nothing is showing" raises: were the
+-- controls ever built, and is the number this add-on worked out the one on screen.
+-- ---------------------------------------------------------------------------------------
+
+function timers:TrackedCount()
+	return effectCount
+end
+
+function timers:TrackedNames(limit)
+	local names = {}
+	for key in pairs(effects) do
+		names[#names + 1] = key
+		if #names >= (limit or 6) then
+			break
+		end
+	end
+	return names
+end
+
+function timers:PrintSlots()
+	local Line = addon.Line
+	local now = GetGameTimeMilliseconds and GetGameTimeMilliseconds() or 0
+	local backHotbar, activeHotbar = self:BackHotbar()
+
+	Line("|cFF69B4%s|r -- the skill bar, slot by slot", addon.title)
+	Line("  loop=%s hud=%s  countdown=%s (front=%s back=%s, the game's own dimmed=%s)",
+		tostring(self.running == true), tostring(self.hudShown ~= false), addon:TimerMode(),
+		tostring(addon:ShowsTimerOn(false)), tostring(addon:ShowsTimerOn(true)), tostring(addon:DimsGameTimer()))
+	Line("  effects tracked=%d  counts shown from %d target(s)  controls from %s", self:TrackedCount(),
+		addon:Text().countFromOne and 1 or 2, self.usedFallback and "plain Lua (Controls.xml did not load)" or "Controls.xml")
+	local names = self:TrackedNames(6)
+	if #names > 0 then
+		Line("  tracked: %s", table.concat(names, " | "))
+	end
+
+	for slot = FIRST_SLOT, LAST_SLOT do
+		local pair = self.labels[slot]
+		local name = SlotString(GetSlotName, slot, activeHotbar) or "-"
+		local remaining = SlotNumber(GetActionSlotEffectTimeRemaining, slot, activeHotbar)
+		local timerText, countText = self:SlotText(slot, activeHotbar, now)
+		Line("|cFF69B4  %d|r %s  left=%dms -> %s  count=%s  label=%s h=%s", slot, name, Round(remaining),
+			tostring(timerText), tostring(countText),
+			pair and (pair.timer:IsHidden() and "hidden" or "shown") or "not built",
+			pair and tostring(pair.timer.pbsHeight) or "-")
+		if backHotbar then
+			local backName = SlotString(GetSlotName, slot, backHotbar) or "-"
+			local backRemaining = SlotNumber(GetActionSlotEffectTimeRemaining, slot, backHotbar)
+			local backTimer, backCount = self:SlotText(slot, backHotbar, now)
+			Line("      other set: %s  left=%dms -> %s  count=%s  row=%s", backName, Round(backRemaining),
+				tostring(backTimer), tostring(backCount),
+				self.back[slot] and (self.back[slot].control:IsHidden() and "hidden" or "shown") or "not built")
+		end
+	end
+	Line("  the name on the left is what a count is matched against: it has to appear in the")
+	Line("  tracked list above for a number to be written.")
 end
 
 -- Registered on the add-on's own name, beside everyone else's handler for the same event, with

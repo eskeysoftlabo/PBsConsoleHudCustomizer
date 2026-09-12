@@ -280,9 +280,9 @@ function addon:InitSettings()
 			label = GetString(SI_PBSCHC_TIMER_MODE),
 			tooltip = GetString(SI_PBSCHC_TIMER_MODE_TOOLTIP),
 			items = timerModeItems,
-			default = timerModeByKey.auto.name,
+			default = timerModeByKey.addon.name,
 			getFunction = function()
-				local item = timerModeByKey[self:Text().timerMode] or timerModeByKey.auto
+				local item = timerModeByKey[self:TimerMode()] or timerModeByKey.addon
 				return item.name
 			end,
 			setFunction = function(combobox, name, item)

@@ -72,7 +72,7 @@ XMLで各バーに固定されているため一緒に移動し、倍率も同�
 　そのスキルの効果が切れるまでの時間です。1分以上は「1m」、10秒未満は「9.4」のように
 　小数第1位まで（切り替え可）。
 ・対象数（アイコン上・白）
-　その効果がかかっている対象の数です。既定では2体以上のときに表示、1体から表示も可能。
+　その効果がかかっている対象の数です。既定は1体から表示（2体以上のときだけ表示にも変更可）。
 
 文字サイズはそれぞれ12〜48で調整できます。
 
@@ -81,9 +81,10 @@ XMLで各バーに固定されているため一緒に移動し、倍率も同�
 効果を数え、スキル名で対応付けています（効果名がスキル名と異なるモーフでは表示されません。
 残り時間には影響しません）。
 
-表バーについては、ゲーム側の「設定 > インターフェース > アクションバータイマー」がオンだと
-数字が二重になるため、既定の「自動」ではゲーム側がオフのときだけ表示します（「常に表示」
-「表示しない」も選べます）。裏バーはゲーム側が数字を出さないため常に表示します。
+表バーについては、ゲーム側の「設定 > インターフェース > アクションバータイマー」がオンのとき、
+サイズ変更できないゲーム側の数字が出ます。既定の「このアドオン」では、その数字を薄くしたうえで
+このアドオンの数字を表示するため、文字サイズの設定が常に反映されます（「両方」「ゲームに任せる」
+も選べます）。裏バーはゲーム側が数字を出さないため、どの設定でも常にこのアドオンが表示します。
 
 ■ プレビュー
 
@@ -109,7 +110,8 @@ XMLで各バーに固定されているため一緒に移動し、倍率も同�
 /pbhud pos <bar> <x> <y>           位置（中央からの左右、下端からの高さ）
 /pbhud scale <bar> <n>             大きさ（50〜200）
 /pbhud text timer|count <n>        スキルバーの文字サイズ（12〜48）
-/pbhud timers auto|always|never    表バーの残り時間表示
+/pbhud timers addon|both|game      表バーの残り時間をどちらが出すか
+/pbhud slots                       各スロットの状態（診断用）
 /pbhud backbar [on|off|empty|<n>]  裏バーの表示・大きさ
 /pbhud on | off                    変更のオン／オフ
 /pbhud preview                     プレビュー枠の表示／非表示
@@ -151,8 +153,9 @@ from 12 to 48. The countdown is the game's own number -- the same one its action
 and it answers for the set you are not on as well. The target count has no API behind it and is
 counted from the effects you apply, matched by the ability's name.
 
-If the game is already drawing its own numbers on the bar you are on (Settings > Interface >
-Action Bar Timers), the default setting leaves that bar alone so there are never two.
+If the game is already drawing its own number on the bar you are on (Settings > Interface > Action
+Bar Timers) -- at a size no add-on can change -- the default setting fades that one out of the way
+and draws this add-on's instead, so the text size you pick always applies.
 
 Why size is one number: the bar's width belongs to the game. It stretches a bar to 323, or shrinks
 it to 141, every time a buff or debuff moves one of your maximums, and animates it there. A width

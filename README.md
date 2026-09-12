@@ -5,7 +5,7 @@ are not on, and writes how long is left on each ability and how many targets are
 The Elder Scrolls Online on console.
 
 - **Author:** PinkBanther
-- **Version:** 1.1.0
+- **Version:** 1.1.1
 - **Optional:** `LibHarvensAddonSettings` >= 20106 (for the settings panel; the chat commands work
   without it)
 
@@ -62,7 +62,7 @@ On **both** sets, each icon can carry:
 | | |
 | --- | --- |
 | **Countdown** | How long is left on that ability's effect. Gold, at the bottom of the icon. A minute or more reads as `1m`, the last ten seconds as `9.4` (optional). |
-| **Target count** | How many targets are under the effect. White, in the top corner. From two targets by default, or from one if you prefer. |
+| **Target count** | How many targets are under the effect. White, in the top corner. From one target, or from two if you would rather a single-target ability did not carry a 1. |
 
 Both have their own text size, 12 to 48.
 
@@ -75,12 +75,16 @@ slot by the ability's name. A morph that applies its effect under a different na
 counted — the countdown is unaffected, because that comes from the client.
 
 **Countdown on the bar you are on** decides what happens when the game is already writing its own
-numbers there (Settings > Interface > Action Bar Timers):
+number there (Settings > Interface > Action Bar Timers). That number is drawn at a size no add-on
+can change, so:
 
-- **Automatic** (the default) — draw ours only while the game's is off, so there are never two.
-- **Always** — draw ours as well.
-- **Never** — leave the front bar to the game. The other set still gets ours; the game never
-  writes there.
+- **This add-on** (the default) — ours goes on the icon and the game's own number is faded out of
+  the way, so the text size setting always does something.
+- **Both** — ours next to the game's.
+- **The game** — the front bar is left exactly as it is. The other set still gets ours, because
+  the game never writes a number there at all.
+
+The set you are not on is always this add-on's, whichever of the three is chosen.
 
 ### Preview
 
@@ -100,7 +104,8 @@ which is the quickest way to check the two agree.
 /pbhud pos <bar> <x> <y>           x from the middle of the screen, y up from the bottom
 /pbhud scale <bar> <n>             size in per cent (50-200)
 /pbhud text timer|count <n>        size of the text on the skill bar (12-48)
-/pbhud timers auto|always|never    the countdown on the game's own bar
+/pbhud timers addon|both|game      whose countdown goes on the front bar
+/pbhud slots                       what is on each slot, and why
 /pbhud backbar [on|off|empty|<n>]  the other weapon set's row
 /pbhud on | off                    switch every change on or off
 /pbhud preview                     show or hide the preview outlines
@@ -137,13 +142,25 @@ back.
 ## What it does not touch
 
 - **The bar's own width** — the game's, see above.
-- **The game's own back row and action bar timers** — its controls are left exactly as they are;
-  turn them off under Settings > Interface if you want only this add-on's.
+- **The game's own back row** — its controls are left exactly as they are; turn it off under
+  Settings > Interface if you want only this add-on's row.
+- **The game's own countdown**, except for fading it out of the way when this add-on is drawing
+  one on the same icon. Its text, its size and the setting behind it are the game's.
 - **What is slotted, the abilities, the cooldowns and the ultimate meter.**
 - **Whether the numbers are shown on the bars**, and **whether the bars fade out of combat** —
   the game's settings under Settings > Interface.
 - **The order or the colours of the bars**, the werewolf / mount / siege bars' own positions, and
   anything else on the HUD.
+
+## If something is not showing
+
+`/pbhud slots` prints, for every slot on both sets: what is in it, how many milliseconds the
+client says are left, what this add-on made of that, the target count it worked out, and whether
+its label was ever built. Underneath it lists the effect names being tracked — a count is only
+written when the ability's name is in that list.
+
+`/pbhud status` adds the rest: how many controls were built, whether the game is drawing its own
+numbers, and any write the client refused.
 
 ## Tests
 

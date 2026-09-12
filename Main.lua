@@ -241,11 +241,14 @@ addon.accountDefaults = {
 	-- The text on the skill bar's icons, and the back bar. Defaults rather than "unset": these
 	-- draw something the game does not draw at all, so there is no game value to fall back to.
 	text = {
-		timerMode = "auto",
+		timerMode = "addon",
 		timerSize = 27,
 		countSize = 22,
 		showCounts = true,
-		countFromOne = false,
+		-- From one target rather than two. Two was the first choice, so that a single-target
+		-- ability did not carry a "1" for its whole duration -- but "nothing is showing" is a
+		-- worse first impression than a 1, and most of what a player checks is single-target.
+		countFromOne = true,
 		decimals = true,
 	},
 	backBar = {
@@ -280,6 +283,12 @@ function addon:Account()
 	end
 	if type(account.measured) ~= "table" then
 		account.measured = {}
+	end
+	-- 1.1.0 called these auto / always / never, for a setting that meant something slightly
+	-- different. Carried over rather than reset, so nobody's choice is thrown away.
+	local renamedModes = { auto = "addon", always = "both", never = "game" }
+	if type(account.text) == "table" and renamedModes[account.text.timerMode] then
+		account.text.timerMode = renamedModes[account.text.timerMode]
 	end
 	for _, group in ipairs({ "text", "backBar" }) do
 		if type(account[group]) ~= "table" then
@@ -844,9 +853,18 @@ function addon:PrintStatus()
 	if self.timers then
 	local text = self:Text()
 	local back = self:BackBar()
-	Line("|cFF69B4  skill bar text|r  timer=%s (%d) count=%s (%d)  the game's own bar numbers: %s",
-		tostring(text.timerMode), self:TextSize("timer"), tostring(text.showCounts ~= false), self:TextSize("count"),
-		tostring(self:GameShowsBarTimers()))
+	local built, backBuilt = 0, 0
+	for _ in pairs(self.timers.labels) do
+		built = built + 1
+	end
+	for _ in pairs(self.timers.back) do
+		backBuilt = backBuilt + 1
+	end
+	Line("|cFF69B4  skill bar text|r  countdown=%s (%d) count=%s (%d)  the game draws its own: %s (dimmed=%s)",
+		self:TimerMode(), self:TextSize("timer"), tostring(text.showCounts ~= false), self:TextSize("count"),
+		tostring(self:GameShowsBarTimers()), tostring(self:DimsGameTimer()))
+	Line("    controls built: labels=%d/6 row=%d/6   effects tracked=%d   (%s slots for the rest)",
+		built, backBuilt, self.timers:TrackedCount(), SLASH .. " slots")
 	Line("|cFF69B4  back bar|r  on=%s empty=%s scale=%d%% gap=%d  running=%s",
 		tostring(back.enabled ~= false), tostring(back.showEmpty ~= false), self:BackBarScale(),
 		Round(back.gap or 4), tostring(self.timers ~= nil and self.timers.running == true))
@@ -872,7 +890,8 @@ local function Usage()
 	Line("  %s pos <bar> <x> <y>      -- x from the middle of the screen, y up from the bottom", SLASH)
 	Line("  %s scale <bar> <n>        -- size in per cent (%d-%d)", SLASH, addon.MIN_SCALE, addon.MAX_SCALE)
 	Line("  %s text timer|count <n>   -- size of the text on the skill bar (%d-%d)", SLASH, addon.MIN_TEXT_SIZE or 12, addon.MAX_TEXT_SIZE or 48)
-	Line("  %s timers auto|always|never -- the countdown on the game's own bar", SLASH)
+	Line("  %s timers addon|both|game -- whose countdown goes on the front bar", SLASH)
+	Line("  %s slots                  -- what is on each slot, and why", SLASH)
 	Line("  %s backbar [on|off|empty|<scale>] -- the other weapon set's row", SLASH)
 	Line("  %s on | off               -- switch every change on or off", SLASH)
 	Line("  %s preview                -- show or hide the preview frames", SLASH)
@@ -891,6 +910,10 @@ local function OnSlash(argumentString)
 
 	if command == "status" then
 		addon:PrintStatus()
+	elseif command == "slots" or command == "skills" then
+		if addon.timers then
+			addon.timers:PrintSlots()
+		end
 	elseif command == "pos" or command == "position" then
 		local bar = addon.barByCommand[(args[2] or ""):lower()]
 		local x, y = tonumber(args[3]), tonumber(args[4])
@@ -935,8 +958,10 @@ local function OnSlash(argumentString)
 		Line("%s text size: %d", which, addon:TextSize(which))
 	elseif command == "timers" then
 		local mode = (args[2] or ""):lower()
-		if mode ~= "auto" and mode ~= "always" and mode ~= "never" then
-			Line("usage: %s timers auto|always|never", SLASH)
+		local renamed = { auto = "addon", always = "both", never = "game" }
+		mode = renamed[mode] or mode
+		if mode ~= "addon" and mode ~= "both" and mode ~= "game" then
+			Line("usage: %s timers addon|both|game", SLASH)
 			return
 		end
 		addon:Text().timerMode = mode
