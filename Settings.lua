@@ -182,6 +182,39 @@ function addon:InitSettings()
 		)
 	end
 
+	-- ---- The gaps along the skill bar --------------------------------------------------------
+	AddHeading(settings, LibHarvensAddonSettings, GetString(SI_PBSCHC_SECTION_GAPS))
+	AddLabel(settings, LibHarvensAddonSettings, "SI_PBSCHC_GAPS_EXPLANATION")
+
+	local gapRows = {
+		{ key = "skill", label = SI_PBSCHC_GAP_SKILL, tooltip = SI_PBSCHC_GAP_SKILL_TOOLTIP },
+		{ key = "ultimate", label = SI_PBSCHC_GAP_ULTIMATE, tooltip = SI_PBSCHC_GAP_ULTIMATE_TOOLTIP },
+		{ key = "item", label = SI_PBSCHC_GAP_ITEM, tooltip = SI_PBSCHC_GAP_ITEM_TOOLTIP },
+	}
+	for _, row in ipairs(gapRows) do
+		settings:AddSetting(
+			{
+				type = LibHarvensAddonSettings.ST_SLIDER,
+				label = GetString(row.label),
+				tooltip = GetString(row.tooltip),
+				min = self.MIN_GAP,
+				max = self.MAX_GAP,
+				step = 1,
+				default = self:GameGap(row.key),
+				format = "%d",
+				unit = "",
+				getFunction = function()
+					return self:Gap(row.key)
+				end,
+				setFunction = function(value)
+					self:SetGap(row.key, value)
+					self:Account().enabled = true
+					self:Refresh()
+				end
+			}
+		)
+	end
+
 	-- ---- The other weapon set ----------------------------------------------------------------
 	AddHeading(settings, LibHarvensAddonSettings, GetString(SI_PBSCHC_SECTION_BACKBAR))
 	AddLabel(settings, LibHarvensAddonSettings, "SI_PBSCHC_BACKBAR_EXPLANATION")

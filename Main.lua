@@ -237,6 +237,7 @@ addon.accountDefaults = {
 	enabled = true,
 	preview = true,
 	bars = {},
+	spacing = {},
 	measured = {},
 	-- The text on the skill bar's icons, and the back bar. Defaults rather than "unset": these
 	-- draw something the game does not draw at all, so there is no game value to fall back to.
@@ -283,6 +284,9 @@ function addon:Account()
 	end
 	if type(account.measured) ~= "table" then
 		account.measured = {}
+	end
+	if type(account.spacing) ~= "table" then
+		account.spacing = {}
 	end
 	-- 1.1.0 called these auto / always / never, for a setting that meant something slightly
 	-- different. Carried over rather than reset, so nobody's choice is thrown away.
@@ -466,7 +470,7 @@ function addon:AnythingDiffers()
 			return true
 		end
 	end
-	return false
+	return self.SpacingDiffers ~= nil and self:SpacingDiffers()
 end
 
 -- ---------------------------------------------------------------------------------------
@@ -737,6 +741,9 @@ function addon:Apply()
 	for _, bar in ipairs(self.elements) do
 		self:ApplyBar(bar)
 	end
+	if self.skillbar then
+		self.skillbar:Apply()
+	end
 	return true
 end
 
@@ -752,12 +759,16 @@ end
 
 function addon:ResetBar(bar)
 	self:Account().bars[bar.key] = {}
+	if bar.isActionBar then
+		self:ResetSpacing()
+	end
 end
 
 function addon:ResetAll()
 	for _, bar in ipairs(self.elements) do
 		self:ResetBar(bar)
 	end
+	self:ResetSpacing()
 	self:Refresh()
 end
 
@@ -853,6 +864,15 @@ function addon:PrintStatus()
 	if self.timers then
 	local text = self:Text()
 	local back = self:BackBar()
+	if self.skillbar then
+		local available, why = self:WeaponSwapState()
+		Line("|cFF69B4  skill bar gaps|r  skill=%d ultimate=%d item=%d  (the game's: %d / %d / %d)  written=%s",
+			self:Gap("skill"), self:Gap("ultimate"), self:Gap("item"),
+			self:GameGap("skill"), self:GameGap("ultimate"), self:GameGap("item"),
+			tostring(self.skillbar.written == true))
+		Line("    weapon swap: %s%s", tostring(available), why and (" (" .. why .. ")") or "")
+	end
+
 	local built, backBuilt = 0, 0
 	for _ in pairs(self.timers.labels) do
 		built = built + 1
@@ -891,6 +911,7 @@ local function Usage()
 	Line("  %s scale <bar> <n>        -- size in per cent (%d-%d)", SLASH, addon.MIN_SCALE, addon.MAX_SCALE)
 	Line("  %s text timer|count <n>   -- size of the text on the skill bar (%d-%d)", SLASH, addon.MIN_TEXT_SIZE or 12, addon.MAX_TEXT_SIZE or 48)
 	Line("  %s timers addon|both|game -- whose countdown goes on the front bar", SLASH)
+	Line("  %s gap skill|ult|item <n> -- the space along the skill bar (%d-%d)", SLASH, addon.MIN_GAP or 0, addon.MAX_GAP or 150)
 	Line("  %s slots                  -- what is on each slot, and why", SLASH)
 	Line("  %s backbar [on|off|empty|<scale>] -- the other weapon set's row", SLASH)
 	Line("  %s on | off               -- switch every change on or off", SLASH)
@@ -956,6 +977,21 @@ local function OnSlash(argumentString)
 		account.enabled = true
 		addon:Refresh()
 		Line("%s text size: %d", which, addon:TextSize(which))
+	elseif command == "gap" or command == "gaps" then
+		local which = (args[2] or ""):lower()
+		local names = { skill = "skill", skills = "skill", ability = "skill",
+			ult = "ultimate", ultimate = "ultimate",
+			item = "item", quickslot = "item", quick = "item" }
+		which = names[which]
+		local value = tonumber(args[3])
+		if not which or not value then
+			Line("usage: %s gap skill|ult|item <%d-%d>", SLASH, addon.MIN_GAP, addon.MAX_GAP)
+			return
+		end
+		addon:SetGap(which, value)
+		account.enabled = true
+		addon:Refresh()
+		Line("gaps: skill=%d ultimate=%d item=%d", addon:Gap("skill"), addon:Gap("ultimate"), addon:Gap("item"))
 	elseif command == "timers" then
 		local mode = (args[2] or ""):lower()
 		local renamed = { auto = "addon", always = "both", never = "game" }

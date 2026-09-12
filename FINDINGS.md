@@ -255,6 +255,64 @@ screen and nothing to read, so the failure is recorded (status prints it) and th
 are built from plain `CreateControl` calls instead, with the anchors and sizes the XML would have
 given them. `/pbhud slots` says which of the two was used.
 
+## 17. The gaps along the bar, and the control nobody sees
+
+`ActionButton:ApplyAnchor` is the whole layout:
+
+```lua
+function ActionButton:ApplyAnchor(target, offsetX, isAnchoredLeft)
+    if not isAnchoredLeft then
+        self.slot:SetAnchor(LEFT, target, RIGHT, offsetX, 0)
+    else
+        self.slot:SetAnchor(RIGHT, target, LEFT, -offsetX, 0)
+    end
+end
+```
+
+and `ApplyStyle` chains the row with it, off `GAMEPAD_CONSTANTS`: `abilitySlotOffsetX` 10 between
+the five abilities, `ultimateSlotOffsetX` 65 before the ultimate, `weaponSwapOffsetX` 61 for the
+weapon swap marker inside the bar, and `quickslotOffsetXFromFirstSlot` 5 for the quickslot on the
+far side of that marker.
+
+The marker is the catch. On the gamepad `showWeaponSwapButton` is false and
+`ZO_WeaponSwap_SetPermanentlyHidden` hides it -- but it is still a control with a width, and the
+quickslot is anchored to its other side. So the gap the player sees between the item and the
+first ability is `5 + the marker's width + 10`, and no single number in the client is that gap.
+
+This add-on writes the same anchors with its own offsets, and anchors the quickslot to the
+**first ability** instead of the marker, so the number in the settings panel is the distance on
+screen. `ActionButton3` is left exactly where the client puts it, because it is what the rest of
+the row hangs off; everything else closes up towards it. The three gaps are measured off the
+controls first (`GetLeft` / `GetRight`, at the bar's own scale, before anything of ours is
+written), so an untouched install still writes nothing.
+
+The original anchor of each control is remembered the moment before the first write **to that
+control**, never in one pass up front: the row can grow. `SetCompanionAnchors` puts a companion's
+ultimate between the item and the abilities when one is summoned, and re-anchors the quickslot
+past it -- a button the client has only just laid out, whose own anchor has to be read then, not
+before. Reading them all again later would record our own offsets as the game's, which is the
+mistake PB's NamePlateChanger had to grow a repair path for.
+
+## 18. Whether the weapon sets can be swapped at all
+
+Two client answers, and neither is a guess at an item:
+
+```lua
+local activeWeaponPair, locked = GetActiveWeaponPairInfo()          -- the Oakensoul Ring, etc.
+local unearned = GetUnitLevel("player") < GetWeaponSwapUnlockedLevel()
+```
+
+Both are what the client's own weapon swap button reads
+(`ZO_WeaponSwap_OnInitialized`, `buttontemplates.lua`), with `EVENT_WEAPON_PAIR_LOCK_CHANGED` and
+`EVENT_ACTIVE_WEAPON_PAIR_CHANGED` behind the first and `EVENT_LEVEL_UPDATE` behind the second.
+Action Duration Reminder looks for `oakensoul` in the icon of each worn ring instead
+(`Bar.lua`, `barShowShiftFully`); that misses everything else that locks a bar, and breaks on a
+renamed icon.
+
+While either says no, there is no second set to show, so the back bar hides itself -- the
+setting is left alone, and it comes back when the ring comes off. The update loop already
+re-reads this every tick, so nothing has to be registered for it.
+
 ---
 
 ## Still to measure on a PS5
@@ -301,17 +359,27 @@ given them. `/pbhud slots` says which of the two was used.
     effect is being tracked and under what name -- the name on the left of each slot has to
     appear in the tracked list, and on a Japanese client both are Japanese, so a mismatch there
     is the answer.
-13. **Does the text size actually bite?** `/pbhud slots` prints `h=` for each front label, the
+13. **Do the gaps come out right?** `/pbhud status` prints the three measured gaps next to the
+    three in use. On a PS5 the measured ones should read 10 / 65 / (5 + the marker's width + 10);
+    if the item one comes out at 5, the quickslot is not where this add-on thinks it is. Then
+    pull all three in and check the row still reads left to right with no overlap, that the
+    ultimate and the item are still hittable, and that the back bar row follows.
+14. **And with a companion out?** Summon one: its ultimate appears between the item and the
+    abilities, and both gaps on that side must take the item setting without the row jumping.
+15. **Does the row go away with the Oakensoul Ring on?** Equip it: the back bar must disappear
+    on its own and the setting must still say it is on. Take it off and it must come back.
+    `/pbhud slots` prints `weapon swap available=false (locked)` while it is on.
+16. **Does the text size actually bite?** `/pbhud slots` prints `h=` for each front label, the
     font height the client made of our descriptor. Move the countdown size slider and run it
     again: if `h=` does not move, `$(GAMEPAD_BOLD_FONT)|<n>|thick-outline` is not being
     understood and the face has to change. With the game's own action bar timers on, the default
     mode must also leave exactly one number on the icon, ours.
-14. **Is the text legible over the icons?** The labels are `thick-outline` at the chosen size,
+17. **Is the text legible over the icons?** The labels are `thick-outline` at the chosen size,
     the countdown gold and the count white, over the game's own icon art.
-15. **Does the whole lot still fade out of combat?** The labels and the row are children of the
+18. **Does the whole lot still fade out of combat?** The labels and the row are children of the
     action bar's buttons, so they should fade with it. If they stay solid over a faded bar, the
     parenting is wrong.
-16. **Does the preview come and go with the panel?** Open the panel (the three outlines must
+19. **Does the preview come and go with the panel?** Open the panel (the three outlines must
    appear straight away), back out to the list and open it again (they must appear again), open
    another add-on's panel (they must not), and leave with the menu button straight to the HUD
    (they must go). `/pbhud preview` on the HUD draws them over the real bars, which is the

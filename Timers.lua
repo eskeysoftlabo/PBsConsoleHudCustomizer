@@ -154,7 +154,16 @@ function addon:ShowsCount()
 end
 
 function addon:BackBarEnabled()
-	return self:Account().enabled and self:BackBar().enabled ~= false
+	if not (self:Account().enabled and self:BackBar().enabled ~= false) then
+		return false
+	end
+	-- Welded to one bar -- the Oakensoul Ring and anything like it, or a character that has not
+	-- earned the second set yet. A row showing a set that cannot be swapped to is a row of
+	-- nothing useful, so it goes on its own rather than by a setting.
+	if self.WeaponSwapAvailable and not self:WeaponSwapAvailable() then
+		return false
+	end
+	return true
 end
 
 -- ---------------------------------------------------------------------------------------
@@ -848,6 +857,11 @@ function timers:PrintSlots()
 	Line("  loop=%s hud=%s  countdown=%s (front=%s back=%s, the game's own dimmed=%s)",
 		tostring(self.running == true), tostring(self.hudShown ~= false), addon:TimerMode(),
 		tostring(addon:ShowsTimerOn(false)), tostring(addon:ShowsTimerOn(true)), tostring(addon:DimsGameTimer()))
+	if addon.WeaponSwapState then
+		local available, why = addon:WeaponSwapState()
+		Line("  weapon swap available=%s%s  -> other set row=%s", tostring(available),
+			why and (" (" .. why .. ")") or "", tostring(addon:BackBarEnabled()))
+	end
 	Line("  effects tracked=%d  counts shown from %d target(s)  controls from %s", self:TrackedCount(),
 		addon:Text().countFromOne and 1 or 2, self.usedFallback and "plain Lua (Controls.xml did not load)" or "Controls.xml")
 	local names = self:TrackedNames(6)

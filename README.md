@@ -5,7 +5,7 @@ are not on, and writes how long is left on each ability and how many targets are
 The Elder Scrolls Online on console.
 
 - **Author:** PinkBanther
-- **Version:** 1.1.1
+- **Version:** 1.2.0
 - **Optional:** `LibHarvensAddonSettings` >= 20106 (for the settings panel; the chat commands work
   without it)
 
@@ -44,6 +44,25 @@ The werewolf bar lives under magicka, mount stamina under stamina and siege heal
 Each one is anchored to its partner in the game's own XML, so it moves with it, and this add-on
 gives it the same size so the pair still lines up.
 
+### Spacing along the skill bar
+
+The game leaves a lot of room around the ultimate and the item. Three sliders close it up:
+
+| | the game's |
+| --- | --- |
+| **Between the abilities** | 10 |
+| **Before the ultimate** | 65 — what makes it sit out on its own |
+| **Before the item** | the whole width of the weapon swap marker, plus 15 |
+
+That last one is the big one. On console the weapon swap marker is never drawn, but it is still a
+control sitting between the quickslot and the first ability, with the quickslot anchored to its
+far side. This add-on anchors the item to the first ability directly, so the number you set is the
+gap you see. While a companion is out, its ultimate joins that side of the row and takes the same
+gap.
+
+The first ability does not move — it is what the rest of the row hangs off — so the bar closes up
+towards it. Re-centre it with the skill bar's own position slider if you want it dead centre.
+
 ### The weapon set you are not on
 
 With **Show the other weapon set** on, a row of that set's abilities is drawn above the skill bar,
@@ -54,6 +73,10 @@ The game has a row of its own (Settings > Interface, *Action Bar Timers* and *Ba
 only appears for a slot whose effect is still running and disappears again when it ends. This one
 is always there, so both sets can be read at a glance. If you want only this one, turn the game's
 Back Row setting off.
+
+**When there is no second set, the row hides itself.** The Oakensoul Ring and anything else that
+locks you to one bar, or a character too low to have earned the weapon swap yet: the row goes on
+its own and comes back when the lock does, without touching your setting.
 
 ### Countdown and target count
 
@@ -103,6 +126,7 @@ which is the quickest way to check the two agree.
 /pbhud status                      settings, and where the bars really are on screen
 /pbhud pos <bar> <x> <y>           x from the middle of the screen, y up from the bottom
 /pbhud scale <bar> <n>             size in per cent (50-200)
+/pbhud gap skill|ult|item <n>      the space along the skill bar (0-150)
 /pbhud text timer|count <n>        size of the text on the skill bar (12-48)
 /pbhud timers addon|both|game      whose countdown goes on the front bar
 /pbhud slots                       what is on each slot, and why
@@ -125,6 +149,9 @@ controls**, and lets the bars carry on running their own code:
   the screen. The attribute bars stay children of `ZO_PlayerAttribute`, so the HUD fragment still
   fades and hides them, and the game's "fade out of combat" setting still works.
 - **Size** is `SetScale` on that control, and on its small companion.
+- **The gaps** are the same anchors the client writes in `ApplyAnchor` (`LEFT` on the previous
+  button's `RIGHT`), with the quickslot moved off the hidden weapon swap marker and onto the
+  first ability.
 - **The countdown** is read from the client: `GetActionSlotEffectTimeRemaining(slot, hotbar)`,
   which answers for either weapon set.
 - **The other set's row and the text** are controls of this add-on's own, laid out in

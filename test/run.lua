@@ -28,7 +28,7 @@ print("\n== 1. load ==")
 Fire(EVENT_ADD_ON_LOADED, "PBsConsoleHudCustomizer")
 local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 local health, magicka, stamina = addon.barByKey.health, addon.barByKey.magicka, addon.barByKey.stamina
-check("version read from manifest", addon.version, "1.1.1")
+check("version read from manifest", addon.version, "1.2.0")
 check("slash command registered", type(SLASH_COMMANDS["/pbhud"]), "function")
 check("short slash command registered", type(SLASH_COMMANDS["/pbhc"]), "function")
 check("HUD fragment callback registered", addon.hudRegistered, true)
@@ -37,7 +37,11 @@ check("HUD fragment callback registered", addon.hudRegistered, true)
 -- explanation, 2 checkboxes, then per element: heading + 2 sliders + scale + reset, then the
 -- back bar section (heading, label, 2 checkboxes, 2 sliders), the text section (heading, label,
 -- dropdown, 3 sliders, 3 checkboxes) and the general one (heading, button, hint)
-check("settings rows", #PanelRows, 3 + 4 * 5 + 6 + 8 + 3)
+-- explanation, 2 checkboxes, then per element: heading + 2 sliders + scale + reset, then the
+-- spacing section (heading, label, 3 sliders), the back bar section (heading, label,
+-- 2 checkboxes, 2 sliders), the text section (heading, label, dropdown, 3 sliders,
+-- 3 checkboxes) and the general one (heading, button, hint)
+check("settings rows", #PanelRows, 3 + 4 * 5 + 5 + 6 + 8 + 3)
 
 print("\n== 2. the first apply waits for the bars ==")
 Fire(EVENT_PLAYER_ACTIVATED)
@@ -395,6 +399,77 @@ addon.timers:StyleLabels(pair)
 check("with the chosen font on them", pair.timer.font, "$(GAMEPAD_BOLD_FONT)|30|thick-outline")
 addon.writeErrors = nil
 addon.timers.usedFallback = false
+
+print("\n== 23. the gaps along the skill bar ==")
+-- A fresh session with nothing written, so the game's own chain is what gets measured.
+SavedStore.PBsConsoleHudCustomizer_Data = nil
+addon.account = ZO_SavedVars:NewAccountWide("PBsConsoleHudCustomizer_Data", 1, nil, addon.accountDefaults)
+addon:Account()
+addon.written, addon.original = {}, {}
+addon.skillbar.original, addon.skillbar.written = nil, false
+BuildAttributeBars()
+SetAllSlots()
+addon:CaptureAll()
+addon.skillbar:Measure()
+check("the gap between abilities is measured", addon:GameGap("skill"), 10)
+check("the gap before the ultimate too", addon:GameGap("ultimate"), 65)
+-- 5 to the marker, the marker's own 45, then 10 to the first ability: what the eye sees as one
+-- gap is three numbers with an invisible control in the middle.
+check("and the item's, marker and all", addon:GameGap("item"), 5 + WEAPON_SWAP_WIDTH + 10)
+check("nothing written while they are the game's", WriteCount("ActionButton4", "anchor"), 0)
+check("nor on the quickslot", WriteCount("QuickslotButton", "anchor"), 0)
+
+Row(GetString(SI_PBSCHC_GAP_ULTIMATE)).setFunction(12)
+check("the ultimate is pulled in", BarAnchor("ActionButton8"), "2->ActionButton7 8 (12,0)")
+check("the abilities are left alone", BarAnchor("ActionButton4"), "2->ActionButton3 8 (10,0)")
+Row(GetString(SI_PBSCHC_GAP_ITEM)).setFunction(8)
+-- Anchored to the first ability itself, so the hidden marker is out of the way for good.
+check("the item comes in beside the first ability", BarAnchor("QuickslotButton"), "8->ActionButton3 2 (-8,0)")
+Row(GetString(SI_PBSCHC_GAP_SKILL)).setFunction(4)
+check("and the abilities close up", BarAnchor("ActionButton5"), "2->ActionButton4 8 (4,0)")
+check("the first one is not moved: it is what the rest hang off", BarAnchor("ActionButton3"), "2->ZO_ActionBar1WeaponSwap 8 (10,0)")
+
+-- A companion joins the row between the item and the abilities, and takes the same gap.
+SetCompanionOut(true)
+addon:Refresh()
+check("the companion's ultimate takes the item gap", BarAnchor("CompanionUltimateButton"), "8->ActionButton3 2 (-8,0)")
+check("and the item sits beside it", BarAnchor("QuickslotButton"), "8->CompanionUltimateButton 2 (-8,0)")
+SetCompanionOut(false)
+addon:Refresh()
+
+check("everything differs while the gaps do", addon:AnythingDiffers(), true)
+Row(GetString(SI_PBSCHC_RESET_BAR):gsub("<<1>>", GetString(SI_PBSCHC_BAR_SKILLBAR))).clickHandler()
+check("the skill bar's reset puts the gaps back too", BarAnchor("ActionButton8"), "2->ActionButton7 8 (65,0)")
+check("and the item back on the marker", BarAnchor("QuickslotButton"), "8->ZO_ActionBar1WeaponSwap 2 (-5,0)")
+check("nothing differs again", addon:AnythingDiffers(), false)
+
+Row(GetString(SI_PBSCHC_GAP_SKILL)).setFunction(4)
+Row(GetString(SI_PBSCHC_ENABLED)).setFunction(false)
+check("the master switch puts them back as well", BarAnchor("ActionButton5"), "2->ActionButton4 8 (10,0)")
+Row(GetString(SI_PBSCHC_ENABLED)).setFunction(true)
+check("and on again", BarAnchor("ActionButton5"), "2->ActionButton4 8 (4,0)")
+
+print("\n== 24. no second weapon set, no row for it ==")
+FireHud(SCENE_FRAGMENT_SHOWN)
+check("the row is there to begin with", CreatedControls["PBsConsoleHudCustomizerBack3"]:IsHidden(), false)
+-- The Oakensoul Ring, and anything else that welds you to one bar: GetActiveWeaponPairInfo's
+-- second return. No setting of ours is touched.
+WeaponPairLocked = true
+RunUpdates()
+check("locked to one bar: the row goes", CreatedControls["PBsConsoleHudCustomizerBack3"]:IsHidden(), true)
+check("and says why", select(2, addon:WeaponSwapState()), "locked")
+check("the setting is untouched", addon:BackBar().enabled, true)
+WeaponPairLocked = false
+RunUpdates()
+check("take the ring off and it is back", CreatedControls["PBsConsoleHudCustomizerBack3"]:IsHidden(), false)
+-- A character too low to have earned the second bar.
+PlayerLevel = 10
+RunUpdates()
+check("too low a level: the row goes", CreatedControls["PBsConsoleHudCustomizerBack3"]:IsHidden(), true)
+check("and says why", select(2, addon:WeaponSwapState()), "unearned")
+PlayerLevel = 50
+RunUpdates()
+check("and comes back on levelling", CreatedControls["PBsConsoleHudCustomizerBack3"]:IsHidden(), false)
 
 print("")
 if failures == 0 then

@@ -13,6 +13,16 @@ local strings = {
 
 	SI_PBSCHC_BAR_SKILLBAR = "Skill bar",
 
+	-- ---- The gaps along the skill bar ----------------------------------------------------
+	SI_PBSCHC_SECTION_GAPS = "Spacing along the skill bar",
+	SI_PBSCHC_GAPS_EXPLANATION = "How far apart the buttons sit. The game leaves a lot of room around the ultimate and the item, and between the item and the abilities there is an invisible control -- the weapon swap marker, which the console never draws -- taking up space as well. These are the gaps you can actually see.",
+	SI_PBSCHC_GAP_SKILL = "Between the abilities",
+	SI_PBSCHC_GAP_SKILL_TOOLTIP = "The space between the five ability buttons. The game's own is 10.",
+	SI_PBSCHC_GAP_ULTIMATE = "Before the ultimate",
+	SI_PBSCHC_GAP_ULTIMATE_TOOLTIP = "The space between the last ability and the ultimate. The game's own is 65, which is what makes the ultimate sit out on its own.",
+	SI_PBSCHC_GAP_ITEM = "Before the item",
+	SI_PBSCHC_GAP_ITEM_TOOLTIP = "The space between the quickslot item and the first ability -- and, while a companion is out, between the item and the companion's ultimate as well. The game's own is the weapon swap marker's whole width, so this is where most of the room is to be won back.",
+
 	-- ---- The other weapon set ----------------------------------------------------------
 	SI_PBSCHC_SECTION_BACKBAR = "The other weapon set",
 	SI_PBSCHC_BACKBAR_EXPLANATION = "A row of your other weapon set's abilities, above the skill bar, with the same countdown and target count on each. The game has a row of its own, but it only appears for a slot whose effect is still running; this one is always there.",

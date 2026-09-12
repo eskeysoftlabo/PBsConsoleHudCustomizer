@@ -57,12 +57,28 @@ you choose.
 狼バー（マジカの下）、騎乗スタミナ（スタミナの下）、攻城兵器の体力（体力の下）は、ゲームの
 XMLで各バーに固定されているため一緒に移動し、倍率も同じ値が適用されます。
 
+■ スキルバーの間隔
+
+ゲーム本体はアルティメットとアイテムの周りを大きく空けています。3つのスライダーで詰められます。
+
+・スキル同士の間隔（ゲーム本来10）
+・アルティメットの手前（同65。アルティメットだけ離れている原因）
+・アイテムの手前（同、見えない武器切替マーカーの幅＋15）
+
+とくに最後の1つが大きく、コンソールでは描画されない武器切替マーカーがアイテムとスキルの間に
+場所を取っています。このアドオンはアイテムを最初のスキルに直接くっつけるため、設定した数字が
+そのまま画面上の間隔になります。仲間を連れているときは、仲間のアルティメットにも同じ間隔を
+使います。
+
 ■ 裏バー（もう一方の武器セット）
 
 スキルバーの上に、いま使っていない方の武器セットのスキルを常時表示します。ゲーム本体にも
 裏バー表示はありますが、効果が続いているスロットだけが一時的に出るものです。こちらは常に
 表示されるため、表裏6本ずつを一目で確認できます。スキルバーを動かせば裏バーも追従します。
 表示のオン／オフ、空きスロットの表示、大きさ、バーとの間隔を設定できます。
+
+なお、オークンの魂の指輪など武器切り替えができない状態のとき、および武器切り替えを習得して
+いないレベルのときは、裏バーは自動的に非表示になります（設定はそのまま。外せば戻ります）。
 
 ■ 残り時間と対象数
 
@@ -109,6 +125,7 @@ XMLで各バーに固定されているため一緒に移動し、倍率も同�
 /pbhud status                      設定内容と、画面上の実際の位置
 /pbhud pos <bar> <x> <y>           位置（中央からの左右、下端からの高さ）
 /pbhud scale <bar> <n>             大きさ（50〜200）
+/pbhud gap skill|ult|item <n>      スキルバーの間隔（0〜150）
 /pbhud text timer|count <n>        スキルバーの文字サイズ（12〜48）
 /pbhud timers addon|both|game      表バーの残り時間をどちらが出すか
 /pbhud slots                       各スロットの状態（診断用）
@@ -143,9 +160,14 @@ What you can set, for each of the four on its own:
 Health in the middle of the screen with magicka and stamina low in the corners, the skill bar
 higher up, or the whole set moved out of the way of a minimap -- all of it is three sliders each.
 
+Spacing: three sliders for the gaps along the skill bar -- between the abilities, before the
+ultimate, and before the item, where the console's own invisible weapon swap marker is eating the
+room.
+
 The other weapon set: a row of its abilities above the skill bar, always there rather than only
 while a timer runs on one slot, following the skill bar wherever you put it, with its own size and
-gap.
+gap. It hides itself while you cannot swap weapons at all -- the Oakensoul Ring, or a character
+that has not earned the second set yet.
 
 Countdown and target count, on both sets: how long is left on each ability's effect (gold, under
 the icon) and how many targets are under it (white, in the corner), each with its own text size

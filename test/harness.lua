@@ -39,7 +39,7 @@ function AdvanceFrame(ms) frameTime = frameTime + (ms or 1000) end
 function GetAddOnManager()
 	return {
 		GetNumAddOns = function() return 1 end,
-		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ConsoleHudCustomizer|r 1.1.1" end,
+		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ConsoleHudCustomizer|r 1.2.0" end,
 	}
 end
 
@@ -171,6 +171,7 @@ function Control:Rect()
 	return refX + a.offsetX - fx * self.width, refY + a.offsetY - fy * self.height, self.width, self.height
 end
 function Control:GetLeft() local l = self:Rect(); return l end
+function Control:GetRight() local l, _, w = self:Rect(); return l + w end
 function Control:GetTop() local _, t = self:Rect(); return t end
 
 -- Controls.xml, as far as the add-on reads it back: every template it asks for has an Icon, a
@@ -266,24 +267,75 @@ ACTION_BAR_ULTIMATE_SLOT_INDEX = 7
 HOTBAR_CATEGORY_PRIMARY, HOTBAR_CATEGORY_BACKUP = 0, 1
 ACTION_TYPE_NOTHING, ACTION_TYPE_ABILITY = 0, 1
 
+-- ApplyStyle's chain, with GAMEPAD_CONSTANTS: the weapon swap marker 61 in from the bar's left
+-- (permanently hidden on the gamepad but still taking up room), the five abilities 10 apart from
+-- it, the ultimate 65 past the last of them, and the quickslot 5 to the left of the marker.
+WEAPON_SWAP_WIDTH = 45
+
 function BuildActionBar()
 	local bar = MakeControl("ZO_ActionBar1", GuiRoot, "toplevel")
 	bar.width, bar.height = 606, 70
 	bar:SetAnchor(BOTTOM, GuiRoot, BOTTOM, 0, -25)
 	_G.ZO_ActionBar1 = bar
+
+	local swap = MakeControl("ZO_ActionBar1WeaponSwap", bar, "button")
+	swap.width, swap.height = WEAPON_SWAP_WIDTH, 45
+	swap:SetAnchor(TOPLEFT, bar, TOPLEFT, 61, 4)
+	swap.hidden = true
+	_G.ZO_ActionBar1WeaponSwap = swap
+
+	local previous = nil
 	for slot = 3, 8 do
 		local button = MakeControl("ActionButton" .. slot, bar, "control")
 		button.width, button.height = 64, 64
-		button:SetAnchor(LEFT, bar, LEFT, (slot - 3) * 74, 0)
+		if slot == 3 then
+			button:SetAnchor(LEFT, swap, RIGHT, 10, 0)
+		elseif slot == 8 then
+			button:SetAnchor(LEFT, previous, RIGHT, 65, 0)
+		else
+			button:SetAnchor(LEFT, previous, RIGHT, 10, 0)
+		end
 		local icon = MakeControl("ActionButton" .. slot .. "Icon", button, "texture")
 		icon:SetAnchor(CENTER, button, CENTER, 0, 0)
 		icon.width, icon.height = 64, 64
 		local timerText = MakeControl("ActionButton" .. slot .. "TimerText", button, "label")
 		button.namedChildren = { Icon = icon, TimerText = timerText }
 		_G["ActionButton" .. slot] = button
+		previous = button
 	end
+
+	local quickslot = MakeControl("QuickslotButton", bar, "control")
+	quickslot.width, quickslot.height = 64, 64
+	quickslot:SetAnchor(RIGHT, swap, LEFT, -5, 0)
+	_G.QuickslotButton = quickslot
+
+	local companion = MakeControl("CompanionUltimateButton", bar, "control")
+	companion.width, companion.height = 70, 70
+	companion:SetAnchor(RIGHT, _G.ActionButton3, LEFT, -65, 0)
+	companion.hidden = true
+	_G.CompanionUltimateButton = companion
+
 	return bar
 end
+
+-- A companion is out: the client shows its ultimate button and re-anchors the quickslot past it.
+function SetCompanionOut(out)
+	_G.CompanionUltimateButton:SetHidden(not out)
+	_G.QuickslotButton:ClearAnchors()
+	if out then
+		_G.QuickslotButton:SetAnchor(RIGHT, _G.CompanionUltimateButton, LEFT, -45, 0)
+	else
+		_G.QuickslotButton:SetAnchor(RIGHT, _G.ZO_ActionBar1WeaponSwap, LEFT, -5, 0)
+	end
+end
+
+-- GetActiveWeaponPairInfo's second return is the lock the Oakensoul Ring sets, and the weapon
+-- swap is also unearned below GetWeaponSwapUnlockedLevel.
+WeaponPairLocked = false
+PlayerLevel = 50
+function GetActiveWeaponPairInfo() return 1, WeaponPairLocked end
+function GetWeaponSwapUnlockedLevel() return 15 end
+function GetUnitLevel(unitTag) return PlayerLevel end
 
 -- ZO_UnitVisualizer_ShrinkExpandModule:OnValueChanged -- a buff or debuff on a maximum writes
 -- one of three widths onto the container, whatever anyone else has done to it.
@@ -448,6 +500,7 @@ end
 dofile(DIR .. "/lang/strings.lua")
 dofile(DIR .. "/lang/jp.lua")
 dofile(DIR .. "/Main.lua")
+dofile(DIR .. "/SkillBar.lua")
 dofile(DIR .. "/Timers.lua")
 dofile(DIR .. "/Preview.lua")
 dofile(DIR .. "/Settings.lua")
