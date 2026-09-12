@@ -889,6 +889,24 @@ FancyActionBar+ gets all three from its table of ability ids. This gets them fro
 `GetAbilityDuration` and one rule, which is the trade named in §47: no table to keep up to date,
 and less exact where an ability's real duration is not what the game declares.
 
+## 49. Aiming is not casting
+
+A ground-targeted ability -- the ones that put a circle on the floor and wait -- is pressed once
+to start aiming and again to place it, and the seconds in between are the player's. Counting from
+the press (§47) has the countdown running while the circle is still on the ground.
+
+The client says when that is happening: `EVENT_ENTER_GROUND_TARGET_MODE` and its `LEAVE`, with
+`IsPlayerGroundTargeting()` for the state in between. FancyActionBar+ holds its own slot updates
+across the same pair (`main.lua`, `groundTargetMode`, which queues them and replays them when the
+aiming ends).
+
+A press made while aiming is held rather than counted, and let go when the aiming ends. Backing
+out of a placement ends the aiming too, and the difference is the **cooldown**: an ability that
+fired is on one, if only the global one, and an ability that was cancelled is not. Asked a moment
+later, because the cooldown does not start in the same frame.
+
+`/pbhud effects` counts the presses held and the placements cancelled.
+
 ---
 
 ## Still to measure on a PS5

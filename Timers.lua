@@ -378,14 +378,53 @@ function timers:AbilityDuration(slot, hotbar)
 	return 0
 end
 
-function timers:OnAbilityUsed(_, slotNum)
-	if type(slotNum) ~= "number" or slotNum < FIRST_SLOT or slotNum > LAST_SLOT then
-		return
+-- ---------------------------------------------------------------------------------------
+-- Aiming is not casting
+--
+-- A ground-targeted ability -- the ones that put a circle on the floor and wait -- is pressed
+-- once to start aiming and again to place it, and the time in between is the player's. Counting
+-- from the press has the countdown running while the circle is still on the ground.
+--
+-- The client says when that is happening: EVENT_ENTER_GROUND_TARGET_MODE and its LEAVE, with
+-- IsPlayerGroundTargeting() for the state. FancyActionBar+ holds its own slot updates the same
+-- way (main.lua, groundTargetMode).
+--
+-- A press made while aiming is held rather than counted, and let go when the aiming ends -- but
+-- only if the ability really went off. Backing out of a placement ends the aiming too, and the
+-- difference is the cooldown: an ability that fired is on one, an ability that was cancelled is
+-- not. Looked at a moment later, because the cooldown does not start in the same frame.
+-- ---------------------------------------------------------------------------------------
+
+local GROUND_CONFIRM_MS = 150
+
+local groundPending = nil
+
+local function Later(fn, delay)
+	if zo_callLater then
+		zo_callLater(fn, delay)
+	else
+		fn()
 	end
-	local _, hotbar = self:BackHotbar()
+end
+
+function timers:GroundTargeting()
+	if self.groundActive then
+		return true
+	end
+	if type(IsPlayerGroundTargeting) == "function" then
+		local ok, active = pcall(IsPlayerGroundTargeting)
+		if ok and active then
+			return true
+		end
+	end
+	return false
+end
+
+-- The cast itself, once it is known to have happened.
+function timers:StartCast(slotNum, hotbar, at)
 	lastUse.slot = slotNum
 	lastUse.hotbar = hotbar
-	lastUse.at = Now()
+	lastUse.at = at
 	lastUse.expected = self:AbilityDuration(slotNum, hotbar)
 	self.casts = (self.casts or 0) + 1
 
@@ -406,9 +445,9 @@ function timers:OnAbilityUsed(_, slotNum)
 		local entry = {
 			key = nil,
 			slotIcon = slotIcon,
-			beginMs = lastUse.at,
-			endMs = lastUse.at + lastUse.expected,
-			castAt = lastUse.at,
+			beginMs = at,
+			endMs = at + lastUse.expected,
+			castAt = at,
 			-- Anything the game actually reports beats a number worked out from the tooltip.
 			score = math.huge,
 			declared = true,
@@ -419,6 +458,55 @@ function timers:OnAbilityUsed(_, slotNum)
 		end
 		self.declared = (self.declared or 0) + 1
 	end
+end
+
+function timers:OnAbilityUsed(_, slotNum)
+	if type(slotNum) ~= "number" or slotNum < FIRST_SLOT or slotNum > LAST_SLOT then
+		return
+	end
+	local _, hotbar = self:BackHotbar()
+
+	-- Pressed while the circle is on the ground: held until it is placed.
+	if self:GroundTargeting() then
+		groundPending = { slot = slotNum, hotbar = hotbar }
+		self.groundHeld = (self.groundHeld or 0) + 1
+		return
+	end
+
+	self:StartCast(slotNum, hotbar, Now())
+end
+
+-- Whether the ability in a slot has just gone off, which is what tells a placement from a
+-- cancelled one: a cast puts the slot on a cooldown, if only the global one.
+function timers:SlotWentOff(slot, hotbar)
+	if type(GetSlotCooldownInfo) ~= "function" then
+		-- Nothing to ask: better a countdown that starts on a cancelled placement than none at
+		-- all on a real one.
+		return true
+	end
+	local ok, remaining = pcall(GetSlotCooldownInfo, slot, hotbar)
+	return ok and type(remaining) == "number" and remaining > 0
+end
+
+function timers:OnGroundTargetMode(eventCode)
+	if eventCode == EVENT_ENTER_GROUND_TARGET_MODE then
+		self.groundActive = true
+		return
+	end
+	self.groundActive = false
+
+	local pending = groundPending
+	groundPending = nil
+	if not pending then
+		return
+	end
+	Later(function()
+		if not timers:SlotWentOff(pending.slot, pending.hotbar) then
+			timers.groundCancelled = (timers.groundCancelled or 0) + 1
+			return
+		end
+		timers:StartCast(pending.slot, pending.hotbar, Now())
+	end, GROUND_CONFIRM_MS)
 end
 
 -- Called for every effect that arrives. One that turns up inside the window after a cast is
@@ -1708,6 +1796,7 @@ function timers:PrintSlots()
 		self.sources or 0, self.dropped or 0)
 	Line("  casts seen=%d  effects tied to a cast=%d  shorter readings refused=%d",
 		self.casts or 0, self.linked or 0, self.shorterIgnored or 0)
+	Line("  presses held while aiming=%d  placements cancelled=%d", self.groundHeld or 0, self.groundCancelled or 0)
 	Line("  counted from the tooltip's own length=%d  carried out to a later target=%d  effects refused as the wrong length=%d",
 		self.declared or 0, self.extended or 0, self.mismatched or 0)
 	Line("  clocks: frame=%d game=%d (they must agree for an effect's end time to mean anything)",
@@ -1802,6 +1891,15 @@ function timers:Register()
 		EVENT_MANAGER:RegisterForEvent(addon.name .. "Used", EVENT_ACTION_SLOT_ABILITY_USED, function(...)
 			timers:OnAbilityUsed(...)
 		end)
+	end
+
+	-- And when the player is aiming rather than casting.
+	for _, event in ipairs({ EVENT_ENTER_GROUND_TARGET_MODE, EVENT_LEAVE_GROUND_TARGET_MODE }) do
+		if event then
+			EVENT_MANAGER:RegisterForEvent(addon.name .. "Ground" .. tostring(event), event, function(eventCode)
+				timers:OnGroundTargetMode(eventCode)
+			end)
+		end
 	end
 
 	self.registered = true

@@ -28,7 +28,7 @@ print("\n== 1. load ==")
 Fire(EVENT_ADD_ON_LOADED, "PBsConsoleHudCustomizer")
 local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 local health, magicka, stamina = addon.barByKey.health, addon.barByKey.magicka, addon.barByKey.stamina
-check("version read from manifest", addon.version, "1.11.1")
+check("version read from manifest", addon.version, "1.12.0")
 check("slash command registered", type(SLASH_COMMANDS["/pbhud"]), "function")
 check("short slash command registered", type(SLASH_COMMANDS["/pbhc"]), "function")
 check("HUD fragment callback registered", addon.hudRegistered, true)
@@ -1479,6 +1479,54 @@ FireEffect(EFFECT_RESULT_GAINED, "Major Breach", "", (now21 + 20000) / 1000, 53,
 FireEffect(EFFECT_RESULT_GAINED, "Power of the Light", "", (now21 + 6000) / 1000, 53, 103003)
 RunUpdates()
 check("still six, not twenty", addon.timers.labels[5].timer:GetText(), "6.0")
+
+print("\n== 55. a circle on the ground is not a cast ==")
+-- A ground-targeted ability is pressed once to start aiming and again to place it, and the time
+-- in between is the player's. Counting from the press has the bar running while the circle is
+-- still on the floor.
+addon.timers:Forget_All()
+addon.timers.timers = {}
+addon.timers.counts = {}
+addon.timers.groundHeld, addon.timers.groundCancelled = 0, 0
+SetSlot(HOTBAR_CATEGORY_PRIMARY, 7, { name = "Caltrops", icon = "caltrops.dds", id = 240, remaining = 0, duration = 0 })
+SetAbilityDuration(240, 20000)
+SetSlotCooldown(7, 0)
+FireHud(SCENE_FRAGMENT_SHOWN)
+
+EnterGroundTargeting()
+FireCast(7)
+RunUpdates()
+local caltrops = addon.timers.labels[7].timer
+check("nothing counts while the circle is out", caltrops:IsHidden(), true)
+check("the press is held", addon.timers.groundHeld, 1)
+
+-- Three seconds of aiming, then it is placed: the ability goes on its cooldown.
+AdvanceFrame(3000)
+SetSlotCooldown(7, 20000)
+LeaveGroundTargeting()
+FlushCallLater()
+RunUpdates()
+check("counting starts when it is placed", caltrops:GetText(), "20")
+
+-- Backing out of a placement ends the aiming too, and must not start anything.
+AdvanceFrame(21000)
+RunUpdates()
+addon.timers.timers = {}
+SetSlotCooldown(7, 0)
+EnterGroundTargeting()
+FireCast(7)
+LeaveGroundTargeting()
+FlushCallLater()
+RunUpdates()
+check("a cancelled placement counts nothing", caltrops:IsHidden(), true)
+check("and says so", addon.timers.groundCancelled, 1)
+
+-- An ability that is not ground-targeted is unaffected: pressed is cast.
+SetSlot(HOTBAR_CATEGORY_PRIMARY, 6, { name = "Rally", icon = "rally.dds", id = 241, remaining = 0, duration = 0 })
+SetAbilityDuration(241, 30000)
+FireCast(6)
+RunUpdates()
+check("a normal cast still counts from the press", addon.timers.labels[6].timer:GetText(), "30")
 
 print("")
 if failures == 0 then
