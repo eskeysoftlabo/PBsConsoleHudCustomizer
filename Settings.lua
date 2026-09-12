@@ -129,6 +129,56 @@ function addon:InitSettings()
 		}
 	)
 
+	-- ---- The look of the resource bars -------------------------------------------------------
+	AddHeading(settings, LibHarvensAddonSettings, GetString(SI_PBSCHC_SECTION_STYLE))
+
+	local styleItems = {}
+	local styleByKey = {}
+	for _, style in ipairs(self.BAR_STYLES) do
+		local item = { name = GetString(_G["SI_PBSCHC_STYLE_" .. style:upper()]), data = style }
+		styleItems[#styleItems + 1] = item
+		styleByKey[style] = item
+	end
+
+	settings:AddSetting(
+		{
+			type = LibHarvensAddonSettings.ST_DROPDOWN,
+			label = GetString(SI_PBSCHC_STYLE),
+			tooltip = GetString(SI_PBSCHC_STYLE_TOOLTIP),
+			items = styleItems,
+			default = styleByKey.standard.name,
+			getFunction = function()
+				return (styleByKey[self:BarStyle()] or styleByKey.standard).name
+			end,
+			setFunction = function(combobox, name, item)
+				self:SetBarStyle(item.data)
+				self:Account().enabled = true
+				self:Refresh()
+			end
+		}
+	)
+
+	settings:AddSetting(
+		{
+			type = LibHarvensAddonSettings.ST_SLIDER,
+			label = GetString(SI_PBSCHC_LIQUID_STRENGTH),
+			tooltip = GetString(SI_PBSCHC_LIQUID_STRENGTH_TOOLTIP),
+			min = self.MIN_LIQUID,
+			max = self.MAX_LIQUID,
+			step = 5,
+			default = self.DEFAULT_LIQUID,
+			format = "%d",
+			unit = "%",
+			getFunction = function()
+				return self:LiquidStrength()
+			end,
+			setFunction = function(value)
+				self:SetLiquidStrength(value)
+				self:Refresh()
+			end
+		}
+	)
+
 	-- ---- One section per bar, all three the same three rows --------------------------------
 	for _, bar in ipairs(self.elements) do
 		local barName = GetString(_G[bar.stringId])
@@ -410,6 +460,89 @@ function addon:InitSettings()
 			end,
 			setFunction = function(value)
 				self:Text().countFromOne = value
+				self:Refresh()
+			end
+		}
+	)
+
+	-- ---- The shade over a skill ---------------------------------------------------------------
+	AddHeading(settings, LibHarvensAddonSettings, GetString(SI_PBSCHC_SECTION_SHADE))
+	AddLabel(settings, LibHarvensAddonSettings, "SI_PBSCHC_SHADE_EXPLANATION")
+
+	settings:AddSetting(
+		{
+			type = LibHarvensAddonSettings.ST_CHECKBOX,
+			label = GetString(SI_PBSCHC_SHADE_ENABLED),
+			tooltip = GetString(SI_PBSCHC_SHADE_ENABLED_TOOLTIP),
+			default = true,
+			getFunction = function()
+				return self:Shade().enabled ~= false
+			end,
+			setFunction = function(value)
+				self:Shade().enabled = value
+				self:Account().enabled = true
+				self:Refresh()
+			end
+		}
+	)
+
+	settings:AddSetting(
+		{
+			type = LibHarvensAddonSettings.ST_SLIDER,
+			label = GetString(SI_PBSCHC_SHADE_DARKNESS),
+			tooltip = GetString(SI_PBSCHC_SHADE_DARKNESS_TOOLTIP),
+			min = 0,
+			max = 100,
+			step = 5,
+			default = 60,
+			format = "%d",
+			unit = "%",
+			getFunction = function()
+				return self:ShadeDarkness()
+			end,
+			setFunction = function(value)
+				self:SetShadeDarkness(value)
+				self:Refresh()
+			end
+		}
+	)
+
+	local shadeItems = {}
+	local shadeByKey = {}
+	for _, direction in ipairs(self.SHADE_DIRECTIONS) do
+		local item = { name = GetString(_G["SI_PBSCHC_SHADE_DIRECTION_" .. direction:upper()]), data = direction }
+		shadeItems[#shadeItems + 1] = item
+		shadeByKey[direction] = item
+	end
+
+	settings:AddSetting(
+		{
+			type = LibHarvensAddonSettings.ST_DROPDOWN,
+			label = GetString(SI_PBSCHC_SHADE_DIRECTION),
+			tooltip = GetString(SI_PBSCHC_SHADE_DIRECTION_TOOLTIP),
+			items = shadeItems,
+			default = shadeByKey.down.name,
+			getFunction = function()
+				return (shadeByKey[self:ShadeDirection()] or shadeByKey.down).name
+			end,
+			setFunction = function(combobox, name, item)
+				self:Shade().direction = item.data
+				self:Refresh()
+			end
+		}
+	)
+
+	settings:AddSetting(
+		{
+			type = LibHarvensAddonSettings.ST_CHECKBOX,
+			label = GetString(SI_PBSCHC_SHADE_EDGE),
+			tooltip = GetString(SI_PBSCHC_SHADE_EDGE_TOOLTIP),
+			default = true,
+			getFunction = function()
+				return self:Shade().leadingEdge ~= false
+			end,
+			setFunction = function(value)
+				self:Shade().leadingEdge = value
 				self:Refresh()
 			end
 		}

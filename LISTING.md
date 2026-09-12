@@ -57,6 +57,26 @@ you choose.
 狼バー（マジカの下）、騎乗スタミナ（スタミナの下）、攻城兵器の体力（体力の下）は、ゲームの
 XMLで各バーに固定されているため一緒に移動し、倍率も同じ値が適用されます。
 
+■ バーの見た目（液体スタイル）
+
+体力・マジカ・スタミナのバーに、標準に加えて「液体」スタイルを選べます。バーと枠はそのままに、
+中身を液体のように描きます（下側ほど暗く、光が2つの速さで流れ、残量の先端に液面の光の線）。
+強さは0〜200%で調整できます。
+
+ゲーム側の描画の「上に」重ねる方式のため、ダメージシールドや防御力変化の表示、瀕死の警告、
+戦闘外での自動フェードはすべてそのまま機能します。使用しているテクスチャはバーが元から
+読み込んでいるものだけなので、コンソールの共有メモリを追加で消費しません（画像ファイルは
+同梱していません）。
+
+■ 使用中スキルの網掛け
+
+スキルの効果が続いている間、アイコンを暗く網掛けし、残り時間に合わせて上から下へ網掛けが
+消えていきます。数字を読まなくても残りが分かり、表バー・裏バーの両方で動作します。
+濃さ、境界を光らせるか、消えていく向きを設定できます。
+
+掃引はゲーム本体のクールダウン描画（Cooldownコントロール）そのものに、実際の効果時間を
+渡して任せています。そのため効果時間と必ず一致し、毎フレームの処理も発生しません。
+
 ■ スキルバーの間隔
 
 ゲーム本体はアルティメットとアイテムの周りを大きく空けています。3つのスライダーで詰められます。
@@ -126,6 +146,8 @@ XMLで各バーに固定されているため一緒に移動し、倍率も同�
 /pbhud pos <bar> <x> <y>           位置（中央からの左右、下端からの高さ）
 /pbhud scale <bar> <n>             大きさ（50〜200）
 /pbhud gap skill|ult|item <n>      スキルバーの間隔（0〜150）
+/pbhud style standard|liquid       リソースバーの見た目
+/pbhud shade [on|off|up|down|<n>]  使用中スキルの網掛け
 /pbhud text timer|count <n>        スキルバーの文字サイズ（12〜48）
 /pbhud timers addon|both|game      表バーの残り時間をどちらが出すか
 /pbhud slots                       各スロットの状態（診断用）
@@ -159,6 +181,15 @@ What you can set, for each of the four on its own:
 
 Health in the middle of the screen with magicka and stamina low in the corners, the skill bar
 higher up, or the whole set moved out of the way of a minimap -- all of it is three sliders each.
+
+A liquid look: the three resource bars, standard or with their fill drawn as something poured --
+darker at the bottom, light drifting across, a bright surface line where the fill ends. Drawn over
+the game's own fill, so shields and warnings still show, and built from textures the bars already
+load, so it costs no extra memory.
+
+A shade over a skill in use: while an ability's effect runs, its icon is shaded and the shade is
+wiped away down the icon as the time runs out, on both weapon sets. The game's own cooldown
+machinery does the sweep, with the effect's real length.
 
 Spacing: three sliders for the gaps along the skill bar -- between the abilities, before the
 ultimate, and before the item, where the console's own invisible weapon swap marker is eating the

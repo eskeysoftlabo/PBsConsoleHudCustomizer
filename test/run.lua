@@ -28,7 +28,7 @@ print("\n== 1. load ==")
 Fire(EVENT_ADD_ON_LOADED, "PBsConsoleHudCustomizer")
 local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 local health, magicka, stamina = addon.barByKey.health, addon.barByKey.magicka, addon.barByKey.stamina
-check("version read from manifest", addon.version, "1.2.0")
+check("version read from manifest", addon.version, "1.3.0")
 check("slash command registered", type(SLASH_COMMANDS["/pbhud"]), "function")
 check("short slash command registered", type(SLASH_COMMANDS["/pbhc"]), "function")
 check("HUD fragment callback registered", addon.hudRegistered, true)
@@ -41,7 +41,12 @@ check("HUD fragment callback registered", addon.hudRegistered, true)
 -- spacing section (heading, label, 3 sliders), the back bar section (heading, label,
 -- 2 checkboxes, 2 sliders), the text section (heading, label, dropdown, 3 sliders,
 -- 3 checkboxes) and the general one (heading, button, hint)
-check("settings rows", #PanelRows, 3 + 4 * 5 + 5 + 6 + 8 + 3)
+-- explanation, 2 checkboxes, the style section (heading, dropdown, slider), then per element:
+-- heading + 2 sliders + scale + reset, then spacing (heading, label, 3 sliders), the back bar
+-- (heading, label, 2 checkboxes, 2 sliders), the text (heading, label, dropdown, 3 sliders,
+-- 3 checkboxes), the shade (heading, label, 2 checkboxes, slider, dropdown) and the general
+-- section (heading, button, hint)
+check("settings rows", #PanelRows, 3 + 3 + 4 * 5 + 5 + 6 + 8 + 6 + 3)
 
 print("\n== 2. the first apply waits for the bars ==")
 Fire(EVENT_PLAYER_ACTIVATED)
@@ -470,6 +475,108 @@ check("and says why", select(2, addon:WeaponSwapState()), "unearned")
 PlayerLevel = 50
 RunUpdates()
 check("and comes back on levelling", CreatedControls["PBsConsoleHudCustomizerBack3"]:IsHidden(), false)
+
+print("\n== 25. the shade over a skill in use ==")
+addon.account.text.timerMode = "addon"
+SetAllSlots()
+FireHud(SCENE_FRAGMENT_SHOWN)
+local shade3 = CreatedControls["PBsConsoleHudCustomizerShade3"]
+check("a shade is built for each slot", shade3 ~= nil, true)
+check("over the game's own icon", shade3:GetParent():GetName(), "ActionButton3")
+check("and hidden while nothing is running", shade3:IsHidden(), true)
+
+-- An ability is used: the client starts reporting time left on that slot.
+SetSlot(HOTBAR_CATEGORY_PRIMARY, 3, { name = "Front 3", icon = "front3.dds", id = 103, remaining = 20000, duration = 20000 })
+RunUpdates()
+check("the shade comes up", shade3:IsHidden(), false)
+check("the icon is what is shaded", shade3.texture, "front3.dds")
+check("swept vertically", shade3.cooldown.cdType, CD_TYPE_VERTICAL_REVEAL)
+check("for exactly the effect's length", shade3.cooldown.duration, 20000)
+check("from where it is now", shade3.cooldown.remaining, 20000)
+check("clearing downwards by default", shade3.cooldown.timeType, CD_TIME_TYPE_TIME_UNTIL)
+check("as dark as the setting says", shade3.fillColor[4], 0.6)
+
+-- Ticking on is not a restart: the engine is doing the sweep.
+local started = WriteCount("PBsConsoleHudCustomizerShade3", "cooldown")
+SetSlot(HOTBAR_CATEGORY_PRIMARY, 3, { name = "Front 3", icon = "front3.dds", id = 103, remaining = 17000, duration = 20000 })
+RunUpdates()
+RunUpdates()
+check("counting down does not restart it", WriteCount("PBsConsoleHudCustomizerShade3", "cooldown"), started)
+-- Casting it again does.
+SetSlot(HOTBAR_CATEGORY_PRIMARY, 3, { name = "Front 3", icon = "front3.dds", id = 103, remaining = 20000, duration = 20000 })
+RunUpdates()
+check("re-casting does", WriteCount("PBsConsoleHudCustomizerShade3", "cooldown"), started + 1)
+
+Row(GetString(SI_PBSCHC_SHADE_DIRECTION)).setFunction(nil, nil, { data = "up" })
+SetSlot(HOTBAR_CATEGORY_PRIMARY, 3, { name = "Front 3", icon = "front3.dds", id = 103, remaining = 20000, duration = 30000 })
+RunUpdates()
+check("the direction can be turned round", shade3.cooldown.timeType, CD_TIME_TYPE_TIME_REMAINING)
+Row(GetString(SI_PBSCHC_SHADE_DIRECTION)).setFunction(nil, nil, { data = "down" })
+
+-- The other weapon set is shaded the same way.
+SetSlot(HOTBAR_CATEGORY_BACKUP, 5, { name = "Back 5", icon = "back5.dds", id = 205, remaining = 12000, duration = 12000 })
+RunUpdates()
+local backShade = CreatedControls["PBsConsoleHudCustomizerBack5"].namedChildren.Shade
+check("the other set is shaded too", backShade:IsHidden(), false)
+check("with its own icon", backShade.texture, "back5.dds")
+
+-- The effect ends.
+SetSlot(HOTBAR_CATEGORY_PRIMARY, 3, { name = "Front 3", icon = "front3.dds", id = 103, remaining = 0, duration = 0 })
+RunUpdates()
+check("the shade goes when the effect does", shade3:IsHidden(), true)
+
+SetSlot(HOTBAR_CATEGORY_PRIMARY, 3, { name = "Front 3", icon = "front3.dds", id = 103, remaining = 9000, duration = 10000 })
+RunUpdates()
+Row(GetString(SI_PBSCHC_SHADE_ENABLED)).setFunction(false)
+RunUpdates()
+check("and switching it off takes it away", shade3:IsHidden(), true)
+Row(GetString(SI_PBSCHC_SHADE_ENABLED)).setFunction(true)
+RunUpdates()
+check("on again", shade3:IsHidden(), false)
+
+print("\n== 26. the liquid look ==")
+check("standard builds nothing", CreatedControls["PBsConsoleHudCustomizerLiquidZO_PlayerAttributeMagickaBar"], nil)
+check("and runs no loop", UpdateRegistered("PBsConsoleHudCustomizerLiquid"), false)
+
+Row(GetString(SI_PBSCHC_STYLE)).setFunction(nil, nil, { data = "liquid" })
+check("the loop starts with the style", UpdateRegistered("PBsConsoleHudCustomizerLiquid"), true)
+local magickaLiquid = CreatedControls["PBsConsoleHudCustomizerLiquidZO_PlayerAttributeMagickaBar"]
+check("an overlay is built per bar", magickaLiquid ~= nil, true)
+check("hanging on the game's own fill", magickaLiquid:GetParent():GetName(), "ZO_PlayerAttributeMagickaBar")
+-- Magicka fills towards its left, so the overlay hangs off the right edge and its width is the
+-- part that is full: half, here.
+check("held by the edge the fill grows from", magickaLiquid.anchors[1].point, TOPRIGHT)
+check("as wide as the bar is full", magickaLiquid:GetWidth(), 112)
+check("the surface line is at the fill's edge", magickaLiquid.namedChildren.Surface.anchors[1].point, TOPLEFT)
+
+local healthLiquid = CreatedControls["PBsConsoleHudCustomizerLiquidZO_PlayerAttributeHealthBarRight"]
+check("a full bar fills its half", healthLiquid:GetWidth(), 111)
+check("and the right half is held by its left", healthLiquid.anchors[1].point, TOPLEFT)
+
+SetPower(COMBAT_MECHANIC_FLAGS_MAGICKA, 100, 1000)
+RunUpdates()
+check("the overlay follows the value", string.format("%.1f", magickaLiquid:GetWidth()), "22.4")
+-- The bands are clipped by hand, because ESO does not clip a child to its parent.
+local band = magickaLiquid.namedChildren.Band1
+check("a band never runs past the fill", band:GetWidth() <= magickaLiquid:GetWidth(), true)
+SetPower(COMBAT_MECHANIC_FLAGS_MAGICKA, 0, 1000)
+RunUpdates()
+check("an empty bar draws nothing", magickaLiquid:IsHidden(), true)
+SetPower(COMBAT_MECHANIC_FLAGS_MAGICKA, 500, 1000)
+RunUpdates()
+
+Row(GetString(SI_PBSCHC_LIQUID_STRENGTH)).setFunction(0)
+check("strength 0 is the same as standard", UpdateRegistered("PBsConsoleHudCustomizerLiquid"), false)
+Row(GetString(SI_PBSCHC_LIQUID_STRENGTH)).setFunction(100)
+check("and back", UpdateRegistered("PBsConsoleHudCustomizerLiquid"), true)
+
+FireHud(SCENE_FRAGMENT_HIDDEN)
+check("the liquid stops with the HUD", UpdateRegistered("PBsConsoleHudCustomizerLiquid"), false)
+check("and is taken off the bars", magickaLiquid:IsHidden(), true)
+FireHud(SCENE_FRAGMENT_SHOWN)
+check("and comes back", UpdateRegistered("PBsConsoleHudCustomizerLiquid"), true)
+Row(GetString(SI_PBSCHC_STYLE)).setFunction(nil, nil, { data = "standard" })
+check("standard puts it away again", UpdateRegistered("PBsConsoleHudCustomizerLiquid"), false)
 
 print("")
 if failures == 0 then

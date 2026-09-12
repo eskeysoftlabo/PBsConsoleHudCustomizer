@@ -252,6 +252,17 @@ addon.accountDefaults = {
 		countFromOne = true,
 		decimals = true,
 	},
+	-- The look of the three attribute bars: the game's own, or the same bars with liquid drawn
+	-- over the fill. Standard is the default, and while it is chosen nothing is built at all.
+	style = "standard",
+	liquidStrength = 100,
+	-- The shade over a skill icon while its effect runs.
+	shade = {
+		enabled = true,
+		darkness = 60,
+		direction = "down",
+		leadingEdge = true,
+	},
 	backBar = {
 		enabled = true,
 		showEmpty = true,
@@ -294,7 +305,7 @@ function addon:Account()
 	if type(account.text) == "table" and renamedModes[account.text.timerMode] then
 		account.text.timerMode = renamedModes[account.text.timerMode]
 	end
-	for _, group in ipairs({ "text", "backBar" }) do
+	for _, group in ipairs({ "text", "backBar", "shade" }) do
 		if type(account[group]) ~= "table" then
 			account[group] = {}
 		end
@@ -752,6 +763,9 @@ function addon:Refresh()
 	if self.timers then
 		self.timers:Refresh()
 	end
+	if self.liquid then
+		self.liquid:Refresh()
+	end
 	if self.preview then
 		self.preview:Update()
 	end
@@ -784,11 +798,17 @@ function addon:OnHudShowing()
 	if self.timers then
 		self.timers:OnHudStateChange(true)
 	end
+	if self.liquid then
+		self.liquid:OnHudStateChange(true)
+	end
 end
 
 function addon:OnHudHidden()
 	if self.timers then
 		self.timers:OnHudStateChange(false)
+	end
+	if self.liquid then
+		self.liquid:OnHudStateChange(false)
 	end
 end
 
@@ -873,6 +893,14 @@ function addon:PrintStatus()
 		Line("    weapon swap: %s%s", tostring(available), why and (" (" .. why .. ")") or "")
 	end
 
+	if self.liquid then
+		Line("|cFF69B4  bar style|r  %s  strength=%d%%  running=%s", self:BarStyle(), self:LiquidStrength(),
+			tostring(self.liquid.running == true))
+	end
+	Line("|cFF69B4  icon shade|r  on=%s darkness=%d%% direction=%s leading edge=%s",
+		tostring(self:ShadeEnabled()), self:ShadeDarkness(), self:ShadeDirection(),
+		tostring(self:Shade().leadingEdge ~= false))
+
 	local built, backBuilt = 0, 0
 	for _ in pairs(self.timers.labels) do
 		built = built + 1
@@ -912,6 +940,8 @@ local function Usage()
 	Line("  %s text timer|count <n>   -- size of the text on the skill bar (%d-%d)", SLASH, addon.MIN_TEXT_SIZE or 12, addon.MAX_TEXT_SIZE or 48)
 	Line("  %s timers addon|both|game -- whose countdown goes on the front bar", SLASH)
 	Line("  %s gap skill|ult|item <n> -- the space along the skill bar (%d-%d)", SLASH, addon.MIN_GAP or 0, addon.MAX_GAP or 150)
+	Line("  %s style standard|liquid  -- the look of the three resource bars", SLASH)
+	Line("  %s shade [on|off|up|down|<n>] -- the shade over a skill while its effect runs", SLASH)
 	Line("  %s slots                  -- what is on each slot, and why", SLASH)
 	Line("  %s backbar [on|off|empty|<scale>] -- the other weapon set's row", SLASH)
 	Line("  %s on | off               -- switch every change on or off", SLASH)
@@ -992,6 +1022,39 @@ local function OnSlash(argumentString)
 		account.enabled = true
 		addon:Refresh()
 		Line("gaps: skill=%d ultimate=%d item=%d", addon:Gap("skill"), addon:Gap("ultimate"), addon:Gap("item"))
+	elseif command == "style" then
+		local style = (args[2] or ""):lower()
+		if not addon:SetBarStyle(style) then
+			Line("usage: %s style standard|liquid", SLASH)
+			return
+		end
+		account.enabled = true
+		addon:Refresh()
+		Line("bar style: %s", addon:BarStyle())
+	elseif command == "shade" then
+		local what = (args[2] or ""):lower()
+		local shade = addon:Shade()
+		local darkness = tonumber(what)
+		if what == "on" or what == "off" then
+			shade.enabled = what == "on"
+			account.enabled = true
+		elseif what == "up" or what == "down" then
+			shade.direction = what
+		elseif what == "edge" then
+			shade.leadingEdge = not (shade.leadingEdge ~= false)
+		elseif darkness then
+			addon:SetShadeDarkness(darkness)
+			account.enabled = true
+		elseif what ~= "" then
+			Line("usage: %s shade [on|off|up|down|edge|<0-100>]", SLASH)
+			return
+		else
+			shade.enabled = not (shade.enabled ~= false)
+			account.enabled = true
+		end
+		addon:Refresh()
+		Line("icon shade: on=%s darkness=%d%% direction=%s", tostring(addon:ShadeEnabled()),
+			addon:ShadeDarkness(), addon:ShadeDirection())
 	elseif command == "timers" then
 		local mode = (args[2] or ""):lower()
 		local renamed = { auto = "addon", always = "both", never = "game" }

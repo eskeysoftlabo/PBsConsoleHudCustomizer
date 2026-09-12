@@ -313,6 +313,63 @@ While either says no, there is no second set to show, so the back bar hides itse
 setting is left alone, and it comes back when the ring comes off. The update loop already
 re-reads this every tick, so nothing has to be registered for it.
 
+## 19. The shade over a skill is the client's own cooldown control
+
+ESO has a `Cooldown` control type, and two of its sweep shapes are in the client's own Lua:
+`CD_TYPE_RADIAL`, which the action bar uses for ability cooldowns, and
+`CD_TYPE_VERTICAL_REVEAL`, which the utility wheel uses:
+
+```lua
+control.cooldown:SetTexture(GetSlotTexture(slotNum, hotbarCategory))
+control.cooldown:SetFillColor(ZO_SELECTED_TEXT:UnpackRGBA())
+control.cooldown:SetVerticalCooldownLeadingEdgeHeight(4)
+control.cooldown:StartCooldown(remaining, duration, CD_TYPE_VERTICAL_REVEAL, CD_TIME_TYPE_TIME_UNTIL, USE_LEADING_EDGE)
+```
+
+That is the whole feature: a `Cooldown` of the add-on's own, over the button's icon, given the
+ability's icon and started when an effect starts. **The engine runs the sweep**, so there is no
+work per frame here and it cannot drift from the effect -- the length it is given is
+`GetActionSlotEffectDuration`, the client's own number, on either weapon set.
+
+It is only ever started again when something changes: a different duration, a different ability
+in the slot, or the time left jumping back up, which is a re-cast. Ticking down is left alone.
+
+Which way the sweep runs is `CD_TIME_TYPE_TIME_UNTIL` against `CD_TIME_TYPE_TIME_REMAINING` --
+one counts towards the end and the other away from it. The setting is a **direction** rather than
+a time type for that reason: nothing in the source says which way round the reveal is drawn, so
+if it comes out upside down on a PS5 the player flips it, and a client that ever changes it costs
+nobody a release.
+
+## 20. Liquid without any new art
+
+The liquid style is drawn **over** the client's own fill, not instead of it. That is the design
+decision the rest follows from: the damage shield overlays, the armour, possession and unwavering
+modules and the warners are all controls the attribute visualiser hangs on those same bar
+controls (`ZO_PlayerAttributeHealthBarLeft`, `...Magicka Bar`, `...StaminaBar`), and a style that
+hid the client's bars would take all of that with it. One child per bar control instead: it
+inherits the bar's alpha -- the game's own fade out of combat -- its hidden state, and any scale
+this add-on has put on the attribute bars.
+
+The look is three things over the fill: a darker bottom for depth, two bands of light drifting
+across at different speeds, and a bright line at the surface where the fill ends. Every texture
+is one those bars already load (`attributeBar_dynamic_fill_gloss`,
+`attributeBar_dynamic_leadingEdge_gloss`) or one the generic progress bars use, so the style adds
+**nothing** to the 100 MB pool console add-ons share. There is no art file in this add-on.
+
+Two things have to be worked out rather than read:
+
+- **How full the bar is.** `GetUnitPower("player", COMBAT_MECHANIC_FLAGS_*)` each tick, rather
+  than following `EVENT_POWER_UPDATE`: one call per bar is cheaper than keeping a copy of the
+  client's bookkeeping in step, and it cannot drift out of it. The two halves of the health bar
+  each hold half the value, so the fraction is the same for both.
+- **Where the fill ends.** A bar with `barAlignment="REVERSE"` (magicka, and the left half of
+  health) fills towards its left, so the overlay hangs off the right edge and the surface is on
+  the left; a normal one is the mirror. ESO does not clip a child to its parent, so each band is
+  given the width of its overlap with the filled part and the texture coordinates to match.
+
+At 20 updates a second, and only while the HUD is up and the style is chosen: on Standard, the
+default, nothing is built and no update is registered.
+
 ---
 
 ## Still to measure on a PS5

@@ -1,11 +1,12 @@
 # PB's ConsoleHudCustomizer
 
-Moves and resizes the health, magicka, stamina and skill bars on the HUD, shows the weapon set you
-are not on, and writes how long is left on each ability and how many targets are under it -- in
-The Elder Scrolls Online on console.
+Moves and resizes the health, magicka, stamina and skill bars on the HUD, gives the resource bars
+a liquid look, shows the weapon set you are not on, and marks how long is left on each ability --
+as a shade that clears down the icon, a countdown, and a target count -- in The Elder Scrolls
+Online on console.
 
 - **Author:** PinkBanther
-- **Version:** 1.2.0
+- **Version:** 1.3.0
 - **Optional:** `LibHarvensAddonSettings` >= 20106 (for the settings panel; the chat commands work
   without it)
 
@@ -43,6 +44,30 @@ including when the game stretches it for a buff.
 The werewolf bar lives under magicka, mount stamina under stamina and siege health under health.
 Each one is anchored to its partner in the game's own XML, so it moves with it, and this add-on
 gives it the same size so the pair still lines up.
+
+### A liquid look for the resource bars
+
+**Bar style** switches the three resource bars between:
+
+- **Standard** — the game's own bars, untouched. Nothing is built and nothing runs.
+- **Liquid** — the same bars and the same frames, with what is in them drawn as something poured:
+  darker towards the bottom, light drifting across it at two speeds, and a bright line at the
+  surface where the fill ends. **Liquid strength** takes it from a hint to a lot of shine.
+
+It is drawn *over* the game's fill rather than instead of it, so the damage shield overlay, the
+armour and possession effects, the low-health warning and the out-of-combat fade all still work
+exactly as they did. Every texture used is one those bars already load, so the style adds nothing
+to the memory console add-ons share — there is no art file in this add-on.
+
+### A shade over a skill while its effect runs
+
+While an ability's effect is running, its icon is shaded over, and the shade is **wiped away down
+the icon** as the time runs out, so how much is left can be seen without reading the number. It
+runs on both weapon sets.
+
+The sweep is the game's own `Cooldown` control — the same machinery as an ability cooldown — given
+the effect's real length, so it is always exactly as long as the effect and costs nothing per
+frame. How dark it is, whether the moving edge is lit, and which way it clears are all settings.
 
 ### Spacing along the skill bar
 
@@ -127,6 +152,8 @@ which is the quickest way to check the two agree.
 /pbhud pos <bar> <x> <y>           x from the middle of the screen, y up from the bottom
 /pbhud scale <bar> <n>             size in per cent (50-200)
 /pbhud gap skill|ult|item <n>      the space along the skill bar (0-150)
+/pbhud style standard|liquid       the look of the three resource bars
+/pbhud shade [on|off|up|down|<n>]  the shade over a skill while its effect runs
 /pbhud text timer|count <n>        size of the text on the skill bar (12-48)
 /pbhud timers addon|both|game      whose countdown goes on the front bar
 /pbhud slots                       what is on each slot, and why
@@ -149,6 +176,10 @@ controls**, and lets the bars carry on running their own code:
   the screen. The attribute bars stay children of `ZO_PlayerAttribute`, so the HUD fragment still
   fades and hides them, and the game's "fade out of combat" setting still works.
 - **Size** is `SetScale` on that control, and on its small companion.
+- **The shade** is a `Cooldown` control of the add-on's own over the button's icon, started with
+  `CD_TYPE_VERTICAL_REVEAL` and the effect's real duration; the engine runs the sweep.
+- **The liquid** is one child control per attribute bar, over the client's fill, with its width
+  set from `GetUnitPower` and its bands clipped by hand.
 - **The gaps** are the same anchors the client writes in `ApplyAnchor` (`LEFT` on the previous
   button's `RIGHT`), with the quickslot moved off the hidden weapon swap marker and onto the
   first ability.

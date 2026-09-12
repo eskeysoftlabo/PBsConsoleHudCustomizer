@@ -39,6 +39,7 @@ local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 local timers = {
 	back = {},
 	labels = {},
+	shades = {},
 	dimmed = {},
 }
 addon.timers = timers
@@ -164,6 +165,56 @@ function addon:BackBarEnabled()
 		return false
 	end
 	return true
+end
+
+-- ---------------------------------------------------------------------------------------
+-- The shade over the icon
+--
+-- A Cooldown control of the add-on's own, given the ability's own icon and started with
+-- CD_TYPE_VERTICAL_REVEAL. The engine then darkens the icon and wipes that darkness down it as
+-- the time runs out: no work per frame here, and the sweep is exactly as long as the effect
+-- because the client is the one counting.
+--
+-- Which way the sweep runs is the difference between CD_TIME_TYPE_TIME_UNTIL and
+-- CD_TIME_TYPE_TIME_REMAINING -- one counts towards the end, the other away from it. The setting
+-- is a direction rather than a time type for that reason: if a client build ever runs it the
+-- other way, the player flips it and it is right again, with no round trip to a console.
+-- ---------------------------------------------------------------------------------------
+
+addon.SHADE_DIRECTIONS = { "down", "up" }
+
+function addon:Shade()
+	return self:Account().shade
+end
+
+function addon:ShadeEnabled()
+	return self:Account().enabled and self:Shade().enabled ~= false
+end
+
+function addon:ShadeDarkness()
+	local value = self:Shade().darkness
+	if type(value) ~= "number" then
+		return 60
+	end
+	return addon.Clamp(Round(value), 0, 100)
+end
+
+function addon:SetShadeDarkness(value)
+	self:Shade().darkness = addon.Clamp(Round(value), 0, 100)
+end
+
+function addon:ShadeDirection()
+	local direction = self:Shade().direction
+	return direction == "up" and "up" or "down"
+end
+
+function addon:ShadeTimeType()
+	-- "down" is the shade leaving the top of the icon first, which is what the effect running
+	-- out should look like.
+	if self:ShadeDirection() == "up" then
+		return CD_TIME_TYPE_TIME_REMAINING
+	end
+	return CD_TIME_TYPE_TIME_UNTIL
 end
 
 -- ---------------------------------------------------------------------------------------
@@ -342,10 +393,29 @@ local FALLBACK_PARTS = {
 		{ name = "Overlay", kind = "texture", point = "CENTER", relative = "CENTER", x = 0, y = 0,
 			file = "EsoUI/Art/ActionBar/Gamepad/gp_backrow_abilityFrame_overlay.dds",
 			width = 52, height = 68, coords = { 0, 0.8125, 0, 1.0625 }, level = 2 },
+		{ name = "Shade", kind = "cooldown", point = "CENTER", relative = "CENTER", x = 0, y = 0,
+			width = 44, height = 44, level = 2 },
 		{ name = "Timer", kind = "label", point = "BOTTOM", relative = "BOTTOM", x = 0, y = 4, level = 3 },
 		{ name = "Count", kind = "label", point = "TOPRIGHT", relative = "TOPRIGHT", x = 2, y = -4, level = 3 },
 	},
+	PBsConsoleHudCustomizerShade = {},
 }
+
+-- A template whose own control is not a plain one.
+local FALLBACK_KIND = { PBsConsoleHudCustomizerShade = "cooldown" }
+
+local function ControlType(kind)
+	if kind == "label" then
+		return CT_LABEL
+	end
+	if kind == "cooldown" then
+		return CT_COOLDOWN
+	end
+	if kind == "texture" then
+		return CT_TEXTURE
+	end
+	return CT_CONTROL
+end
 
 local FALLBACK_SIZE = { PBsConsoleHudCustomizerBackBarSlot = { 52, 68 } }
 
@@ -354,7 +424,8 @@ function timers:BuildFallback(name, parent, template)
 	if not parts or not WINDOW_MANAGER then
 		return nil
 	end
-	local ok, control = pcall(WINDOW_MANAGER.CreateControl, WINDOW_MANAGER, name, parent, CT_CONTROL)
+	local ok, control = pcall(WINDOW_MANAGER.CreateControl, WINDOW_MANAGER, name, parent,
+		ControlType(FALLBACK_KIND[template]))
 	if not ok or not control then
 		return nil
 	end
@@ -363,8 +434,7 @@ function timers:BuildFallback(name, parent, template)
 		control:SetDimensions(size[1], size[2])
 	end
 	for _, part in ipairs(parts) do
-		local child = WINDOW_MANAGER:CreateControl(name .. part.name, control,
-			part.kind == "label" and CT_LABEL or CT_TEXTURE)
+		local child = WINDOW_MANAGER:CreateControl(name .. part.name, control, ControlType(part.kind))
 		child:SetAnchor(_G[part.point], control, _G[part.relative], part.x, part.y)
 		if part.width then
 			child:SetDimensions(part.width, part.height)
@@ -474,6 +544,8 @@ function timers:BackSlot(slot)
 		icon = Child(control, "Icon"),
 		timer = Child(control, "Timer"),
 		count = Child(control, "Count"),
+		shade = Child(control, "Shade"),
+		shadeState = {},
 		button = button,
 	}
 	self.back[slot] = entry
@@ -500,6 +572,90 @@ local function ApplyFont(label, size, what)
 		label.pbsHeight = okHeight and height or nil
 	end
 	label.pbsDescriptor = descriptor
+end
+
+-- One shade over the game's own icon, parented to the button so it fades and hides with the bar.
+function timers:Shade(slot)
+	local existing = self.shades[slot]
+	if existing then
+		return existing
+	end
+	local button = self:FrontButton(slot)
+	if not button then
+		return nil
+	end
+	local control = self:Build("PBsConsoleHudCustomizerShade", button, "PBsConsoleHudCustomizerShade", slot)
+	if not control then
+		return nil
+	end
+	local icon = Child(button, "Icon") or button
+	control:ClearAnchors()
+	control:SetAnchor(TOPLEFT, icon, TOPLEFT, 0, 0)
+	control:SetAnchor(BOTTOMRIGHT, icon, BOTTOMRIGHT, 0, 0)
+	control:SetHidden(true)
+	self.shades[slot] = { control = control, state = {} }
+	return self.shades[slot]
+end
+
+-- Starts the sweep when an effect begins or is refreshed, and takes it away when it ends.
+-- Nothing is written in between: the engine runs the reveal itself.
+function timers:UpdateShade(entry, slot, hotbar, icon, remaining, duration)
+	if not entry or not entry.control then
+		return
+	end
+	local control, state = entry.control, entry.state
+
+	if not addon:ShadeEnabled() or not hotbar or remaining < MINIMUM_SHOWN_MS or duration <= 0 then
+		if state.running then
+			control:SetHidden(true)
+			state.running, state.duration, state.remaining, state.icon = nil, nil, nil, nil
+		end
+		return
+	end
+
+	-- A new cast, a refresh, or a different ability in the slot. A refresh is a jump back up in
+	-- what is left; anything smaller is the same sweep carrying on.
+	local restart = not state.running
+		or state.duration ~= duration
+		or state.icon ~= icon
+		or remaining > (state.remaining or 0) + 250
+	if restart then
+		if icon and type(control.SetTexture) == "function" then
+			addon:Write("shade", control.SetTexture, control, icon)
+		end
+		if type(control.SetFillColor) == "function" then
+			addon:Write("shade", control.SetFillColor, control, 0, 0, 0, addon:ShadeDarkness() / 100)
+		end
+		if type(control.SetVerticalCooldownLeadingEdgeHeight) == "function" then
+			addon:Write("shade", control.SetVerticalCooldownLeadingEdgeHeight, control,
+				addon:Shade().leadingEdge ~= false and 4 or 0)
+		end
+		local USE_LEADING_EDGE = addon:Shade().leadingEdge ~= false
+		local ok = addon:Write("shade", control.StartCooldown, control, remaining, duration,
+			CD_TYPE_VERTICAL_REVEAL, addon:ShadeTimeType(), USE_LEADING_EDGE)
+		if not ok then
+			control:SetHidden(true)
+			return
+		end
+		control:SetHidden(false)
+		state.running = true
+		state.duration = duration
+		state.icon = icon
+	end
+	state.remaining = remaining
+end
+
+function timers:HideShades()
+	for _, entry in pairs(self.shades) do
+		entry.control:SetHidden(true)
+		entry.state.running = nil
+	end
+	for _, entry in pairs(self.back) do
+		if entry.shade then
+			entry.shade:SetHidden(true)
+			entry.shadeState.running = nil
+		end
+	end
 end
 
 function timers:StyleLabels(pair)
@@ -720,6 +876,7 @@ function timers:Update()
 	local backEnabled = addon:BackBarEnabled() and backHotbar ~= nil
 	local showEmpty = addon:BackBar().showEmpty ~= false
 	local dim = addon:DimsGameTimer()
+	local shadeEnabled = addon:ShadeEnabled()
 
 	for slot = FIRST_SLOT, LAST_SLOT do
 		self:DimGameTimer(slot, dim)
@@ -737,6 +894,15 @@ function timers:Update()
 			self.labels[slot].control:SetHidden(true)
 		end
 
+		if shadeEnabled then
+			self:UpdateShade(self:Shade(slot), slot, activeHotbar,
+				SlotString(GetSlotTexture, slot, activeHotbar),
+				SlotNumber(GetActionSlotEffectTimeRemaining, slot, activeHotbar),
+				SlotNumber(GetActionSlotEffectDuration, slot, activeHotbar))
+		elseif self.shades[slot] then
+			self:UpdateShade(self.shades[slot], slot, nil, nil, 0, 0)
+		end
+
 		-- The other weapon set.
 		if backEnabled then
 			local entry = self:BackSlot(slot)
@@ -752,6 +918,12 @@ function timers:Update()
 					local timerText, countText = self:SlotText(slot, backHotbar, now)
 					SetText(entry.timer, showBackTimer and timerText or nil)
 					SetText(entry.count, showCount and countText or nil)
+					if entry.shade then
+						self:UpdateShade({ control = entry.shade, state = entry.shadeState }, slot,
+							shadeEnabled and backHotbar or nil, icon,
+							SlotNumber(GetActionSlotEffectTimeRemaining, slot, backHotbar),
+							SlotNumber(GetActionSlotEffectDuration, slot, backHotbar))
+					end
 				end
 			end
 		elseif self.back[slot] then
@@ -774,7 +946,8 @@ function timers:Wanted()
 	if self.hudShown == false then
 		return false
 	end
-	return addon:ShowsTimerOn(false) or addon:ShowsTimerOn(true) or addon:ShowsCount() or addon:BackBarEnabled()
+	return addon:ShowsTimerOn(false) or addon:ShowsTimerOn(true) or addon:ShowsCount()
+		or addon:BackBarEnabled() or addon:ShadeEnabled()
 end
 
 function timers:Start()
@@ -799,6 +972,7 @@ function timers:Stop()
 	EVENT_MANAGER:UnregisterForUpdate(addon.name .. "Timers")
 	self.running = false
 	self:HideAll()
+	self:HideShades()
 	self:UndimAll()
 	return true
 end

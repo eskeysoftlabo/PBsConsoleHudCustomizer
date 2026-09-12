@@ -39,14 +39,17 @@ function AdvanceFrame(ms) frameTime = frameTime + (ms or 1000) end
 function GetAddOnManager()
 	return {
 		GetNumAddOns = function() return 1 end,
-		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ConsoleHudCustomizer|r 1.2.0" end,
+		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ConsoleHudCustomizer|r 1.3.0" end,
 	}
 end
 
 -- ---- constants ----------------------------------------------------------------------
 TOP, LEFT, BOTTOM, RIGHT, CENTER = 1, 2, 4, 8, 128
 TOPLEFT, TOPRIGHT, BOTTOMLEFT, BOTTOMRIGHT = 3, 9, 6, 12
-CT_LABEL, CT_TEXTURE, CT_CONTROL = "label", "texture", "control"
+CT_LABEL, CT_TEXTURE, CT_CONTROL, CT_COOLDOWN = "label", "texture", "control", "cooldown"
+CD_TYPE_VERTICAL_REVEAL, CD_TYPE_RADIAL = 1, 2
+CD_TIME_TYPE_TIME_UNTIL, CD_TIME_TYPE_TIME_REMAINING = 1, 2
+COMBAT_MECHANIC_FLAGS_HEALTH, COMBAT_MECHANIC_FLAGS_MAGICKA, COMBAT_MECHANIC_FLAGS_STAMINA = 1, 2, 4
 TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP, TEXT_ALIGN_BOTTOM = 1, 2, 3
 DL_OVERLAY, DT_HIGH = "overlay", "high"
 SCENE_FRAGMENT_SHOWING, SCENE_FRAGMENT_SHOWN, SCENE_FRAGMENT_HIDING, SCENE_FRAGMENT_HIDDEN = "showing", "shown", "hiding", "hidden"
@@ -148,7 +151,16 @@ function Control:SetText(t) self.text = t end
 function Control:SetFont(f) self.font = f end
 function Control:SetTexture(t) self.texture = t end
 function Control:SetAlpha(a) self.alpha = a end
-function Control:SetTextureCoords() end
+function Control:SetTextureCoords(l, r, t, b) self.coords = { l, r, t, b } end
+function Control:GetWidth() return self.width end
+-- The Cooldown control: StartCooldown is what the engine animates by itself.
+function Control:StartCooldown(remaining, duration, cdType, timeType, leadingEdge)
+	CountWrite(self, "cooldown")
+	self.cooldown = { remaining = remaining, duration = duration, cdType = cdType, timeType = timeType, leadingEdge = leadingEdge }
+end
+function Control:SetFillColor(r, g, b, a) self.fillColor = { r, g, b, a } end
+function Control:SetVerticalCooldownLeadingEdgeHeight(h) self.edgeHeight = h end
+function Control:SetDesaturation(v) self.desaturation = v end
 function Control:SetDrawLevel(v) self.drawLevel = v end
 function Control:GetAlpha() return self.alpha or 1 end
 function Control:GetFontHeight() local size = tonumber((self.font or ""):match("|(%d+)|")) or 0; return math.ceil(size * 1.25) end
@@ -177,8 +189,10 @@ function Control:GetTop() local _, t = self:Rect(); return t end
 -- Controls.xml, as far as the add-on reads it back: every template it asks for has an Icon, a
 -- Timer and a Count child, looked up with GetNamedChild.
 local VIRTUAL_CHILDREN = {
-	PBsConsoleHudCustomizerBackBarSlot = { "BG", "Icon", "Overlay", "Timer", "Count" },
+	PBsConsoleHudCustomizerBackBarSlot = { "BG", "Icon", "Overlay", "Shade", "Timer", "Count" },
 	PBsConsoleHudCustomizerSlotLabels = { "Timer", "Count" },
+	PBsConsoleHudCustomizerShade = {},
+	PBsConsoleHudCustomizerLiquid = { "Depth", "Band1", "Band2", "Surface" },
 }
 
 function CreateControlFromVirtual(name, parent, template, suffix)
@@ -232,9 +246,23 @@ function BuildAttributeBars()
 	if width > 1600 then width = 1600 end
 	group.width = width
 
-	MakeBar("ZO_PlayerAttributeHealth", CENTER, group, CENTER, 0)
-	MakeBar("ZO_PlayerAttributeMagicka", RIGHT, group, LEFT, 237)
-	MakeBar("ZO_PlayerAttributeStamina", LEFT, group, RIGHT, -237)
+	local health = MakeBar("ZO_PlayerAttributeHealth", CENTER, group, CENTER, 0)
+	local magicka = MakeBar("ZO_PlayerAttributeMagicka", RIGHT, group, LEFT, 237)
+	local stamina = MakeBar("ZO_PlayerAttributeStamina", LEFT, group, RIGHT, -237)
+
+	-- The status bars inside each container, which is what the liquid overlay hangs on: two
+	-- halves for health, one each for magicka and stamina.
+	local function MakeFill(name, parent, width)
+		local fill = MakeControl(name, parent, "statusbar")
+		fill.width, fill.height = width, 17
+		fill:SetAnchor(LEFT, parent, LEFT, 7, 0)
+		_G[name] = fill
+		return fill
+	end
+	MakeFill("ZO_PlayerAttributeHealthBarLeft", health, 111)
+	MakeFill("ZO_PlayerAttributeHealthBarRight", health, 111)
+	MakeFill("ZO_PlayerAttributeMagickaBar", magicka, 224)
+	MakeFill("ZO_PlayerAttributeStaminaBar", stamina, 224)
 
 	-- The small companions, anchored to the bar they belong to.
 	local siege = MakeControl("ZO_PlayerAttributeSiegeHealth", group, "control")
@@ -358,6 +386,17 @@ function BarAnchor(name)
 	local a = _G[name].anchors[1]
 	if not a then return "none" end
 	return string.format("%d->%s %d (%d,%d)", a.point, a.relativeTo and a.relativeTo:GetName() or "nil", a.relativePoint, a.offsetX, a.offsetY)
+end
+
+-- ---- the player's power -------------------------------------------------------------
+PlayerPower = { [1] = { 1000, 1000, 1000 }, [2] = { 500, 1000, 1000 }, [4] = { 250, 1000, 1000 } }
+function GetUnitPower(unitTag, powerType)
+	local power = PlayerPower[powerType]
+	if not power then return 0, 0, 0 end
+	return power[1], power[2], power[3]
+end
+function SetPower(powerType, current, max)
+	PlayerPower[powerType] = { current, max, max }
 end
 
 -- ---- the action slot API ------------------------------------------------------------
@@ -502,6 +541,7 @@ dofile(DIR .. "/lang/jp.lua")
 dofile(DIR .. "/Main.lua")
 dofile(DIR .. "/SkillBar.lua")
 dofile(DIR .. "/Timers.lua")
+dofile(DIR .. "/Liquid.lua")
 dofile(DIR .. "/Preview.lua")
 dofile(DIR .. "/Settings.lua")
 

@@ -13,6 +13,29 @@ local strings = {
 
 	SI_PBSCHC_BAR_SKILLBAR = "Skill bar",
 
+	-- ---- The look of the resource bars ---------------------------------------------------
+	SI_PBSCHC_SECTION_STYLE = "The look of the bars",
+	SI_PBSCHC_STYLE = "Bar style",
+	SI_PBSCHC_STYLE_TOOLTIP = "Standard is the game's own bars, untouched. Liquid keeps the same bars and the same frames, and draws what is in them as something poured: darker towards the bottom, light drifting across it, and a bright line at the surface where the fill ends. Nothing of the game's is hidden, so damage shields, armour changes and the low-health warning all still show.",
+	SI_PBSCHC_STYLE_STANDARD = "Standard",
+	SI_PBSCHC_STYLE_LIQUID = "Liquid",
+	SI_PBSCHC_LIQUID_STRENGTH = "Liquid strength",
+	SI_PBSCHC_LIQUID_STRENGTH_TOOLTIP = "How strongly the liquid is drawn. 100% is the intended look; below that it is a hint, above it the bars take on a lot of shine. 0% is the same as choosing Standard.",
+
+	-- ---- The shade over a skill ----------------------------------------------------------
+	SI_PBSCHC_SECTION_SHADE = "Shade over a skill in use",
+	SI_PBSCHC_SHADE_EXPLANATION = "While an ability's effect is running, its icon is shaded over, and the shade is wiped away down the icon as the time runs out -- so how much is left can be seen without reading the number. It runs on both weapon sets, and the game itself does the sweeping, so it is always exactly as long as the effect.",
+	SI_PBSCHC_SHADE_ENABLED = "Shade a skill while its effect runs",
+	SI_PBSCHC_SHADE_ENABLED_TOOLTIP = "Darken the icon of an ability whose effect is running, and clear that darkness as the effect counts down.",
+	SI_PBSCHC_SHADE_DARKNESS = "How dark",
+	SI_PBSCHC_SHADE_DARKNESS_TOOLTIP = "How much the icon is darkened while the effect runs. 0% leaves the icon as it is and only the moving edge shows.",
+	SI_PBSCHC_SHADE_DIRECTION = "Which way it clears",
+	SI_PBSCHC_SHADE_DIRECTION_TOOLTIP = "Downwards clears the shade from the top of the icon first, so what is left sinks. If a game update ever runs the sweep the other way round, this puts it back.",
+	SI_PBSCHC_SHADE_DIRECTION_DOWN = "Downwards",
+	SI_PBSCHC_SHADE_DIRECTION_UP = "Upwards",
+	SI_PBSCHC_SHADE_EDGE = "Bright edge on the sweep",
+	SI_PBSCHC_SHADE_EDGE_TOOLTIP = "A lit line along the edge of the shade as it moves, the same one the game uses on its ability cooldowns.",
+
 	-- ---- The gaps along the skill bar ----------------------------------------------------
 	SI_PBSCHC_SECTION_GAPS = "Spacing along the skill bar",
 	SI_PBSCHC_GAPS_EXPLANATION = "How far apart the buttons sit. The game leaves a lot of room around the ultimate and the item, and between the item and the abilities there is an invisible control -- the weapon swap marker, which the console never draws -- taking up space as well. These are the gaps you can actually see.",
