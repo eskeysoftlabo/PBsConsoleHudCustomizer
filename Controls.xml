@@ -108,36 +108,13 @@
             power (GetInterfaceColor with INTERFACE_COLOR_TYPE_POWER_START). The fill's width is
             set every update and its anchor picks the edge the bar fills from.
         -->
-        <!--
-            One rounded bar: the two caps and the middle, in the art and with the texture
-            coordinates the gamepad interface uses for its own (statusbartemplates_gamepad.xml,
-            ZO_GamepadWhiteFrameLeftMedium / RightMedium / CenterMedium). The caps' width is set
-            from Lua to suit the height, so a thin bar keeps its proportions.
-        -->
-        <Control name="PBsConsoleHudCustomizerRoundedBar" virtual="true">
-            <Controls>
-                <Texture name="$(parent)Left" textureFile="EsoUI/Art/Miscellaneous/Gamepad/gp_dynamicBar_medium_frame_white.dds">
-                    <Anchor point="TOPLEFT"/>
-                    <Anchor point="BOTTOMLEFT"/>
-                    <Dimensions x="7"/>
-                    <TextureCoords left="0.9375" right="0.71875" top="0.15625" bottom="0.84375"/>
-                </Texture>
-                <Texture name="$(parent)Right" textureFile="EsoUI/Art/Miscellaneous/Gamepad/gp_dynamicBar_medium_frame_white.dds">
-                    <Anchor point="TOPRIGHT"/>
-                    <Anchor point="BOTTOMRIGHT"/>
-                    <Dimensions x="7"/>
-                    <TextureCoords left="0.75" right="0.9375" top="0.15625" bottom="0.84375"/>
-                </Texture>
-                <Texture name="$(parent)Center" textureFile="EsoUI/Art/Miscellaneous/Gamepad/gp_dynamicBar_medium_frame_white.dds">
-                    <Anchor point="TOPLEFT" relativeTo="$(parent)Left" relativePoint="TOPRIGHT"/>
-                    <Anchor point="BOTTOMRIGHT" relativeTo="$(parent)Right" relativePoint="BOTTOMLEFT"/>
-                    <TextureCoords left="0.6875" right="0.4375" top="0.15625" bottom="0.84375"/>
-                </Texture>
-            </Controls>
-        </Control>
-
         <Control name="PBsConsoleHudCustomizerPlainBar" virtual="true" tier="HIGH" level="1">
             <Controls>
+                <!--
+                    One pair for both of this add-on's styles: Square scales the game's bar and
+                    MURA-HIGE Style draws it at a size of its own, but the shape is the same flat
+                    rectangle either way.
+                -->
                 <Backdrop name="$(parent)Track" centerColor="0F0F0FFF" edgeColor="00000000" level="1">
                     <AnchorFill/>
                 </Backdrop>
@@ -145,23 +122,6 @@
                     <Anchor point="TOPLEFT"/>
                     <Anchor point="BOTTOMLEFT"/>
                 </Backdrop>
-                <!--
-                    The same two again for MURA-HIGE Style. A rounded bar is not one stretched
-                    texture: the gamepad interface builds every one of its own from three pieces
-                    of gp_dynamicBar_medium_frame_white: a left cap, a right cap and a middle
-                    stretched between them (ZO_GamepadSlider is the plainest example). Stretching
-                    the fill art across instead, as this did, gives a square block, which is why
-                    the style came out with corners.
-
-                    Both are tinted from Lua, and only one of the two shapes is ever shown.
-                -->
-                <Control name="$(parent)RoundTrack" inherits="PBsConsoleHudCustomizerRoundedBar" level="1" hidden="true">
-                    <AnchorFill/>
-                </Control>
-                <Control name="$(parent)RoundFill" inherits="PBsConsoleHudCustomizerRoundedBar" level="2" hidden="true">
-                    <Anchor point="TOPLEFT"/>
-                    <Anchor point="BOTTOMLEFT"/>
-                </Control>
             </Controls>
         </Control>
     </Controls>

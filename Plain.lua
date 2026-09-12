@@ -37,9 +37,12 @@ local plain = {
 }
 addon.plain = plain
 
--- Standard is the game's own. The other two are this add-on's, and differ only in shape: square
--- corners drawn as a backdrop, or round ends drawn in the art the gamepad UI uses for every bar
--- of its own.
+-- Standard is the game's own. The other two are this add-on's, and both are the same flat
+-- rectangle: what separates them is the size. Square keeps the game's own size and scales it;
+-- MURA-HIGE Style is drawn at a width and a height of the player's choosing.
+--
+-- The key is still "rounded" because that is what an install has saved: the style was drawn with
+-- round ends until 1.10.0, and it earned nobody's affection.
 addon.BAR_STYLES = { "standard", "plain", "rounded" }
 
 -- Nothing animates, so this only has to keep up with the numbers changing.
@@ -157,7 +160,8 @@ function addon:PlainWanted()
 	return style == "plain" or style == "rounded"
 end
 
-function addon:BarsAreRounded()
+-- MURA-HIGE Style: the one drawn at a size of its own.
+function addon:BarsAreMuraHige()
 	return self:BarStyle() == "rounded"
 end
 
@@ -209,7 +213,7 @@ end
 
 -- True while a bar is drawn at a size of the player's choosing rather than the game's.
 function addon:BarSizeIsOwn(bar)
-	if not self:BarsAreRounded() then
+	if not self:BarsAreMuraHige() then
 		return false
 	end
 	local width, height = self:BarSizeSaved(bar)
@@ -265,11 +269,8 @@ function plain:Overlay(bar, entry)
 		control = control,
 		bar = barControl,
 		reverse = entry.reverse,
-		-- One pair of each shape; only the pair the style calls for is ever shown.
 		track = control.Track or control:GetNamedChild("Track"),
 		fill = control.Fill or control:GetNamedChild("Fill"),
-		roundTrack = control.RoundTrack or control:GetNamedChild("RoundTrack"),
-		roundFill = control.RoundFill or control:GetNamedChild("RoundFill"),
 		key = bar.key,
 	}
 	self.overlays[entry.name] = overlay
@@ -307,7 +308,6 @@ end
 
 function plain:ColourOverlay(bar, overlay)
 	local alpha = addon:PlainOpacity() / 100
-	local rounded = addon:BarsAreRounded()
 	local r, g, b = self:PowerColour(bar)
 
 	if overlay.track and type(overlay.track.SetCenterColor) == "function" then
@@ -315,55 +315,12 @@ function plain:ColourOverlay(bar, overlay)
 		if type(overlay.track.SetEdgeColor) == "function" then
 			overlay.track:SetEdgeColor(0, 0, 0, 0)
 		end
-		overlay.track:SetHidden(rounded)
+		overlay.track:SetHidden(false)
 	end
 	if overlay.fill and type(overlay.fill.SetCenterColor) == "function" then
 		overlay.fill:SetCenterColor(r, g, b, alpha)
 		if type(overlay.fill.SetEdgeColor) == "function" then
 			overlay.fill:SetEdgeColor(0, 0, 0, 0)
-		end
-		overlay.fill:SetHidden(rounded)
-	end
-
-	-- The rounded pair is three pieces each -- a cap, a middle and a cap -- so the colour goes on
-	-- the pieces and the container only carries the shape.
-	-- The height is passed in rather than read off the container: a control sized by its anchors
-	-- answers 0 until it has been laid out, and the caps would come out at their smallest.
-	local _, height = addon:BarSize(bar)
-	if not addon:BarSizeIsOwn(bar) then
-		local okHeight, barHeight = pcall(overlay.bar.GetHeight, overlay.bar)
-		height = (okHeight and type(barHeight) == "number" and barHeight > 0) and barHeight or addon.GAME_BAR_HEIGHT
-	end
-	self:TintRounded(overlay.roundTrack, TRACK_COLOUR[1] * 2, TRACK_COLOUR[2] * 2, TRACK_COLOUR[3] * 2, alpha, rounded, height)
-	self:TintRounded(overlay.roundFill, r, g, b, alpha, rounded, height)
-end
-
-local ROUNDED_PIECES = { "Left", "Right", "Center" }
-
--- The caps are 7 wide for the 22-high bar the art was drawn for. A bar of another height keeps
--- the proportion, or a thin one ends up with caps fatter than it is tall.
-local function CapWidth(height)
-	return Clamp(Round(height * 7 / 22), 2, 14)
-end
-
-function plain:TintRounded(container, r, g, b, alpha, shown, height)
-	if not container then
-		return
-	end
-	container:SetHidden(not shown)
-	if not shown then
-		return
-	end
-	local cap = CapWidth(height and height > 0 and height or addon.GAME_BAR_HEIGHT)
-	for _, name in ipairs(ROUNDED_PIECES) do
-		local piece = container[name] or (type(container.GetNamedChild) == "function" and container:GetNamedChild(name))
-		if piece then
-			if type(piece.SetColor) == "function" then
-				piece:SetColor(r, g, b, alpha)
-			end
-			if name ~= "Center" and type(piece.SetWidth) == "function" then
-				piece:SetWidth(cap)
-			end
 		end
 	end
 end
@@ -563,8 +520,7 @@ function plain:UpdateOverlay(overlay, fraction)
 	end
 	control:SetHidden(false)
 
-	local rounded = addon:BarsAreRounded()
-	local fill = rounded and overlay.roundFill or overlay.fill
+	local fill = overlay.fill
 	if not fill then
 		return
 	end

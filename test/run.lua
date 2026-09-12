@@ -28,7 +28,7 @@ print("\n== 1. load ==")
 Fire(EVENT_ADD_ON_LOADED, "PBsConsoleHudCustomizer")
 local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 local health, magicka, stamina = addon.barByKey.health, addon.barByKey.magicka, addon.barByKey.stamina
-check("version read from manifest", addon.version, "1.9.2")
+check("version read from manifest", addon.version, "1.10.0")
 check("slash command registered", type(SLASH_COMMANDS["/pbhud"]), "function")
 check("short slash command registered", type(SLASH_COMMANDS["/pbhc"]), "function")
 check("HUD fragment callback registered", addon.hudRegistered, true)
@@ -1154,43 +1154,26 @@ end
 check("the one being watched is still there", count4b:GetText(), "2")
 check("and something was dropped to make room", (addon.timers.dropped or 0) > 0, true)
 
-print("\n== 44. the rounded shape ==")
+print("\n== 44. the two shapes this add-on draws ==")
 Row(GetString(SI_PBSCHC_STYLE)).setFunction(nil, nil, { data = "plain" })
 RunUpdates()
--- Taken from the add-on: an overlay built through the fallback path earlier in this run keeps
--- its parts on the control itself rather than under a named child.
 local plainOverlay = addon.plain.overlays["ZO_PlayerAttributeStaminaBar"]
 local plainBar = plainOverlay.control
-check("square shows the backdrops", plainOverlay.fill:IsHidden(), false)
-check("and not the rounded shape", plainOverlay.roundFill:IsHidden(), true)
+check("square draws the rectangle", plainOverlay.fill:IsHidden(), false)
+check("at the game's own size", plainOverlay.sizedWidth, nil)
 
 Row(GetString(SI_PBSCHC_STYLE)).setFunction(nil, nil, { data = "rounded" })
 RunUpdates()
-check("MURA-HIGE shows the rounded shape", plainOverlay.roundFill:IsHidden(), false)
-check("and puts the backdrops away", plainOverlay.fill:IsHidden(), true)
--- The colour goes on the three pieces; the container only carries the shape. (A control built
--- through the fallback path keeps its pieces on itself rather than as named children.)
-local function Piece(container, name)
-	return container[name] or container:GetNamedChild(name)
-end
-check("its middle is tinted with the power's own colour", Piece(plainOverlay.roundFill, "Center").color[3], 0.2)
-check("and the caps are the art the gamepad UI uses for its own bars",
-	Piece(plainOverlay.roundFill, "Left").texture,
-	"EsoUI/Art/Miscellaneous/Gamepad/gp_dynamicBar_medium_frame_white.dds")
-check("with a cap at each end", Piece(plainOverlay.roundFill, "Right") ~= nil, true)
--- Same geometry as the square one: a quarter full is a quarter of the bar.
-SetPower(COMBAT_MECHANIC_FLAGS_STAMINA, 250, 1000)
-RunUpdates()
-check("and the same width", plainOverlay.roundFill:GetWidth(), 56)
+check("MURA-HIGE draws the same rectangle", plainOverlay.fill:IsHidden(), false)
 check("the frame is still put away", _G.ZO_PlayerAttributeStaminaFrameCenter:IsHidden(), true)
 check("and the numbers still lifted over it", _G.ZO_PlayerAttributeStaminaResourceNumbers:GetDrawTier(), DT_HIGH)
 
--- The command takes it too, and "round" as well.
-SLASH_COMMANDS["/pbhud"]("style round")
-check("the command understands round", addon:BarStyle(), "rounded")
+-- The command takes it, by either name.
+SLASH_COMMANDS["/pbhud"]("style mura")
+check("the command understands mura", addon:BarStyle(), "rounded")
 SLASH_COMMANDS["/pbhud"]("style standard")
 RunUpdates()
-check("standard puts both away", plainBar:IsHidden(), true)
+check("standard puts it away", plainBar:IsHidden(), true)
 
 print("\n== 45. the effect the ability is, not the longest one it brings ==")
 -- From a PS5: Templar's Power of the Light lasts 6 seconds and showed 20. One cast puts more
@@ -1277,7 +1260,7 @@ RunUpdates()
 check("the bar is the width it was given", stamina.control.width, 300)
 check("and the height", stamina.control.height, 8)
 check("held by the edge it fills from", stamina.control.anchors[1].point, LEFT)
-check("half full is half of that width", stamina.roundFill:GetWidth(), 150)
+check("half full is half of that width", stamina.fill:GetWidth(), 150)
 -- The game's own fill would show round a bar narrower than its own, so it is taken to nothing --
 -- without hiding the control, which is where the damage shield overlay lives.
 check("the game's fill is blanked", stamina.bar.gradient[4], 0)
@@ -1342,35 +1325,6 @@ Row(GetString(SI_PBSCHC_GAP_ULTIMATE)).setFunction(65)
 
 -- The quickslot has no row above it, so it is not part of the span.
 check("the quickslot is not counted in", from > 0, true)
-
-print("\n== 49. MURA-HIGE Style is round because it is three pieces ==")
--- It came out square: one stretched texture of the gamepad bar *fill*, which is a plain block.
--- The round ends live in the frame art, and every rounded bar the gamepad interface draws is a
--- cap, a middle and a cap (ZO_GamepadSlider is the plainest example).
-Row(GetString(SI_PBSCHC_STYLE)).setFunction(nil, nil, { data = "rounded" })
-addon:Account().bars.magicka.width, addon:Account().bars.magicka.height = 240, 22
-RunUpdates()
-local magicka = addon.plain.overlays["ZO_PlayerAttributeMagickaBar"]
-local function Part(container, name)
-	return container[name] or container:GetNamedChild(name)
-end
-check("the fill has a left cap", Part(magicka.roundFill, "Left") ~= nil, true)
-check("a right cap", Part(magicka.roundFill, "Right") ~= nil, true)
-check("and a middle", Part(magicka.roundFill, "Center") ~= nil, true)
-check("the track too", Part(magicka.roundTrack, "Left") ~= nil, true)
--- The art itself is checked on an overlay built through the fallback path, because that is the
--- one that sets its own textures; a template-built one gets them from Controls.xml.
-check("all from the frame art, not the fill art",
-	Part(addon.plain.overlays["ZO_PlayerAttributeStaminaBar"].roundFill, "Center").texture,
-	"EsoUI/Art/Miscellaneous/Gamepad/gp_dynamicBar_medium_frame_white.dds")
--- The caps are 7 wide for the 22-high bar the art was drawn for, and keep that proportion.
-check("a 22-high bar has the art's own cap", Part(magicka.roundFill, "Left").width, 7)
-addon:Account().bars.magicka.height = 11
-RunUpdates()
-check("half the height, half the cap", Part(magicka.roundFill, "Left").width, 4)
-addon:Account().bars.magicka.width, addon:Account().bars.magicka.height = nil, nil
-Row(GetString(SI_PBSCHC_STYLE)).setFunction(nil, nil, { data = "standard" })
-RunUpdates()
 
 print("")
 if failures == 0 then

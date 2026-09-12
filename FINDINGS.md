@@ -756,7 +756,7 @@ bar's width**. Fractions rather than distances because they are free of scale --
 scaled the same and it cancels -- so the outline holds whatever size the bar is set to, and moves
 in when the gaps are closed.
 
-## 42. A rounded bar is three pieces, not one texture
+## 42. A rounded bar is three pieces, not one texture (withdrawn in 1.10.0)
 
 MURA-HIGE Style came out with square corners. It was drawn as one stretched copy of
 `gp_dynamicBar_medium_fill.dds`, and that file is the **fill** -- a plain block, which a status
@@ -773,6 +773,15 @@ The caps are 7 wide for the 22-high bar the art was drawn for, and are scaled wi
 that a thin bar does not end up with caps fatter than it is tall. The height is passed to that
 sum rather than read off the container: a control sized by its anchors answers 0 until it has
 been laid out, and the caps would come out at their smallest.
+
+## 43. The rounded shape is gone
+
+Built out of the client's own three-piece bar art (§42) it still did not look right on a PS5, and
+a shape nobody can see the point of is not worth a third attempt. MURA-HIGE Style is the same flat
+rectangle as Square from 1.10.0, and what makes it its own style is the thing that was wanted:
+a **width and a height of the player's choosing** rather than a multiple of the game's.
+
+The saved key is still `rounded`, because that is what is in people's saved variables.
 
 ---
 

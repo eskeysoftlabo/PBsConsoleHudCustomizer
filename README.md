@@ -6,7 +6,7 @@ as a shade that clears down the icon, a countdown, and a target count -- in The 
 Online on console.
 
 - **Author:** PinkBanther
-- **Version:** 1.9.2
+- **Version:** 1.10.0
 - **Optional:** `LibHarvensAddonSettings` >= 20106 (for the settings panel; the chat commands work
   without it)
 
@@ -52,10 +52,9 @@ gives it the same size so the pair still lines up.
 - **Standard** — the game's own bars, untouched. Nothing is built and nothing runs.
 - **Square** — each bar as a flat rectangle: a dark track, and a solid block in that power's own
   colour, with the game's own resource numbers lifted over it.
-- **MURA-HIGE Style** — the same, with the round ends the gamepad interface uses for every bar of
-  its own. This one draws the bar itself, so it takes a **width and a height in pixels** rather
-  than a percentage: the two extra sliders in each bar's section. The other styles scale the
-  game's own bar instead, because the width of those controls is the game's to write. The game's arrow-shaped frame and background are put away while this is chosen, and come
+- **MURA-HIGE Style** — the same rectangle, drawn at a **width and a height in pixels** of your
+  own: the two extra sliders in each bar's section. The other styles scale the game's own bar
+  instead, because the width of those controls is the game's to write. The game's arrow-shaped frame and background are put away while this is chosen, and come
   straight back when it is not. **How solid** takes the rectangles from fully opaque down to
   letting the game's own fill show through, and **Keep the game's frame** leaves the arrows in
   place if you want the rectangle inside them.

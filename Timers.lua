@@ -726,26 +726,6 @@ local FALLBACK_PARTS = {
 	PBsConsoleHudCustomizerPlainBar = {
 		{ name = "Track", kind = "backdrop", point = "TOPLEFT", relative = "TOPLEFT", x = 0, y = 0, fill = true, level = 1 },
 		{ name = "Fill", kind = "backdrop", point = "TOPLEFT", relative = "TOPLEFT", x = 0, y = 0, level = 2 },
-		-- MURA-HIGE Style is three pieces, not one stretched texture: a cap, a middle and a cap,
-		-- in the art and with the coordinates the gamepad interface uses for its own bars.
-		{ name = "RoundTrack", kind = "control", point = "TOPLEFT", relative = "TOPLEFT", x = 0, y = 0, fill = true, level = 1,
-			children = {
-				{ name = "Left", kind = "texture", point = "TOPLEFT", relative = "TOPLEFT", x = 0, y = 0, width = 7,
-					file = "EsoUI/Art/Miscellaneous/Gamepad/gp_dynamicBar_medium_frame_white.dds", coords = { 0.9375, 0.71875, 0.15625, 0.84375 } },
-				{ name = "Right", kind = "texture", point = "TOPRIGHT", relative = "TOPRIGHT", x = 0, y = 0, width = 7,
-					file = "EsoUI/Art/Miscellaneous/Gamepad/gp_dynamicBar_medium_frame_white.dds", coords = { 0.75, 0.9375, 0.15625, 0.84375 } },
-				{ name = "Center", kind = "texture", point = "TOPLEFT", relative = "TOPLEFT", x = 7, y = 0,
-					file = "EsoUI/Art/Miscellaneous/Gamepad/gp_dynamicBar_medium_frame_white.dds", coords = { 0.6875, 0.4375, 0.15625, 0.84375 } },
-			} },
-		{ name = "RoundFill", kind = "control", point = "TOPLEFT", relative = "TOPLEFT", x = 0, y = 0, level = 2,
-			children = {
-				{ name = "Left", kind = "texture", point = "TOPLEFT", relative = "TOPLEFT", x = 0, y = 0, width = 7,
-					file = "EsoUI/Art/Miscellaneous/Gamepad/gp_dynamicBar_medium_frame_white.dds", coords = { 0.9375, 0.71875, 0.15625, 0.84375 } },
-				{ name = "Right", kind = "texture", point = "TOPRIGHT", relative = "TOPRIGHT", x = 0, y = 0, width = 7,
-					file = "EsoUI/Art/Miscellaneous/Gamepad/gp_dynamicBar_medium_frame_white.dds", coords = { 0.75, 0.9375, 0.15625, 0.84375 } },
-				{ name = "Center", kind = "texture", point = "TOPLEFT", relative = "TOPLEFT", x = 7, y = 0,
-					file = "EsoUI/Art/Miscellaneous/Gamepad/gp_dynamicBar_medium_frame_white.dds", coords = { 0.6875, 0.4375, 0.15625, 0.84375 } },
-			} },
 	},
 }
 
