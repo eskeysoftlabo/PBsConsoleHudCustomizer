@@ -397,6 +397,11 @@ end
 
 local GROUND_CONFIRM_MS = 150
 
+-- A press is never held longer than this. Whatever the client does with its ground-target
+-- events, a countdown that starts a second early is a nuisance and one that never starts at all
+-- is a broken add-on: if the aiming never ends, the press is taken as an ordinary cast.
+local GROUND_HOLD_MAX_MS = 3000
+
 local groundPending = nil
 
 local function Later(fn, delay)
@@ -407,17 +412,11 @@ local function Later(fn, delay)
 	end
 end
 
+-- Only what the events said. IsPlayerGroundTargeting() was asked as well until 1.12.1, and a
+-- client that answers it differently -- or an ENTER whose LEAVE never arrives -- held every press
+-- there was, which is every countdown in the add-on gone.
 function timers:GroundTargeting()
-	if self.groundActive then
-		return true
-	end
-	if type(IsPlayerGroundTargeting) == "function" then
-		local ok, active = pcall(IsPlayerGroundTargeting)
-		if ok and active then
-			return true
-		end
-	end
-	return false
+	return self.groundActive == true
 end
 
 -- The cast itself, once it is known to have happened.
@@ -468,8 +467,19 @@ function timers:OnAbilityUsed(_, slotNum)
 
 	-- Pressed while the circle is on the ground: held until it is placed.
 	if self:GroundTargeting() then
-		groundPending = { slot = slotNum, hotbar = hotbar }
+		local pending = { slot = slotNum, hotbar = hotbar, at = Now() }
+		groundPending = pending
 		self.groundHeld = (self.groundHeld or 0) + 1
+		Later(function()
+			-- Still held after all this time: the aiming is not going to end in any way this
+			-- add-on will hear about, so it is taken as the ordinary cast it probably was.
+			if groundPending == pending then
+				groundPending = nil
+				timers.groundActive = false
+				timers.groundStuck = (timers.groundStuck or 0) + 1
+				timers:StartCast(pending.slot, pending.hotbar, pending.at)
+			end
+		end, GROUND_HOLD_MAX_MS)
 		return
 	end
 
@@ -588,15 +598,37 @@ function timers:ExtendLinks(key, endMs)
 	end
 end
 
+-- How long an ended effect is remembered. While it is, a client reading much shorter than it was
+-- is refused (§34) -- and that is worth nothing once the effect is long over, so the record is
+-- dropped and the client is believed again.
+local LINK_KEEP_AFTER_MS = 5000
+
+local function Alive(entry, now)
+	if not entry then
+		return nil
+	end
+	if now and entry.endMs + LINK_KEEP_AFTER_MS < now then
+		return nil
+	end
+	return entry
+end
+
 -- What is on record for this slot, running or not: the cast made from it, or -- for the same
 -- ability sitting in another slot or on the other weapon set -- the cast made from there.
-function timers:LinkFor(slot, hotbar, icon)
-	local entry = slotEffects[SlotKey(slot, hotbar)]
+function timers:LinkFor(slot, hotbar, icon, now)
+	local slotKey = SlotKey(slot, hotbar)
+	local entry = Alive(slotEffects[slotKey], now)
+	if not entry then
+		slotEffects[slotKey] = nil
+	end
 	if entry and (entry.slotIcon == nil or icon == nil or entry.slotIcon == icon) then
 		return entry
 	end
 	if icon then
-		local byIcon = linksByIcon[icon]
+		local byIcon = Alive(linksByIcon[icon], now)
+		if not byIcon then
+			linksByIcon[icon] = nil
+		end
 		if byIcon then
 			return byIcon
 		end
@@ -613,7 +645,7 @@ function timers:LinkedEffect(slot, hotbar, now)
 			icon = IconKey(texture)
 		end
 	end
-	local linked = self:LinkFor(slot, hotbar, icon)
+	local linked = self:LinkFor(slot, hotbar, icon, now)
 	if not linked or linked.endMs <= now then
 		return nil
 	end
@@ -1448,7 +1480,7 @@ function timers:SlotTimer(slot, hotbar, now)
 	-- other weapon set. While that is running the client's own reading is not asked at all: it
 	-- is the reading that hands over to another effect, and it answers differently for the two
 	-- bars, which is how one skill ends up counting down to two different numbers.
-	local linked = self:LinkFor(slot, hotbar, icon)
+	local linked = self:LinkFor(slot, hotbar, icon, now)
 	if linked then
 		local linkedDuration = math.max(1, linked.endMs - linked.beginMs)
 		if linked.endMs > now then
@@ -1673,8 +1705,21 @@ function timers:Start()
 	if not EVENT_MANAGER or type(EVENT_MANAGER.RegisterForUpdate) ~= "function" then
 		return false
 	end
+	-- Behind a pcall: a loop that errors is unregistered by the client, and everything this
+	-- add-on draws on the skill bar would go with it and stay gone for the session. The first
+	-- error is kept for status to print.
 	EVENT_MANAGER:RegisterForUpdate(addon.name .. "Timers", UPDATE_INTERVAL_MS, function()
-		timers:Update()
+		local ok, err = pcall(function()
+			timers:Update()
+		end)
+		if not ok then
+			timers.updateErrors = (timers.updateErrors or 0) + 1
+			if not timers.lastUpdateError then
+				timers.lastUpdateError = tostring(err)
+				addon.writeErrors = addon.writeErrors or {}
+				addon.writeErrors["update loop"] = timers.lastUpdateError
+			end
+		end
 	end)
 	self.running = true
 	self:Update()
@@ -1796,7 +1841,12 @@ function timers:PrintSlots()
 		self.sources or 0, self.dropped or 0)
 	Line("  casts seen=%d  effects tied to a cast=%d  shorter readings refused=%d",
 		self.casts or 0, self.linked or 0, self.shorterIgnored or 0)
-	Line("  presses held while aiming=%d  placements cancelled=%d", self.groundHeld or 0, self.groundCancelled or 0)
+	Line("  aiming now=%s  presses held=%d  placements cancelled=%d  holds that timed out=%d",
+		tostring(self:GroundTargeting()), self.groundHeld or 0, self.groundCancelled or 0, self.groundStuck or 0)
+	if (self.updateErrors or 0) > 0 then
+		Line("  |cFF4040the update loop has failed %d time(s)|r: %s", self.updateErrors,
+			tostring(self.lastUpdateError))
+	end
 	Line("  counted from the tooltip's own length=%d  carried out to a later target=%d  effects refused as the wrong length=%d",
 		self.declared or 0, self.extended or 0, self.mismatched or 0)
 	Line("  clocks: frame=%d game=%d (they must agree for an effect's end time to mean anything)",
@@ -1823,7 +1873,7 @@ function timers:PrintSlots()
 				Round(raw or SlotNumber(GetActionSlotEffectTimeRemaining, slot, activeHotbar)),
 				Round(SlotNumber(GetActionSlotEffectDuration, slot, activeHotbar)))
 		end
-		local linked = self:LinkFor(slot, activeHotbar, IconKey(SlotString(GetSlotTexture, slot, activeHotbar)))
+		local linked = self:LinkFor(slot, activeHotbar, IconKey(SlotString(GetSlotTexture, slot, activeHotbar)), now)
 		if linked then
 			local held = effects[linked.key]
 			local units = 0

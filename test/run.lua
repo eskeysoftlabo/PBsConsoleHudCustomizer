@@ -28,7 +28,7 @@ print("\n== 1. load ==")
 Fire(EVENT_ADD_ON_LOADED, "PBsConsoleHudCustomizer")
 local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 local health, magicka, stamina = addon.barByKey.health, addon.barByKey.magicka, addon.barByKey.stamina
-check("version read from manifest", addon.version, "1.12.0")
+check("version read from manifest", addon.version, "1.12.1")
 check("slash command registered", type(SLASH_COMMANDS["/pbhud"]), "function")
 check("short slash command registered", type(SLASH_COMMANDS["/pbhc"]), "function")
 check("HUD fragment callback registered", addon.hudRegistered, true)
@@ -1527,6 +1527,62 @@ SetAbilityDuration(241, 30000)
 FireCast(6)
 RunUpdates()
 check("a normal cast still counts from the press", addon.timers.labels[6].timer:GetText(), "30")
+
+print("\n== 56. the hold must never stick ==")
+-- A press held while aiming and never let go is every countdown in the add-on gone, which is
+-- what came back from the PS5: the gate asked IsPlayerGroundTargeting() as well as watching the
+-- events, and a client that answers it differently -- or an ENTER whose LEAVE never arrives --
+-- holds everything there is.
+addon.timers:Forget_All()
+addon.timers.timers = {}
+addon.timers.groundHeld, addon.timers.groundStuck = 0, 0
+SetSlot(HOTBAR_CATEGORY_PRIMARY, 3, { name = "Caltrops", icon = "caltrops.dds", id = 250, remaining = 0, duration = 0 })
+SetAbilityDuration(250, 20000)
+FireHud(SCENE_FRAGMENT_SHOWN)
+
+-- The client says it is aiming and never says otherwise.
+GroundTargeting = true
+EnterGroundTargeting()
+FireCast(3)
+RunUpdates()
+local caltrops2 = addon.timers.labels[3].timer
+check("held to begin with", caltrops2:IsHidden(), true)
+-- Three seconds later the hold lets go by itself, counting from the press.
+FlushCallLater()
+RunUpdates()
+check("and lets go by itself", caltrops2:GetText(), "20")
+check("which is counted", addon.timers.groundStuck, 1)
+check("and the gate is open again", addon.timers:GroundTargeting(), false)
+GroundTargeting = false
+
+-- A press after that is an ordinary cast, whatever IsPlayerGroundTargeting says.
+addon.timers.timers = {}
+GroundTargeting = true
+SetSlot(HOTBAR_CATEGORY_PRIMARY, 4, { name = "Rally", icon = "rally.dds", id = 251, remaining = 0, duration = 0 })
+SetAbilityDuration(251, 30000)
+FireCast(4)
+RunUpdates()
+check("only the events hold a press, not the polled state", addon.timers.labels[4].timer:GetText(), "30")
+GroundTargeting = false
+
+print("\n== 57. an ended effect stops speaking for the slot ==")
+-- While a cast is on record, a client reading much shorter than it was is refused (§34). Left
+-- there for ever, that silences the client on that slot for the rest of the session.
+addon.timers:Forget_All()
+addon.timers.timers = {}
+SetSlot(HOTBAR_CATEGORY_PRIMARY, 5, { name = "Long Thing", icon = "long.dds", id = 252, remaining = 0, duration = 0 })
+SetAbilityDuration(252, 30000)
+FireCast(5)
+RunUpdates()
+check("counting the ability's own length", addon.timers.labels[5].timer:GetText(), "30")
+-- It ends, and a little while later the client reports something short of its own.
+AdvanceFrame(31000)
+SetSlot(HOTBAR_CATEGORY_PRIMARY, 5, { name = "Long Thing", icon = "long.dds", id = 252, remaining = 4000, duration = 4000 })
+RunUpdates()
+check("just after, a short reading is still refused", addon.timers.labels[5].timer:IsHidden(), true)
+AdvanceFrame(6000)
+RunUpdates()
+check("but the record is let go, and the client believed again", addon.timers.labels[5].timer:GetText(), "4.0")
 
 print("")
 if failures == 0 then

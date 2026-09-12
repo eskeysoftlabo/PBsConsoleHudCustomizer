@@ -907,6 +907,29 @@ later, because the cooldown does not start in the same frame.
 
 `/pbhud effects` counts the presses held and the placements cancelled.
 
+## 50. A gate that can stick is a gate that will
+
+1.12.0's hold for ground targeting (§49) took every countdown in the add-on with it on a PS5.
+Three things were wrong with it, and they are the same mistake three times: trusting a state that
+cannot be checked from here.
+
+- **It asked `IsPlayerGroundTargeting()` as well as watching the events.** One client answering
+  that differently -- or an `ENTER` whose `LEAVE` never arrives -- holds every press there is.
+  Only the events are watched now.
+- **A held press had nothing to release it but the `LEAVE` event.** It now lets go by itself
+  after three seconds and is taken as an ordinary cast, counted from the press. A countdown that
+  starts a second early is a nuisance; one that never starts is a broken add-on.
+- **An ended cast was remembered for ever.** While one is on record a client reading much shorter
+  than it was is refused (§34), so every slot that had ever been cast fell silent as well. A
+  record is dropped five seconds after its effect ends, and the client is believed again.
+
+And the loop that draws all of it now runs behind a `pcall`: an error in a `RegisterForUpdate`
+callback has the client unregister it, which takes everything on the skill bar away for the rest
+of the session with nothing said. The first error is kept and `/pbhud slots` prints it.
+
+`/pbhud effects` says whether the gate thinks the player is aiming, how many presses were held,
+how many placements were cancelled, and how many holds timed out.
+
 ---
 
 ## Still to measure on a PS5
