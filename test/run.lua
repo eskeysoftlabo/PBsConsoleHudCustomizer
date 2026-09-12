@@ -28,7 +28,7 @@ print("\n== 1. load ==")
 Fire(EVENT_ADD_ON_LOADED, "PBsConsoleHudCustomizer")
 local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 local health, magicka, stamina = addon.barByKey.health, addon.barByKey.magicka, addon.barByKey.stamina
-check("version read from manifest", addon.version, "1.8.0")
+check("version read from manifest", addon.version, "1.9.0")
 check("slash command registered", type(SLASH_COMMANDS["/pbhud"]), "function")
 check("short slash command registered", type(SLASH_COMMANDS["/pbhc"]), "function")
 check("HUD fragment callback registered", addon.hudRegistered, true)
@@ -49,7 +49,9 @@ check("HUD fragment callback registered", addon.hudRegistered, true)
 -- button, hint)
 -- ... and the skill bar's section carries one more row than the other three: the switch that
 -- hands the whole bar back.
-check("settings rows", #PanelRows, 3 + 4 + 4 * 5 + 1 + 5 + 6 + 11 + 6 + 3)
+-- ... and the three attribute bars carry two more rows each: the width and the height
+-- MURA-HIGE Style draws them at.
+check("settings rows", #PanelRows, 3 + 4 + 4 * 5 + 3 * 2 + 1 + 5 + 6 + 11 + 6 + 3)
 
 print("\n== 2. the first apply waits for the bars ==")
 Fire(EVENT_PLAYER_ACTIVATED)
@@ -1242,6 +1244,58 @@ AdvanceFrame(1000)
 FireEffect(EFFECT_RESULT_FADED, "Caltrops", "", (now15 + 20000) / 1000, 0, 141, nil, 12)
 RunUpdates()
 check("and one fade takes one of them", addon.timers.labels[4].count:GetText(), "2")
+
+print("\n== 47. MURA-HIGE Style draws a bar at the size it is given ==")
+-- Every other style scales the game's own bar, because the width of those controls is the
+-- game's to write. This one draws the bar itself, so it can simply be told how big to be.
+-- The world as the previous sections left it: the overlays are already built, which is the
+-- point -- a style change must not need them rebuilt.
+addon:Account().bars.stamina.width, addon:Account().bars.stamina.height = nil, nil
+addon:Account().bars.health.width, addon:Account().bars.health.height = nil, nil
+FireHud(SCENE_FRAGMENT_SHOWN)
+SetPower(COMBAT_MECHANIC_FLAGS_STAMINA, 500, 1000)
+SetPower(COMBAT_MECHANIC_FLAGS_HEALTH, 1000, 1000)
+
+Row(GetString(SI_PBSCHC_STYLE)).setFunction(nil, nil, { data = "rounded" })
+RunUpdates()
+local stamina = addon.plain.overlays["ZO_PlayerAttributeStaminaBar"]
+check("it follows the game's bar until told otherwise", stamina.sizedWidth, nil)
+check("and the game's own fill is left alone", stamina.bar.gradient[4], 1)
+
+Row(GetString(SI_PBSCHC_BAR_WIDTH):gsub("<<1>>", GetString(SI_PBSCHC_BAR_STAMINA))).setFunction(300)
+Row(GetString(SI_PBSCHC_BAR_HEIGHT):gsub("<<1>>", GetString(SI_PBSCHC_BAR_STAMINA))).setFunction(8)
+RunUpdates()
+check("the bar is the width it was given", stamina.control.width, 300)
+check("and the height", stamina.control.height, 8)
+check("held by the edge it fills from", stamina.control.anchors[1].point, LEFT)
+check("half full is half of that width", stamina.roundFill:GetWidth(), 150)
+-- The game's own fill would show round a bar narrower than its own, so it is taken to nothing --
+-- without hiding the control, which is where the damage shield overlay lives.
+check("the game's fill is blanked", stamina.bar.gradient[4], 0)
+check("and its gloss hidden", stamina.bar:GetNamedChild("Gloss"):IsHidden(), true)
+
+-- The health bar is two halves that meet in the middle: each is half of what was asked for.
+Row(GetString(SI_PBSCHC_BAR_WIDTH):gsub("<<1>>", GetString(SI_PBSCHC_BAR_HEALTH))).setFunction(400)
+RunUpdates()
+check("each half of the health bar is half the width",
+	addon.plain.overlays["ZO_PlayerAttributeHealthBarLeft"].control.width, 200)
+
+-- Back to a style that scales, and the game's bar is handed back as it was.
+Row(GetString(SI_PBSCHC_STYLE)).setFunction(nil, nil, { data = "plain" })
+RunUpdates()
+check("the game's colours are put back", stamina.bar.gradient[4], 1)
+check("and its gloss with them", stamina.bar:GetNamedChild("Gloss"):IsHidden(), false)
+check("the size is ignored by the other styles", stamina.sizedWidth, nil)
+Row(GetString(SI_PBSCHC_STYLE)).setFunction(nil, nil, { data = "standard" })
+RunUpdates()
+
+-- The command sets both at once, and the style answers to its name.
+SLASH_COMMANDS["/pbhud"]("size stamina 260 12")
+local w, h = addon:BarSize(addon.barByKey.stamina)
+check("the command sets the size", string.format("%dx%d", w, h), "260x12")
+SLASH_COMMANDS["/pbhud"]("style mura")
+check("and the style answers to MURA-HIGE", addon:BarStyle(), "rounded")
+SLASH_COMMANDS["/pbhud"]("style standard")
 
 print("")
 if failures == 0 then

@@ -19,7 +19,7 @@ local strings = {
 	SI_PBSCHC_STYLE_TOOLTIP = "「標準」はゲーム本来のバーのままです。「四角」は各バーを平坦な長方形で描きます（暗いトラックと、そのリソース本来の色で塗られた四角）。「角丸」は同じものを、ゲームパッドUIが自分のバーに使っている端の丸い形で描きます。どちらもゲーム側の矢印型の枠と背景を一時的に非表示にしますが、バー自体はそのまま残して動かしているので、ダメージシールドや防御力変化、瀕死の警告表示は今までどおり上に表示されます。",
 	SI_PBSCHC_STYLE_STANDARD = "標準",
 	SI_PBSCHC_STYLE_PLAIN = "四角",
-	SI_PBSCHC_STYLE_ROUNDED = "角丸",
+	SI_PBSCHC_STYLE_ROUNDED = "MURA-HIGE Style",
 	SI_PBSCHC_PLAIN_OPACITY = "不透明度",
 	SI_PBSCHC_PLAIN_OPACITY_TOOLTIP = "四角をどれだけ濃く描くかです。100%でゲーム本来の塗りを完全に隠します。下げると下のバーが透けるため、元の見た目を少し残したい場合に使えます。",
 	SI_PBSCHC_PLAIN_KEEP_FRAME = "ゲームの枠を残す",
@@ -40,6 +40,10 @@ local strings = {
 	SI_PBSCHC_SHADE_EDGE_TOOLTIP = "網掛けの境界に光る線を表示します。ゲーム本体がスキルのクールダウンに使っているものと同じ線です。",
 	SI_PBSCHC_SKILLBAR_ENABLED = "スキルバーをこのアドオンで制御する",
 	SI_PBSCHC_SKILLBAR_ENABLED_TOOLTIP = "オフにすると、スキルバーをゲーム本体（および他のアドオン）に完全に明け渡します。位置・大きさ・間隔・裏バー・アイコン上の残り時間と対象数・使用中スキルの網掛けをすべて元に戻し、以後何も書き込みません（設定内容は残るので、オンに戻せば再び適用されます）。体力・マジカ・スタミナのバーには影響しません。",
+	SI_PBSCHC_BAR_WIDTH = "<<1>>：バーの幅",
+	SI_PBSCHC_BAR_WIDTH_TOOLTIP = "バーを描く幅（ピクセル）です。MURA-HIGE Style専用です。このスタイルはバーそのものを描くためサイズを直接指定できます。他のスタイルはゲーム本来のバーを拡大縮小する方式です（それらのコントロールの幅はゲーム側が書き換えるため）。ゲーム本来は224です。",
+	SI_PBSCHC_BAR_HEIGHT = "<<1>>：バーの高さ",
+	SI_PBSCHC_BAR_HEIGHT_TOOLTIP = "バーを描く高さ（ピクセル）です。MURA-HIGE Style専用です。ゲーム本来は17です。",
 
 	-- ---- スキルバーの間隔 ----------------------------------------------------------------
 	SI_PBSCHC_SECTION_GAPS = "スキルバーの間隔",

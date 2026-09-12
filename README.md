@@ -6,7 +6,7 @@ as a shade that clears down the icon, a countdown, and a target count -- in The 
 Online on console.
 
 - **Author:** PinkBanther
-- **Version:** 1.8.0
+- **Version:** 1.9.0
 - **Optional:** `LibHarvensAddonSettings` >= 20106 (for the settings panel; the chat commands work
   without it)
 
@@ -52,7 +52,10 @@ gives it the same size so the pair still lines up.
 - **Standard** — the game's own bars, untouched. Nothing is built and nothing runs.
 - **Square** — each bar as a flat rectangle: a dark track, and a solid block in that power's own
   colour, with the game's own resource numbers lifted over it.
-- **Rounded** — the same, with the round ends the gamepad interface uses for every bar of its own. The game's arrow-shaped frame and background are put away while this is chosen, and come
+- **MURA-HIGE Style** — the same, with the round ends the gamepad interface uses for every bar of
+  its own. This one draws the bar itself, so it takes a **width and a height in pixels** rather
+  than a percentage: the two extra sliders in each bar's section. The other styles scale the
+  game's own bar instead, because the width of those controls is the game's to write. The game's arrow-shaped frame and background are put away while this is chosen, and come
   straight back when it is not. **How solid** takes the rectangles from fully opaque down to
   letting the game's own fill show through, and **Keep the game's frame** leaves the arrows in
   place if you want the rectangle inside them.
@@ -182,7 +185,8 @@ which is the quickest way to check the two agree.
 /pbhud pos <bar> <x> <y>           x from the middle of the screen, y up from the bottom
 /pbhud scale <bar> <n>             size in per cent (50-200)
 /pbhud gap skill|ult|item <n>      the space along the skill bar (0-150)
-/pbhud style standard|plain|rounded the look of the three resource bars
+/pbhud style standard|plain|mura    the look of the three resource bars
+/pbhud size <bar> <w> <h>          bar size in pixels (MURA-HIGE Style)
 /pbhud shade [on|off|up|down|<n>]  the shade over a skill while its effect runs
 /pbhud text [back] timer|count <n> size of the text on the skill bar (12-48)
 /pbhud timers addon|both|game      whose countdown goes on the front bar

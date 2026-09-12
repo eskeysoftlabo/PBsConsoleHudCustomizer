@@ -33,6 +33,7 @@ local plain = {
 	overlays = {},
 	hidden = {},
 	numbers = {},
+	blanked = {},
 }
 addon.plain = plain
 
@@ -161,6 +162,61 @@ function addon:BarsAreRounded()
 end
 
 -- ---------------------------------------------------------------------------------------
+-- A size in pixels, for the one style that offers it
+--
+-- Every other style scales: the bar keeps the shape the game drew and is made bigger or smaller
+-- whole, because the width of those controls is not this add-on's (the attribute visualiser
+-- writes it as buffs come and go, see FINDINGS §3). MURA-HIGE Style draws the bar itself, so
+-- there is nothing to fight: it can be given a width and a height and be exactly that.
+--
+-- Unset means "as the game draws it", which is what keeps an install that never touches these
+-- looking the way it did.
+-- ---------------------------------------------------------------------------------------
+
+addon.MIN_BAR_WIDTH, addon.MAX_BAR_WIDTH = 20, 800
+addon.MIN_BAR_HEIGHT, addon.MAX_BAR_HEIGHT = 3, 80
+
+-- The gamepad attribute bar: 224 of drawable width inside the 237 container, 17 high.
+addon.GAME_BAR_WIDTH, addon.GAME_BAR_HEIGHT = 224, 17
+
+function addon:BarSizeSaved(bar)
+	local saved = self:Account().bars[bar.key]
+	return saved and saved.width, saved and saved.height
+end
+
+-- The size to draw at: what was asked for, else the game's own.
+function addon:BarSize(bar)
+	local width, height = self:BarSizeSaved(bar)
+	local measured = self:Account().measured[bar.key] or {}
+	if type(width) ~= "number" then
+		width = type(measured.barWidth) == "number" and measured.barWidth or self.GAME_BAR_WIDTH
+	end
+	if type(height) ~= "number" then
+		height = type(measured.barHeight) == "number" and measured.barHeight or self.GAME_BAR_HEIGHT
+	end
+	return Clamp(Round(width), self.MIN_BAR_WIDTH, self.MAX_BAR_WIDTH),
+		Clamp(Round(height), self.MIN_BAR_HEIGHT, self.MAX_BAR_HEIGHT)
+end
+
+function addon:SetBarSize(bar, which, value)
+	local saved = self:Account().bars[bar.key]
+	if which == "width" then
+		saved.width = Clamp(Round(value), self.MIN_BAR_WIDTH, self.MAX_BAR_WIDTH)
+	else
+		saved.height = Clamp(Round(value), self.MIN_BAR_HEIGHT, self.MAX_BAR_HEIGHT)
+	end
+end
+
+-- True while a bar is drawn at a size of the player's choosing rather than the game's.
+function addon:BarSizeIsOwn(bar)
+	if not self:BarsAreRounded() then
+		return false
+	end
+	local width, height = self:BarSizeSaved(bar)
+	return type(width) == "number" or type(height) == "number"
+end
+
+-- ---------------------------------------------------------------------------------------
 -- The controls
 -- ---------------------------------------------------------------------------------------
 
@@ -217,17 +273,36 @@ function plain:Overlay(bar, entry)
 		key = bar.key,
 	}
 	self.overlays[entry.name] = overlay
-	self:AnchorOverlay(overlay)
+	self:AnchorOverlay(overlay, bar)
 	self:ColourOverlay(bar, overlay)
 	return overlay
 end
 
 -- Over the client's own fill, exactly: the whole of the bar control's rectangle.
-function plain:AnchorOverlay(overlay)
+-- Over the client's own bar, exactly -- or, where a size has been asked for, standing on the
+-- edge the bar fills from at that size instead.
+function plain:AnchorOverlay(overlay, bar)
 	local control, barControl = overlay.control, overlay.bar
+	local sized = bar and addon:BarSizeIsOwn(bar)
 	control:ClearAnchors()
-	control:SetAnchor(TOPLEFT, barControl, TOPLEFT, 0, 0)
-	control:SetAnchor(BOTTOMRIGHT, barControl, BOTTOMRIGHT, 0, 0)
+	if sized then
+		-- Held by the edge the fill grows from and level with the bar the game has, which is
+		-- where the position sliders put it.
+		local point = overlay.reverse and RIGHT or LEFT
+		control:SetAnchor(point, barControl, point, 0, 0)
+		local width, height = addon:BarSize(bar)
+		-- The health bar is two halves that meet in the middle, so each is half of what was
+		-- asked for and the pair is the whole.
+		if #bar.controls > 1 then
+			width = width / 2
+		end
+		control:SetDimensions(width, height)
+		overlay.sizedWidth = width
+	else
+		overlay.sizedWidth = nil
+		control:SetAnchor(TOPLEFT, barControl, TOPLEFT, 0, 0)
+		control:SetAnchor(BOTTOMRIGHT, barControl, BOTTOMRIGHT, 0, 0)
+	end
 end
 
 function plain:ColourOverlay(bar, overlay)
@@ -267,7 +342,7 @@ function plain:Restyle()
 		for _, entry in ipairs(bar.controls) do
 			local overlay = self.overlays[entry.name]
 			if overlay then
-				self:AnchorOverlay(overlay)
+				self:AnchorOverlay(overlay, bar)
 				self:ColourOverlay(bar, overlay)
 			end
 		end
@@ -351,6 +426,80 @@ function plain:RaiseAllNumbers(raise)
 end
 
 -- ---------------------------------------------------------------------------------------
+-- The client's own fill, out of the way
+--
+-- Only needed for a bar drawn at a size of its own: a rectangle narrower or shorter than the
+-- game's leaves the game's fill showing round it. The bar control cannot simply be hidden --
+-- the damage shield overlays are its children (powershield.lua anchors them to it *and* parents
+-- them to it) and would go with it -- so its colours are taken to nothing instead, and its gloss,
+-- which has no children, is hidden.
+--
+-- Putting it back is the client's own line: ZO_StatusBar_SetGradientColor with
+-- ZO_POWER_BAR_GRADIENT_COLORS for that power, which is exactly what ZO_PlayerAttributeBar's
+-- RefreshColor does.
+-- ---------------------------------------------------------------------------------------
+
+local function Gloss(control)
+	if control.gloss then
+		return control.gloss
+	end
+	if type(control.GetNamedChild) == "function" then
+		local ok, gloss = pcall(control.GetNamedChild, control, "Gloss")
+		if ok then
+			return gloss
+		end
+	end
+	return nil
+end
+
+function plain:BlankClientBar(bar, overlay, blank)
+	local control = overlay.bar
+	if type(control.SetGradientColors) ~= "function" then
+		return false
+	end
+	local name = overlay.key .. ":" .. tostring(control.GetName and control:GetName() or "?")
+	if (self.blanked[name] == true) == (blank and true or false) then
+		return true
+	end
+
+	local gloss = Gloss(control)
+	if blank then
+		addon:Write("bar colour", control.SetGradientColors, control, 0, 0, 0, 0, 0, 0, 0, 0)
+		if gloss and type(gloss.SetHidden) == "function" then
+			addon:Write("bar colour", gloss.SetHidden, gloss, true)
+		end
+		self.blanked[name] = true
+		return true
+	end
+
+	local powerType = _G["COMBAT_MECHANIC_FLAGS_" .. bar.power:upper()]
+	local gradient = powerType and ZO_POWER_BAR_GRADIENT_COLORS and ZO_POWER_BAR_GRADIENT_COLORS[powerType]
+	if gradient and gradient[1] and gradient[2] then
+		local ok, r, g, b, a = pcall(gradient[1].UnpackRGBA, gradient[1])
+		local ok2, r2, g2, b2, a2 = pcall(gradient[2].UnpackRGBA, gradient[2])
+		if ok and ok2 then
+			addon:Write("bar colour", control.SetGradientColors, control, r, g, b, a, r2, g2, b2, a2)
+		end
+	end
+	if gloss and type(gloss.SetHidden) == "function" then
+		addon:Write("bar colour", gloss.SetHidden, gloss, false)
+	end
+	self.blanked[name] = nil
+	return true
+end
+
+function plain:BlankAll(blank)
+	for _, bar in ipairs(self.bars) do
+		for _, entry in ipairs(bar.controls) do
+			local overlay = self.overlays[entry.name]
+			if overlay then
+				self:BlankClientBar(bar, overlay, blank)
+			end
+		end
+	end
+end
+
+-- ---------------------------------------------------------------------------------------
 -- How full the bar is
 -- ---------------------------------------------------------------------------------------
 
@@ -372,10 +521,14 @@ end
 
 function plain:UpdateOverlay(overlay, fraction)
 	local control = overlay.control
-	local okWidth, barWidth = pcall(overlay.bar.GetWidth, overlay.bar)
-	if not okWidth or type(barWidth) ~= "number" or barWidth <= 0 then
-		control:SetHidden(true)
-		return
+	local barWidth = overlay.sizedWidth
+	if not barWidth then
+		local okWidth, width = pcall(overlay.bar.GetWidth, overlay.bar)
+		if not okWidth or type(width) ~= "number" or width <= 0 then
+			control:SetHidden(true)
+			return
+		end
+		barWidth = width
 	end
 	control:SetHidden(false)
 
@@ -407,10 +560,13 @@ function plain:Update()
 		local fraction = self:Fraction(bar)
 		self:Dress(bar, not keepFrame)
 		self:RaiseNumbers(bar, true)
+		local sized = addon:BarSizeIsOwn(bar)
 		for _, entry in ipairs(bar.controls) do
 			local overlay = self:Overlay(bar, entry)
 			if overlay then
+				self:AnchorOverlay(overlay, bar)
 				self:ColourOverlay(bar, overlay)
+				self:BlankClientBar(bar, overlay, sized)
 				if fraction then
 					self:UpdateOverlay(overlay, fraction)
 				else
@@ -502,6 +658,7 @@ function plain:Stop()
 	self:HideAll()
 	self:DressAll(false)
 	self:RaiseAllNumbers(false)
+	self:BlankAll(false)
 	return true
 end
 

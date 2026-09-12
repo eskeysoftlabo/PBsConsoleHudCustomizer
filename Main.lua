@@ -1092,7 +1092,8 @@ local function Usage()
 	Line("  %s text [back] timer|count <n> -- size of the text on the skill bar (%d-%d)", SLASH, addon.MIN_TEXT_SIZE or 12, addon.MAX_TEXT_SIZE or 48)
 	Line("  %s timers addon|both|game -- whose countdown goes on the front bar", SLASH)
 	Line("  %s gap skill|ult|item <n> -- the space along the skill bar (%d-%d)", SLASH, addon.MIN_GAP or 0, addon.MAX_GAP or 150)
-	Line("  %s style standard|plain|rounded -- the look of the three resource bars", SLASH)
+	Line("  %s style standard|plain|mura -- the look of the three resource bars", SLASH)
+	Line("  %s size <bar> <w> <h>    -- bar size in pixels (MURA-HIGE Style)", SLASH)
 	Line("  %s shade [on|off|up|down|<n>] -- the shade over a skill while its effect runs", SLASH)
 	Line("  %s slots                  -- what is on each slot, and why", SLASH)
 	Line("  %s effects                -- the last effect events the game sent", SLASH)
@@ -1141,6 +1142,14 @@ local function OnSlash(argumentString)
 		addon:Refresh()
 		local position = addon:ClampedPosition(addon:Position(bar))
 		Line("%s: x=%d y=%d", bar.key, position.x, position.y)
+	elseif command == "size" and addon.barByCommand[(args[2] or ""):lower()] and not addon.barByCommand[(args[2] or ""):lower()].isActionBar and tonumber(args[4]) then
+		local bar = addon.barByCommand[(args[2] or ""):lower()]
+		addon:SetBarSize(bar, "width", tonumber(args[3]))
+		addon:SetBarSize(bar, "height", tonumber(args[4]))
+		account.enabled = true
+		addon:Refresh()
+		local width, height = addon:BarSize(bar)
+		Line("%s: %dx%d (drawn at that size in MURA-HIGE Style)", bar.key, width, height)
 	elseif command == "scale" or command == "size" then
 		local bar = addon.barByCommand[(args[2] or ""):lower()]
 		local value = tonumber(args[3])
@@ -1201,7 +1210,7 @@ local function OnSlash(argumentString)
 		if style == "liquid" then
 			style = "plain"
 		end
-		if style == "round" then
+		if style == "round" or style == "mura" or style == "murahige" or style == "mura-hige" then
 			style = "rounded"
 		end
 		if not addon:SetBarStyle(style) then

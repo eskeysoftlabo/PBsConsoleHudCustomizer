@@ -19,7 +19,7 @@ local strings = {
 	SI_PBSCHC_STYLE_TOOLTIP = "Standard is the game's own bars, untouched. Square draws each bar as a flat rectangle -- a dark track and a solid block of the power's own colour -- with the game's arrow-shaped frame and background put away. Rounded is the same, with the round ends the gamepad interface uses for every bar of its own. Either way the bars themselves are left in place and still doing their work, so damage shields, armour changes and the low-health warning all still show on top.",
 	SI_PBSCHC_STYLE_STANDARD = "Standard",
 	SI_PBSCHC_STYLE_PLAIN = "Square",
-	SI_PBSCHC_STYLE_ROUNDED = "Rounded",
+	SI_PBSCHC_STYLE_ROUNDED = "MURA-HIGE Style",
 	SI_PBSCHC_PLAIN_OPACITY = "How solid",
 	SI_PBSCHC_PLAIN_OPACITY_TOOLTIP = "How solid the rectangles are. 100% hides the game's own fill completely; below that it shows through, which is one way to keep a little of the original look.",
 	SI_PBSCHC_PLAIN_KEEP_FRAME = "Keep the game's frame",
@@ -40,6 +40,10 @@ local strings = {
 	SI_PBSCHC_SHADE_EDGE_TOOLTIP = "A lit line along the edge of the shade as it moves, the same one the game uses on its ability cooldowns.",
 	SI_PBSCHC_SKILLBAR_ENABLED = "Let this add-on touch the skill bar",
 	SI_PBSCHC_SKILLBAR_ENABLED_TOOLTIP = "Turn this off to hand the skill bar back to the game, and to any other add-on that lays it out. Its position and size, the spacing along it, the other weapon set's row, the countdown and target count on the icons and the shade over a skill in use are all put back and stay off; the settings are kept for when you turn it on again. The health, magicka and stamina bars are not affected.",
+	SI_PBSCHC_BAR_WIDTH = "<<1>>: bar width",
+	SI_PBSCHC_BAR_WIDTH_TOOLTIP = "How wide the bar is drawn, in pixels. MURA-HIGE Style only: that style draws the bar itself, so it can be given a size. The other styles scale the game's own bar instead, because the width of those controls is the game's to write. The game's own is 224.",
+	SI_PBSCHC_BAR_HEIGHT = "<<1>>: bar height",
+	SI_PBSCHC_BAR_HEIGHT_TOOLTIP = "How tall the bar is drawn, in pixels. MURA-HIGE Style only. The game's own is 17.",
 
 	-- ---- The gaps along the skill bar ----------------------------------------------------
 	SI_PBSCHC_SECTION_GAPS = "Spacing along the skill bar",

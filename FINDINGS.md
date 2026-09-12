@@ -717,6 +717,29 @@ The effect's own `effectSlot` tells two instances apart, and is what FancyAction
 (`ResolveUnitKey`). The key is the unit id where there is one, the effect slot where there is not,
 and the unit tag only as a last resort.
 
+## 40. A size, for the one style that can have one
+
+Every other style **scales**: the bar keeps the shape the game drew and is made bigger or smaller
+whole. That is not a preference, it is §3 -- the width of those controls belongs to the attribute
+visualiser, which writes 141 / 237 / 323 onto them as buffs come and go, so a width written here
+would last until the player's next meal.
+
+MURA-HIGE Style draws the bar itself, so there is nothing to fight: it takes a width and a height
+in pixels and is exactly that. The overlay stands on the edge the bar fills from and level with
+the bar the game has, so the position sliders still say where it is; the health bar's two halves
+each take half of the width and meet in the middle.
+
+The one thing it needs that the scaling styles do not is the game's own fill **out of the way** --
+a bar narrower or shorter than the game's leaves the game's showing round it. The bar control
+cannot be hidden for that: `powershield.lua` parents the damage shield overlays to it
+(`CreateControlFromVirtual("$(parent)PowerShieldLeftOverlay", attributeBar, ...)`) and they would
+go with it. So its gradient is taken to nothing and its gloss, which has no children, is hidden;
+putting it back is the client's own line, `ZO_POWER_BAR_GRADIENT_COLORS` for that power, which is
+what `ZO_PlayerAttributeBar:RefreshColor` uses.
+
+The sliders were nearly shipped with the same labels as the position ones -- "Stamina: height"
+twice in one panel, the second unreachable. They are "bar width" and "bar height" now.
+
 ---
 
 ## Still to measure on a PS5

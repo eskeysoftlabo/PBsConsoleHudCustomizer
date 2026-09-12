@@ -39,7 +39,7 @@ function AdvanceFrame(ms) frameTime = frameTime + (ms or 1000) end
 function GetAddOnManager()
 	return {
 		GetNumAddOns = function() return 1 end,
-		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ConsoleHudCustomizer|r 1.8.0" end,
+		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ConsoleHudCustomizer|r 1.9.0" end,
 	}
 end
 
@@ -166,6 +166,7 @@ function Control:SetDrawLevel(v) self.drawLevel = v end
 function Control:GetDrawLevel() return self.drawLevel or 0 end
 function Control:GetDrawTier() return self.drawTier or "medium" end
 function Control:SetCenterColor(r, g, b, a) self.centerColor = { r, g, b, a } end
+function Control:SetGradientColors(r, g, b, a) self.gradient = { r, g, b, a } end
 function Control:SetEdgeColor(r, g, b, a) self.edgeColor = { r, g, b, a } end
 function Control:GetAlpha() return self.alpha or 1 end
 function Control:GetFontHeight() local size = tonumber((self.font or ""):match("|(%d+)|")) or 0; return math.ceil(size * 1.25) end
@@ -270,6 +271,10 @@ function BuildAttributeBars()
 		local fill = MakeControl(name, parent, "statusbar")
 		fill.width, fill.height = width, 17
 		fill:SetAnchor(LEFT, parent, LEFT, 7, 0)
+		fill.gradient = { 1, 1, 1, 1 }
+		local gloss = MakeControl(name .. "Gloss", fill, "statusbar")
+		fill.namedChildren = { Gloss = gloss }
+		_G[name .. "Gloss"] = gloss
 		_G[name] = fill
 		return fill
 	end
@@ -401,6 +406,16 @@ function BarAnchor(name)
 	if not a then return "none" end
 	return string.format("%d->%s %d (%d,%d)", a.point, a.relativeTo and a.relativeTo:GetName() or "nil", a.relativePoint, a.offsetX, a.offsetY)
 end
+
+-- The colours ZO_PlayerAttributeBar:RefreshColor puts back on a bar, as ZO_ColorDefs.
+local function ColourDef(r, g, b)
+	return { UnpackRGBA = function() return r, g, b, 1 end }
+end
+ZO_POWER_BAR_GRADIENT_COLORS = {
+	[1] = { ColourDef(0.6, 0.1, 0.1), ColourDef(0.8, 0.2, 0.2) },
+	[2] = { ColourDef(0.1, 0.3, 0.7), ColourDef(0.2, 0.4, 0.8) },
+	[4] = { ColourDef(0.2, 0.5, 0.1), ColourDef(0.3, 0.6, 0.2) },
+}
 
 function GetInterfaceColor(colorType, powerType)
 	if colorType ~= INTERFACE_COLOR_TYPE_POWER_START then return 1, 1, 1, 1 end

@@ -231,6 +231,55 @@ function addon:InitSettings()
 			zo_strformat(GetString(SI_PBSCHC_POSITION_Y), barName), GetString(SI_PBSCHC_POSITION_Y_TOOLTIP),
 			0, rootHeight)
 
+		-- MURA-HIGE Style draws the bar itself, so it can be given a size rather than a
+		-- multiple of the game's. The two live beside the scale, and say which style they are
+		-- for: the panel's rows are built once, and a row that comes and goes is worse to use
+		-- than one that says when it applies.
+		if not bar.isActionBar then
+			settings:AddSetting(
+				{
+					type = LibHarvensAddonSettings.ST_SLIDER,
+					label = zo_strformat(GetString(SI_PBSCHC_BAR_WIDTH), barName),
+					tooltip = GetString(SI_PBSCHC_BAR_WIDTH_TOOLTIP),
+					min = self.MIN_BAR_WIDTH,
+					max = self.MAX_BAR_WIDTH,
+					step = 2,
+					default = self.GAME_BAR_WIDTH,
+					format = "%d",
+					unit = "",
+					getFunction = function()
+						return (self:BarSize(bar))
+					end,
+					setFunction = function(value)
+						self:SetBarSize(bar, "width", value)
+						self:Account().enabled = true
+						self:Refresh()
+					end
+				}
+			)
+			settings:AddSetting(
+				{
+					type = LibHarvensAddonSettings.ST_SLIDER,
+					label = zo_strformat(GetString(SI_PBSCHC_BAR_HEIGHT), barName),
+					tooltip = GetString(SI_PBSCHC_BAR_HEIGHT_TOOLTIP),
+					min = self.MIN_BAR_HEIGHT,
+					max = self.MAX_BAR_HEIGHT,
+					step = 1,
+					default = self.GAME_BAR_HEIGHT,
+					format = "%d",
+					unit = "",
+					getFunction = function()
+						return select(2, self:BarSize(bar))
+					end,
+					setFunction = function(value)
+						self:SetBarSize(bar, "height", value)
+						self:Account().enabled = true
+						self:Refresh()
+					end
+				}
+			)
+		end
+
 		settings:AddSetting(
 			{
 				type = LibHarvensAddonSettings.ST_SLIDER,
