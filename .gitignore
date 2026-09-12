@@ -7,3 +7,7 @@
 
 # Build / packaging output
 *.zip
+
+# Reference add-ons kept beside the source for study, not part of this add-on
+ActionDurationReminder/
+FancyActionBar+/
