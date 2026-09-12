@@ -28,7 +28,7 @@ print("\n== 1. load ==")
 Fire(EVENT_ADD_ON_LOADED, "PBsConsoleHudCustomizer")
 local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 local health, magicka, stamina = addon.barByKey.health, addon.barByKey.magicka, addon.barByKey.stamina
-check("version read from manifest", addon.version, "1.6.1")
+check("version read from manifest", addon.version, "1.6.2")
 check("slash command registered", type(SLASH_COMMANDS["/pbhud"]), "function")
 check("short slash command registered", type(SLASH_COMMANDS["/pbhc"]), "function")
 check("HUD fragment callback registered", addon.hudRegistered, true)
@@ -299,7 +299,10 @@ FireEffect(EFFECT_RESULT_GAINED, "Front 3", "", (now + 9000) / 1000, 12, 303)
 FireEffect(EFFECT_RESULT_GAINED, "Front 3", "", (now + 9000) / 1000, 13, 303)
 RunUpdates()
 check("three targets", frontCount:GetText(), "3")
-FireEffect(EFFECT_RESULT_FADED, "Front 3", "", 0, 12, 303)
+-- A fade a moment later is a real one. (Straight after an application it would be the old
+-- instance being replaced, which is ignored -- see section 37.)
+AdvanceFrame(1000)
+FireEffect(EFFECT_RESULT_FADED, "Front 3", "", (now + 9000) / 1000, 12, 303)
 RunUpdates()
 check("two after one falls off", frontCount:GetText(), "2")
 -- A group member's copy of the same effect is not another target.
@@ -311,10 +314,15 @@ RunUpdates()
 check("the other set is counted too", CreatedControls["PBsConsoleHudCustomizerBack4"].namedChildren.Count:GetText(), "1")
 -- The count is matched by name; an ability with no effect of its own has none.
 check("an untouched slot has no count", CreatedControls["PBsConsoleHudCustomizerLabels6"].namedChildren.Count:IsHidden(), true)
--- Expiry is by the clock, not by an event.
+-- The count now lives as long as the client says the slot's effect does, so the effect running
+-- out is the client's timer reaching zero.
 AdvanceFrame(10000)
 RunUpdates()
-check("an effect that has run out stops being counted", frontCount:IsHidden(), true)
+check("held while the client still times the effect", frontCount:IsHidden(), false)
+SetSlot(HOTBAR_CATEGORY_PRIMARY, 3, { name = "Front 3", icon = "front3.dds", id = 103, remaining = 0, duration = 0 })
+RunUpdates()
+check("and gone when that timer ends", frontCount:IsHidden(), true)
+SetSlot(HOTBAR_CATEGORY_PRIMARY, 3, { name = "Front 3", icon = "front3.dds", id = 103, remaining = 8400 })
 Row(GetString(SI_PBSCHC_COUNT_ENABLED)).setFunction(false)
 RunUpdates()
 check("switched off entirely", CreatedControls["PBsConsoleHudCustomizerBack4"].namedChildren.Count:IsHidden(), true)
@@ -864,10 +872,20 @@ RunUpdates()
 check("a fade for the instance just replaced is ignored", count5:IsHidden(), false)
 check("and the count still stands", count5:GetText(), "1")
 check("it was counted as stale", addon.timers.staleFades >= 1, true)
--- A real fade, of the instance on record, does end it.
+-- A real fade, a moment later and of the instance on record, does take the unit off. The number
+-- is still held, because the client still says the slot's effect is running -- that is the point
+-- of the hold, and what stops the count blinking whatever the effect events do.
+AdvanceFrame(1000)
 FireEffect(EFFECT_RESULT_FADED, "Twin Slashes", "", (now3 + 20000) / 1000, 55, 150)
 RunUpdates()
-check("the real fade ends it", count5:IsHidden(), true)
+check("the unit is taken off", addon.timers:CountFor(addon.timers.Normalize("Twin Slashes"), 150, nil, GetGameTimeMilliseconds()), 0)
+check("but the number is held while the client times it", count5:GetText(), "1")
+check("and the hold is counted", (addon.timers.held or 0) >= 1, true)
+-- The client's timer reaching zero is what ends it.
+SetSlot(HOTBAR_CATEGORY_PRIMARY, 5, { name = "Twin Slashes", icon = "slash.dds", id = 150, remaining = 0, duration = 0 })
+RunUpdates()
+check("the effect running out ends it", count5:IsHidden(), true)
+SetSlot(HOTBAR_CATEGORY_PRIMARY, 5, { name = "Twin Slashes", icon = "slash.dds", id = 150, remaining = 10000, duration = 10000 })
 -- An effect whose end time has already gone by is the two clocks disagreeing, not an effect that
 -- is over: kept until its own fade rather than dropped the moment it is looked at.
 FireEffect(EFFECT_RESULT_GAINED, "Twin Slashes", "", (now3 - 5000) / 1000, 55, 150)
@@ -900,6 +918,34 @@ check("and above it", numbers:GetDrawLevel() > 1, true)
 Row(GetString(SI_PBSCHC_STYLE)).setFunction(nil, nil, { data = "standard" })
 check("and put back when the style is", numbers:GetDrawTier(), "medium")
 check("at the level the client had them", numbers:GetDrawLevel(), 0)
+
+print("\n== 38. the count is held for the whole of the effect ==")
+-- The guarantee, after two rounds of the count blinking out: whatever the effect events do, the
+-- number stays on the icon for as long as the client says that slot's effect is running, and
+-- goes when it stops. The countdown beside it is the same client number, so the two end together.
+addon.timers:Forget_All()
+addon.timers.counts = {}
+addon.account.text.countFromOne = true
+SetSlot(HOTBAR_CATEGORY_PRIMARY, 6, { name = "Caltrops", icon = "caltrops.dds", id = 160, remaining = 18000, duration = 20000 })
+local now4 = GetGameTimeMilliseconds()
+FireEffect(EFFECT_RESULT_GAINED, "Caltrops", "", (now4 + 18000) / 1000, 61, 160)
+FireEffect(EFFECT_RESULT_GAINED, "Caltrops", "", (now4 + 18000) / 1000, 62, 160)
+RunUpdates()
+local count6 = addon.timers.labels[6].count
+check("three... two targets", count6:GetText(), "2")
+-- Every trace of them goes: a fade the add-on believes, or bookkeeping lost for any other
+-- reason. The client still times the slot, so the number stays.
+addon.timers:Forget_All()
+RunUpdates()
+check("the number stays when the bookkeeping does not", count6:GetText(), "2")
+-- A real change is still a change: a live count replaces the held one.
+FireEffect(EFFECT_RESULT_GAINED, "Caltrops", "", (now4 + 18000) / 1000, 63, 160)
+RunUpdates()
+check("a live count replaces it", count6:GetText(), "1")
+-- Another ability in the slot starts again from nothing.
+SetSlot(HOTBAR_CATEGORY_PRIMARY, 6, { name = "Something Else", icon = "other.dds", id = 161, remaining = 18000, duration = 20000 })
+RunUpdates()
+check("a different ability in the slot holds nothing", count6:IsHidden(), true)
 
 print("")
 if failures == 0 then

@@ -320,6 +320,8 @@ function timers:Track(key, abilityId, icon, unitKey, endMs, now)
 	end
 	entry.touched = now
 	entry.units[unitKey] = endMs
+	entry.gained = entry.gained or {}
+	entry.gained[unitKey] = now
 	if type(abilityId) == "number" and abilityId > 0 then
 		idKeys[abilityId] = key
 	end
@@ -330,6 +332,9 @@ end
 
 -- How far apart two instances' end times have to be before a fade is taken for a stale one.
 local FADE_TOLERANCE_MS = 250
+
+-- And how soon after an application a fade for the same unit is taken for the old instance's.
+local FADE_AFTER_GAIN_MS = 400
 
 -- A fade is not always the end of the effect. Re-applying a damage-over-time on a target that
 -- already has it sends the new application first and the old one's fade **after** it, and
@@ -352,7 +357,18 @@ function timers:Forget(key, unitKey, fadedEnd, now)
 		self.staleFades = (self.staleFades or 0) + 1
 		return
 	end
+	-- The same thing seen from the other side, for a client that sends the old instance's fade
+	-- carrying the *new* times, where comparing the two says nothing: a fade arriving within a
+	-- moment of an application for the same effect on the same unit is the one being replaced.
+	local gainedAt = entry.gained and entry.gained[unitKey]
+	if gainedAt and now and now - gainedAt < FADE_AFTER_GAIN_MS then
+		self.staleFades = (self.staleFades or 0) + 1
+		return
+	end
 	entry.units[unitKey] = nil
+	if entry.gained then
+		entry.gained[unitKey] = nil
+	end
 	self.fades = (self.fades or 0) + 1
 	if next(entry.units) == nil then
 		effects[key] = nil
@@ -380,7 +396,9 @@ function timers:OnEffectChanged(_, changeType, _, effectName, unitTag, beginTime
 	local endMs = (type(endTime) == "number" and endTime > 0) and math.floor(endTime * 1000) or 0
 
 	if changeType == EFFECT_RESULT_FADED then
+		local before = self.staleFades or 0
 		self:Forget(key, unitKey, endMs, now)
+		self:Log((self.staleFades or 0) > before and "ignore" or "fade", changeType, key, unitKey, endMs, now)
 		return
 	end
 	self.gains = (self.gains or 0) + 1
@@ -394,6 +412,7 @@ function timers:OnEffectChanged(_, changeType, _, effectName, unitTag, beginTime
 		endMs = 0
 	end
 	self:Track(key, abilityId, IconKey(iconName), unitKey, endMs, now)
+	self:Log("gain", changeType, key, unitKey, endMs, now)
 end
 
 -- How many units are under this effect right now, and what it was matched by.
@@ -953,6 +972,41 @@ function timers:SlotIsEmpty(slot, hotbar)
 	return slotType == (ACTION_TYPE_NOTHING or 0)
 end
 
+-- The count a slot last had, held for as long as the client says that slot's effect is still
+-- running.
+--
+-- This is the guarantee, rather than the effect bookkeeping being perfect: the countdown beside
+-- it is the client's own number, and the two now end together by construction. A count that is
+-- worked out again and comes back higher or lower replaces what is held -- targets dying is a
+-- real change and should show -- but one that comes back as nothing while the effect is still
+-- running does not take the number off the icon.
+--
+-- Dropped the moment the client says the effect is over, or the slot holds something else.
+function timers:HoldCount(slot, hotbar, count, remaining, icon)
+	self.counts = self.counts or {}
+	local slotKey = slot .. ":" .. tostring(hotbar)
+	local state = self.counts[slotKey]
+	if not state then
+		state = {}
+		self.counts[slotKey] = state
+	end
+
+	local running = remaining >= MINIMUM_SHOWN_MS
+	if not running or state.icon ~= icon then
+		state.icon = icon
+		state.count = nil
+	end
+	if count > 0 then
+		state.count = count
+		return count
+	end
+	if running and state.count then
+		self.held = (self.held or 0) + 1
+		return state.count
+	end
+	return 0
+end
+
 -- What to write on one slot: the time left, and how many targets are under it.
 function timers:SlotText(slot, hotbar, now)
 	local remaining = SlotNumber(GetActionSlotEffectTimeRemaining, slot, hotbar)
@@ -966,6 +1020,7 @@ function timers:SlotText(slot, hotbar, now)
 	local abilityId = SlotNumber(GetSlotBoundId, slot, hotbar)
 	local icon = IconKey(SlotString(GetSlotTexture, slot, hotbar))
 	local count, matchedBy = self:CountFor(key, abilityId, icon, now)
+	count = self:HoldCount(slot, hotbar, count, remaining, icon)
 	local minimum = addon:Text().countFromOne and 1 or 2
 	if count >= minimum then
 		countText = tostring(count)
@@ -1169,6 +1224,46 @@ end
 -- One command that answers the two questions a report of "nothing is showing" raises: were the
 -- controls ever built, and is the number this add-on worked out the one on screen.
 -- ---------------------------------------------------------------------------------------
+
+-- The last few effect events, kept so that a report of "it still disappears" can be answered
+-- from the console rather than from here. Twenty entries, overwritten in place: no garbage and
+-- no growth.
+local LOG_SIZE = 20
+
+function timers:Log(action, changeType, name, unitKey, endMs, now)
+	self.log = self.log or {}
+	self.logAt = ((self.logAt or 0) % LOG_SIZE) + 1
+	local entry = self.log[self.logAt]
+	if not entry then
+		entry = {}
+		self.log[self.logAt] = entry
+	end
+	entry.action, entry.changeType, entry.name = action, changeType, name
+	entry.unit, entry.endMs, entry.at = unitKey, endMs, now
+end
+
+function timers:PrintLog()
+	local Line = addon.Line
+	local now = GetGameTimeMilliseconds and GetGameTimeMilliseconds() or 0
+	Line("|cFF69B4%s|r -- the last effect events, oldest first", addon.title)
+	Line("  gains=%d fades=%d stale fades ignored=%d already-over=%d counts held=%d",
+		self.gains or 0, self.fades or 0, self.staleFades or 0, self.pastEffects or 0, self.held or 0)
+	local log = self.log
+	if not log or #log == 0 then
+		Line("  nothing has arrived yet. The filter is on the player as the source, so only what")
+		Line("  you apply is seen -- cast something with a lasting effect and look again.")
+		return
+	end
+	for index = 1, #log do
+		local at = ((self.logAt or 0) + index - 1) % #log + 1
+		local entry = log[at]
+		if entry and entry.action then
+			Line("  %-6s %-28s unit=%s ends in %ss  (%ds ago)", entry.action, tostring(entry.name),
+				tostring(entry.unit), entry.endMs == 0 and "never" or string.format("%.1f", (entry.endMs - now) / 1000),
+				Round((now - (entry.at or now)) / 1000))
+		end
+	end
+end
 
 function timers:TrackedCount()
 	return effectCount

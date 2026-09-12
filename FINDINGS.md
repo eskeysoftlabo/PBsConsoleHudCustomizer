@@ -566,6 +566,33 @@ tier and level when it is not -- re-asserted every update, because the client re
 templates to those labels too. The low-health warner needs no such help: `ZO_PlayerAttributeWarner`
 is layer `OVERLAY`, tier `HIGH`, level 500.
 
+## 32. The target count is held by the client's own timer
+
+The count still blinked out after §31, so the answer is no longer to find the event that does it.
+The number's lifetime is tied to the thing that is already right and already on the same icon:
+`GetActionSlotEffectTimeRemaining` for that slot. While the client says the slot's effect is
+running, the last count worked out stays on the icon; when that timer reaches zero, or another
+ability is in the slot, it goes. The countdown and the count now end together by construction.
+
+A count worked out again always replaces what is held -- targets dying is a real change and
+should show. Only a drop to **nothing** is held, because that is the failure mode: the
+bookkeeping losing the effect while the effect is plainly still running.
+
+The cost is that a damage-over-time whose targets all die before it expires keeps its last number
+until the slot's timer runs out. That is the right way round: a number a few seconds stale beats a
+number that is never there.
+
+The two event-level guards stay, because they are still correct:
+
+- a fade whose instance was due to end well before what is on record is for something already
+  replaced (§31);
+- and, for a client that sends the old instance's fade carrying the **new** times, where comparing
+  the two says nothing: a fade arriving within 400 ms of an application for the same effect on the
+  same unit is the one being replaced.
+
+`/pbhud effects` prints the last twenty effect events with what the add-on did with each -- gain,
+fade, or ignored -- so a third round of this can be answered from the console.
+
 ---
 
 ## Still to measure on a PS5
