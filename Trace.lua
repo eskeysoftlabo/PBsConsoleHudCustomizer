@@ -187,11 +187,14 @@ function trace:OnEffect(_, changeType, _, effectName, unitTag, beginTime, endTim
 	local gained = EFFECT_RESULT_GAINED and changeType == EFFECT_RESULT_GAINED
 	-- The effect's own length, and where its end falls from here: which of the two presses the
 	-- game measured from is the whole question, and "ends in" is what answers it.
-	local ends = ((endTime or 0) * 1000) - Now()
-	self:Add("effect", string.format("%s \"%s\" id=%d on %s  runs %.1fs, ends in %.1fs",
+	local when = "no end time"
+	if (endTime or 0) > 0 then
+		when = string.format("runs %.1fs, ends in %.1fs", (endTime - (beginTime or 0)),
+			((endTime * 1000) - Now()) / 1000)
+	end
+	self:Add("effect", string.format("%s \"%s\" id=%d on %s  %s",
 		gained and "GAINED" or (EFFECT_RESULT_FADED and changeType == EFFECT_RESULT_FADED and "FADED" or ("type " .. tostring(changeType))),
-		tostring(effectName), abilityId or 0, unitTag ~= nil and unitTag ~= "" and tostring(unitTag) or "you",
-		((endTime or 0) - (beginTime or 0)), ends / 1000))
+		tostring(effectName), abilityId or 0, unitTag ~= nil and unitTag ~= "" and tostring(unitTag) or "you", when))
 end
 
 -- EVENT_COMBAT_EVENT: result, isError, abilityName, abilityGraphic, abilityActionSlotType,

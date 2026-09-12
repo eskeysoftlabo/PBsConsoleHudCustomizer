@@ -1021,6 +1021,66 @@ The harness gained the two ground events, `EVENT_COMBAT_EVENT`, `IsPlayerGroundT
 `FireGround` / `FireCombat` helpers -- and deliberately **no** `EVENT_LEAVE_GROUND_TARGET_MODE`,
 because a stand-in that invents an event would have let 1.12.0 pass its tests.
 
+## 51. What a PS5 actually sends for an aimed ability, and what 1.15.0 does with it
+
+The trace of §50, run on a PS5 with Scalding Rune (id 40465, the game says 22s): placed once,
+cancelled once.
+
+```
++0.00s ground  ENTER (event 131535)  IsPlayerGroundTargeting=true
++0.00s press   slot 6 "Scalding Rune" id=40465  lasts 22.0s  press #1  aiming=true
++0.02s aiming  turned true -- the circle is up
++0.62s aiming  turned false -- the circle is gone
++0.80s combat  "Scalding Rune" id=40465 result=2240
++0.80s effect  GAINED id=40465  runs 24.0s, ends in 24.0s
++3.05s effect  FADED  id=40465                      (the rune was triggered)
++4.10s ground  ENTER;  +4.10s press #2 aiming=true
++4.13s aiming  turned true
++4.63s aiming  turned false
++4.63s ground  CANCEL (event 131536)
++4.63s press   slot 5 "Obsidian Shard" id=29071  lasts 6.0s  press #1  aiming=false
++4.81s combat/effect for Obsidian Shard
+```
+
+Four facts, and every one of them contradicts something an earlier attempt assumed:
+
+1. **`EVENT_ACTION_SLOT_ABILITY_USED` fires when the circle goes *up*, and never again.** There
+   is no press event for the placement at +0.62. "Wait for the second press" is impossible.
+2. **`IsPlayerGroundTargeting()` is already true inside that handler.** ENTER arrives first, and
+   the press line's own `aiming=true` proves the read is available synchronously. So an aimed
+   press can be told from a cast *at the press*, with no gate, no queue and nothing held back.
+3. **Nothing marks the placement.** The circle simply goes down (+0.62) and the effect follows
+   180 ms later. The effect is the placement, as far as an add-on can see -- exactly the design
+   FancyActionBar+ settled on (§49).
+4. **A cancel is distinguishable.** `EVENT_CANCEL_GROUND_TARGET_MODE` arrives with the circle
+   going down (+4.63); a placement has no event at all. The cancelling press (○) also casts what
+   is bound to it, and that press reads `aiming=false`, so it is not mistaken for an aim.
+
+### What 1.15.0 does
+
+`OnAbilityUsed` reads `IsPlayerGroundTargeting()`. If it is true the press is a circle going up:
+it is **held as one pending record** and nothing is counted from it. Then, whichever comes first:
+
+- **an effect links to that slot** -- the ordinary path counts from the effect, and the record is
+  dropped. This is what happens for everything the game reports.
+- **`GroundTick` sees the circle down, with no cancel** -- it was placed, so the ability's own
+  length starts *from the placement*. One update tick of grace first, so a cancel in the same
+  frame is seen before anything is counted.
+- **`EVENT_CANCEL_GROUND_TARGET_MODE`** -- it was never cast. The record is dropped and nothing
+  is counted at all.
+- **another press, or ten seconds** -- the record is dropped.
+
+`LinkToCast`'s 1.5-second window runs from the placement rather than the press, or an ability
+aimed for three seconds would have its own effect refused as someone else's.
+
+### Why this cannot fail the way 1.12.0 and 1.12.1 did
+
+The whole of the state is one record for one press, and every path out of it drops that record.
+There is no flag that gates other abilities: losing the record costs nothing but the tooltip
+fallback for that one press, and the effect path -- which is where almost every countdown comes
+from -- is untouched. 1.12.x put a single latched flag in front of *every* press, so one
+unreachable branch silenced the entire add-on (§49).
+
 ---
 
 ## Still to measure on a PS5
@@ -1092,3 +1152,9 @@ because a stand-in that invents an event would have let 1.12.0 pass its tests.
    another add-on's panel (they must not), and leave with the menu button straight to the HUD
    (they must go). `/pbhud preview` on the HUD draws them over the real bars, which is the
    quickest way to see that the two agree.
+20. **Do aimed abilities count from the placement now?** Cast Scalding Rune or Caltrops: nothing
+    must appear on the icon while the circle is up, and the countdown must start as it lands,
+    full length. Hold the circle for a few seconds before placing it -- the countdown must still
+    be full length, not short by the time spent aiming. Cancel one with ○ -- the icon must stay
+    empty, and the ability ○ casts instead must count as it always did. `/pbhud slots` prints
+    `circles held / placed / cancelled / given up on`: given-up-on should stay 0.

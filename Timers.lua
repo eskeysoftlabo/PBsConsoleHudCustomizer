@@ -378,6 +378,126 @@ function timers:AbilityDuration(slot, hotbar)
 	return 0
 end
 
+-- ---------------------------------------------------------------------------------------
+-- Abilities that are aimed before they land
+--
+-- Caltrops, a rune, a wall: one press raises the circle and a second one puts it on the floor.
+-- Counting from the press means counting from the circle, and a player who holds it for three
+-- seconds sees three seconds of a countdown for something that has not happened.
+--
+-- What the game really sends, measured on a PS5 (FINDINGS 51, and "/pbhud trace" is what
+-- measured it):
+--
+--   +0.00s  ENTER, then EVENT_ACTION_SLOT_ABILITY_USED for the ability -- and
+--           IsPlayerGroundTargeting() is already true *inside* that handler
+--   +0.62s  the circle goes down as it is placed. No event, and NO second ABILITY_USED
+--   +0.80s  the effect, and a combat event, arrive
+--
+-- and when it is cancelled instead:
+--
+--   +4.63s  IsPlayerGroundTargeting() goes false and EVENT_CANCEL_GROUND_TARGET_MODE arrives
+--           together. No effect ever follows
+--
+-- So: the press that is answered by IsPlayerGroundTargeting() == true is the circle going up,
+-- not a cast, and nothing is counted from it. What follows decides what happens:
+--
+--   the effect arrives   the ordinary path takes over and counts from the effect, which is
+--                        what FancyActionBar+ does for everything it has not named
+--   the circle goes      it was placed. The ability's own length starts from that moment, for
+--   down, no CANCEL      the abilities whose effect the game never reports
+--   CANCEL arrives       it was never cast. Nothing is counted at all
+--
+-- The state this keeps is one pending press with a deadline, and losing it costs nothing but
+-- the fallback -- no gate, nothing held back, and no other ability touched. That is the
+-- difference from 1.12.0 and 1.12.1, where one latched flag stopped every countdown in the
+-- add-on (FINDINGS 49).
+-- ---------------------------------------------------------------------------------------
+
+-- A circle held longer than this is forgotten: the ability keeps the effect path, it only
+-- loses the fallback. Nothing else waits on it.
+local GROUND_HOLD_MAX_MS = 10000
+
+function timers:GroundTargeting()
+	if type(IsPlayerGroundTargeting) ~= "function" then
+		return nil
+	end
+	local ok, value = pcall(IsPlayerGroundTargeting)
+	if not ok or value == nil then
+		return nil
+	end
+	return value and true or false
+end
+
+-- The ability's own length, started from here: the block that used to sit inside OnAbilityUsed.
+function timers:DeclareCast(slot, hotbar, expected, at)
+	if not expected or expected < CAST_EFFECT_MINIMUM_MS then
+		return
+	end
+	local slotKey = SlotKey(slot, hotbar)
+	local slotIcon = nil
+	if type(GetSlotTexture) == "function" then
+		local ok, texture = pcall(GetSlotTexture, slot, hotbar)
+		if ok then
+			slotIcon = IconKey(texture)
+		end
+	end
+	local entry = {
+		key = nil,
+		slotIcon = slotIcon,
+		beginMs = at,
+		endMs = at + expected,
+		castAt = at,
+		-- Anything the game actually reports beats a number worked out from the tooltip.
+		score = math.huge,
+		declared = true,
+	}
+	slotEffects[slotKey] = entry
+	if slotIcon then
+		linksByIcon[slotIcon] = entry
+	end
+	self.declared = (self.declared or 0) + 1
+end
+
+-- The circle was abandoned. Nothing was cast, so there is nothing to count.
+function timers:OnGroundCancel()
+	if self.groundPending then
+		self.groundPending = nil
+		self.groundCancelled = (self.groundCancelled or 0) + 1
+	end
+end
+
+-- Run from the update loop. Watches the one press that is waiting on its circle.
+function timers:GroundTick(now)
+	local pending = self.groundPending
+	if not pending then
+		return
+	end
+	if now - pending.at > GROUND_HOLD_MAX_MS then
+		self.groundPending = nil
+		self.groundExpired = (self.groundExpired or 0) + 1
+		return
+	end
+	if self:GroundTargeting() ~= false then
+		pending.downAt = nil
+		return
+	end
+	-- The circle is down. One tick of grace before anything is counted, so that a CANCEL
+	-- arriving in the same frame is seen first: cancelled and placed look identical here, and
+	-- only the event tells them apart.
+	if not pending.downAt then
+		pending.downAt = now
+		return
+	end
+	self.groundPending = nil
+	self.groundPlaced = (self.groundPlaced or 0) + 1
+	-- The cast happened now, not when the circle went up: an effect that follows has to be
+	-- taken for this slot's, and the fallback has to count from here.
+	if lastUse.at == pending.at then
+		lastUse.at = pending.downAt
+	end
+	self:DeclareCast(pending.slot, pending.hotbar, pending.expected, pending.downAt)
+end
+
 function timers:OnAbilityUsed(_, slotNum)
 	if type(slotNum) ~= "number" or slotNum < FIRST_SLOT or slotNum > LAST_SLOT then
 		return
@@ -389,36 +509,29 @@ function timers:OnAbilityUsed(_, slotNum)
 	lastUse.expected = self:AbilityDuration(slotNum, hotbar)
 	self.casts = (self.casts or 0) + 1
 
+	-- A press that is answered by "you are aiming" is the circle going up. Measured: the game
+	-- has already entered ground-targeting mode by the time this handler runs, so the two can
+	-- be told apart here, with no gate and nothing held back (FINDINGS 51).
+	--
+	-- Any press replaces a circle still waiting on an answer: the player moved on.
+	self.groundPending = nil
+	if self:GroundTargeting() == true then
+		self.groundPending = {
+			slot = slotNum,
+			hotbar = hotbar,
+			expected = lastUse.expected,
+			at = lastUse.at,
+		}
+		self.groundHeld = (self.groundHeld or 0) + 1
+		return
+	end
+
 	-- Start counting at once, from what the game says the ability lasts, rather than waiting for
 	-- an effect that may never be reported. FancyActionBar+ does this for a list of abilities it
 	-- names (config.lua's onAbilityUsed entries, and main.lua where it sets
 	-- effect.endTime = duration + t); with no such list here it is done for any ability that
 	-- declares a length, and the first effect of the cast takes over from it.
-	if lastUse.expected and lastUse.expected >= CAST_EFFECT_MINIMUM_MS then
-		local slotKey = SlotKey(slotNum, hotbar)
-		local slotIcon = nil
-		if type(GetSlotTexture) == "function" then
-			local ok, texture = pcall(GetSlotTexture, slotNum, hotbar)
-			if ok then
-				slotIcon = IconKey(texture)
-			end
-		end
-		local entry = {
-			key = nil,
-			slotIcon = slotIcon,
-			beginMs = lastUse.at,
-			endMs = lastUse.at + lastUse.expected,
-			castAt = lastUse.at,
-			-- Anything the game actually reports beats a number worked out from the tooltip.
-			score = math.huge,
-			declared = true,
-		}
-		slotEffects[slotKey] = entry
-		if slotIcon then
-			linksByIcon[slotIcon] = entry
-		end
-		self.declared = (self.declared or 0) + 1
-	end
+	self:DeclareCast(slotNum, hotbar, lastUse.expected, lastUse.at)
 end
 
 -- Called for every effect that arrives. One that turns up inside the window after a cast is
@@ -427,7 +540,14 @@ function timers:LinkToCast(key, icon, beginMs, endMs, now)
 	if not lastUse.slot or endMs == 0 or endMs - now < CAST_EFFECT_MINIMUM_MS then
 		return
 	end
-	if now - lastUse.at > CAST_WINDOW_MS then
+	-- While a circle is still up the cast has not happened yet, so the window cannot run out:
+	-- the effect of an ability aimed for three seconds arrives three seconds after the press.
+	local window = CAST_WINDOW_MS
+	local pending = self.groundPending
+	if pending and pending.at == lastUse.at then
+		window = GROUND_HOLD_MAX_MS + CAST_WINDOW_MS
+	end
+	if now - lastUse.at > window then
 		return
 	end
 	local slotKey = SlotKey(lastUse.slot, lastUse.hotbar)
@@ -482,6 +602,12 @@ function timers:LinkToCast(key, icon, beginMs, endMs, now)
 		linksByIcon[slotIcon] = entry
 	end
 	self.linked = (self.linked or 0) + 1
+	-- The effect is the answer the circle was waiting for: it was placed, and what the game
+	-- reports beats anything worked out from the tooltip, so the fallback is dropped.
+	if pending and pending.at == lastUse.at then
+		self.groundPending = nil
+		self.groundPlaced = (self.groundPlaced or 0) + 1
+	end
 end
 
 -- What the last cast of this slot produced, while it is still running.
@@ -1490,6 +1616,7 @@ end
 
 function timers:Update()
 	local now = Now()
+	self:GroundTick(now)
 	if now - (self.lastPrune or 0) > PRUNE_INTERVAL_MS then
 		self.lastPrune = now
 		self:Prune(now)
@@ -1708,6 +1835,9 @@ function timers:PrintSlots()
 		self.sources or 0, self.dropped or 0)
 	Line("  casts seen=%d  effects tied to a cast=%d  shorter readings refused=%d",
 		self.casts or 0, self.linked or 0, self.shorterIgnored or 0)
+	Line("  circles held=%d placed=%d cancelled=%d given up on=%d  aiming now=%s",
+		self.groundHeld or 0, self.groundPlaced or 0, self.groundCancelled or 0, self.groundExpired or 0,
+		tostring(self:GroundTargeting()))
 	Line("  counted from the tooltip's own length=%d  carried out to a later target=%d  effects refused as the wrong length=%d",
 		self.declared or 0, self.extended or 0, self.mismatched or 0)
 	Line("  clocks: frame=%d game=%d (they must agree for an effect's end time to mean anything)",
@@ -1795,6 +1925,16 @@ function timers:Register()
 			end
 			self.sources = (self.sources or 0) + 1
 		end
+	end
+
+	-- The one ground-targeting event that is needed: the circle being abandoned. ENTER is not
+	-- registered, because IsPlayerGroundTargeting() already answers inside the press handler,
+	-- and EVENT_LEAVE_GROUND_TARGET_MODE is not registered because there is no such event --
+	-- assuming there was is what broke 1.12.0 (FINDINGS 49).
+	if EVENT_CANCEL_GROUND_TARGET_MODE then
+		EVENT_MANAGER:RegisterForEvent(addon.name .. "GroundCancel", EVENT_CANCEL_GROUND_TARGET_MODE, function()
+			timers:OnGroundCancel()
+		end)
 	end
 
 	-- Which slot was pressed. The effects that follow within a moment are that slot's.

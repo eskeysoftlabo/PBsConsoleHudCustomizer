@@ -28,7 +28,7 @@ print("\n== 1. load ==")
 Fire(EVENT_ADD_ON_LOADED, "PBsConsoleHudCustomizer")
 local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 local health, magicka, stamina = addon.barByKey.health, addon.barByKey.magicka, addon.barByKey.stamina
-check("version read from manifest", addon.version, "1.14.0")
+check("version read from manifest", addon.version, "1.15.0")
 check("slash command registered", type(SLASH_COMMANDS["/pbhud"]), "function")
 check("short slash command registered", type(SLASH_COMMANDS["/pbhc"]), "function")
 check("HUD fragment callback registered", addon.hudRegistered, true)
@@ -1551,6 +1551,110 @@ check("and it is recording", trace.count >= 1, true)
 Row(GetString(SI_PBSCHC_TRACE_SHOW)).clickHandler()
 check("the Show button stops it", trace.running, false)
 trace:Command("clear")
+
+-- ---------------------------------------------------------------------------------------
+-- Abilities that are aimed before they land
+--
+-- These replay what a PS5 really sent (FINDINGS 51): the press arrives with
+-- IsPlayerGroundTargeting() already true, nothing at all marks the placement, and a cancel
+-- comes with its own event. Nothing here is invented -- the times are the measured ones.
+-- ---------------------------------------------------------------------------------------
+print("\n== 21. aimed abilities ==")
+local T = addon.timers
+T:Forget_All()
+T:ForgetLinks()
+T.groundPending = nil
+SetGroundTargeting(false)
+RunUpdates()
+
+-- Scalding Rune: the game says 22s, the effect that follows says 24s.
+SetSlot(HOTBAR_CATEGORY_PRIMARY, 6, { name = "Scalding Rune", icon = "rune.dds", id = 40465, remaining = 0, duration = 0 })
+SetAbilityDuration(40465, 22000)
+local rune = T.labels[6].timer
+
+-- The circle goes up, and the press is answered by "you are aiming".
+SetGroundTargeting(true)
+FireCast(6)
+check("the press is held, not counted", T.groundHeld, 1)
+AdvanceFrame(300)
+RunUpdates()
+check("and nothing is counting while the circle is up", rune:IsHidden(), true)
+
+-- Placed: the circle goes down, and the effect arrives 180ms later, as it did on the PS5.
+AdvanceFrame(320)
+SetGroundTargeting(false)
+RunUpdates()
+AdvanceFrame(180)
+local placed = GetGameTimeMilliseconds()
+FireEffect(EFFECT_RESULT_GAINED, "Scalding Rune", "", (placed + 24000) / 1000, 70, 40465)
+RunUpdates()
+check("the effect is what counts, at its own length", rune:GetText(), "24")
+check("and the circle is settled", T.groundPending, nil)
+
+-- Held for three seconds: the old 1.5s window would have thrown this effect away.
+T:Forget_All()
+T:ForgetLinks()
+AdvanceFrame(30000)
+SetGroundTargeting(true)
+FireCast(6)
+AdvanceFrame(3000)
+RunUpdates()
+SetGroundTargeting(false)
+RunUpdates()
+local late = GetGameTimeMilliseconds()
+FireEffect(EFFECT_RESULT_GAINED, "Scalding Rune", "", (late + 24000) / 1000, 71, 40465)
+RunUpdates()
+check("a circle held for three seconds still links its effect", rune:GetText(), "24")
+
+-- An ability the game reports no effect for: the tooltip's length, counted from the placement
+-- rather than from the press that raised the circle.
+T:Forget_All()
+T:ForgetLinks()
+AdvanceFrame(30000)
+SetGroundTargeting(true)
+FireCast(6)
+AdvanceFrame(4000)
+RunUpdates()
+SetGroundTargeting(false)
+RunUpdates()
+RunUpdates()
+check("placed, so the fallback starts", T.groundPlaced >= 2, true)
+check("and it counts from the placement, not the press", rune:GetText(), "22")
+
+-- Cancelled: the ○ button drops the circle and casts what is bound to it. Nothing is counted
+-- for the rune, and the other ability counts as it always did.
+T:Forget_All()
+T:ForgetLinks()
+AdvanceFrame(30000)
+SetGroundTargeting(true)
+FireCast(6)
+AdvanceFrame(500)
+RunUpdates()
+SetGroundTargeting(false)
+Fire(EVENT_CANCEL_GROUND_TARGET_MODE)
+check("a cancelled circle is dropped", T.groundCancelled, 1)
+SetSlot(HOTBAR_CATEGORY_PRIMARY, 5, { name = "Obsidian Shard", icon = "shard.dds", id = 29071, remaining = 0, duration = 0 })
+SetAbilityDuration(29071, 6000)
+FireCast(5)
+RunUpdates()
+RunUpdates()
+check("nothing is counted for the ability never cast", rune:IsHidden(), true)
+check("and the ability that was cast counts as ever", addon.timers.labels[5].timer:GetText(), "6.0")
+
+-- The failure of 1.12.0 and 1.12.1, as a test: a circle left up must never stop anything else.
+T:Forget_All()
+T:ForgetLinks()
+AdvanceFrame(30000)
+SetGroundTargeting(true)
+FireCast(6)
+AdvanceFrame(200)
+RunUpdates()
+SetGroundTargeting(false)
+FireCast(5)
+RunUpdates()
+check("another ability counts while a circle is pending", addon.timers.labels[5].timer:GetText(), "6.0")
+check("and the circle is forgotten by the press that followed", T.groundPending, nil)
+SetGroundTargeting(false)
 
 print("")
 if failures == 0 then
