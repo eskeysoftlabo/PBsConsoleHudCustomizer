@@ -268,8 +268,8 @@ function plain:Overlay(bar, entry)
 		-- One pair of each shape; only the pair the style calls for is ever shown.
 		track = control.Track or control:GetNamedChild("Track"),
 		fill = control.Fill or control:GetNamedChild("Fill"),
-		roundTrack = control.TrackTexture or control:GetNamedChild("TrackTexture"),
-		roundFill = control.FillTexture or control:GetNamedChild("FillTexture"),
+		roundTrack = control.RoundTrack or control:GetNamedChild("RoundTrack"),
+		roundFill = control.RoundFill or control:GetNamedChild("RoundFill"),
 		key = bar.key,
 	}
 	self.overlays[entry.name] = overlay
@@ -325,15 +325,46 @@ function plain:ColourOverlay(bar, overlay)
 		overlay.fill:SetHidden(rounded)
 	end
 
-	-- The rounded pair is the same two rectangles in the gamepad UI's own bar art, tinted the
-	-- same way: the track darker than the square one, because the art carries its own shading.
-	if overlay.roundTrack and type(overlay.roundTrack.SetColor) == "function" then
-		overlay.roundTrack:SetColor(TRACK_COLOUR[1] * 2, TRACK_COLOUR[2] * 2, TRACK_COLOUR[3] * 2, alpha)
-		overlay.roundTrack:SetHidden(not rounded)
+	-- The rounded pair is three pieces each -- a cap, a middle and a cap -- so the colour goes on
+	-- the pieces and the container only carries the shape.
+	-- The height is passed in rather than read off the container: a control sized by its anchors
+	-- answers 0 until it has been laid out, and the caps would come out at their smallest.
+	local _, height = addon:BarSize(bar)
+	if not addon:BarSizeIsOwn(bar) then
+		local okHeight, barHeight = pcall(overlay.bar.GetHeight, overlay.bar)
+		height = (okHeight and type(barHeight) == "number" and barHeight > 0) and barHeight or addon.GAME_BAR_HEIGHT
 	end
-	if overlay.roundFill and type(overlay.roundFill.SetColor) == "function" then
-		overlay.roundFill:SetColor(r, g, b, alpha)
-		overlay.roundFill:SetHidden(not rounded)
+	self:TintRounded(overlay.roundTrack, TRACK_COLOUR[1] * 2, TRACK_COLOUR[2] * 2, TRACK_COLOUR[3] * 2, alpha, rounded, height)
+	self:TintRounded(overlay.roundFill, r, g, b, alpha, rounded, height)
+end
+
+local ROUNDED_PIECES = { "Left", "Right", "Center" }
+
+-- The caps are 7 wide for the 22-high bar the art was drawn for. A bar of another height keeps
+-- the proportion, or a thin one ends up with caps fatter than it is tall.
+local function CapWidth(height)
+	return Clamp(Round(height * 7 / 22), 2, 14)
+end
+
+function plain:TintRounded(container, r, g, b, alpha, shown, height)
+	if not container then
+		return
+	end
+	container:SetHidden(not shown)
+	if not shown then
+		return
+	end
+	local cap = CapWidth(height and height > 0 and height or addon.GAME_BAR_HEIGHT)
+	for _, name in ipairs(ROUNDED_PIECES) do
+		local piece = container[name] or (type(container.GetNamedChild) == "function" and container:GetNamedChild(name))
+		if piece then
+			if type(piece.SetColor) == "function" then
+				piece:SetColor(r, g, b, alpha)
+			end
+			if name ~= "Center" and type(piece.SetWidth) == "function" then
+				piece:SetWidth(cap)
+			end
+		end
 	end
 end
 

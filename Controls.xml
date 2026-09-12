@@ -108,6 +108,34 @@
             power (GetInterfaceColor with INTERFACE_COLOR_TYPE_POWER_START). The fill's width is
             set every update and its anchor picks the edge the bar fills from.
         -->
+        <!--
+            One rounded bar: the two caps and the middle, in the art and with the texture
+            coordinates the gamepad interface uses for its own (statusbartemplates_gamepad.xml,
+            ZO_GamepadWhiteFrameLeftMedium / RightMedium / CenterMedium). The caps' width is set
+            from Lua to suit the height, so a thin bar keeps its proportions.
+        -->
+        <Control name="PBsConsoleHudCustomizerRoundedBar" virtual="true">
+            <Controls>
+                <Texture name="$(parent)Left" textureFile="EsoUI/Art/Miscellaneous/Gamepad/gp_dynamicBar_medium_frame_white.dds">
+                    <Anchor point="TOPLEFT"/>
+                    <Anchor point="BOTTOMLEFT"/>
+                    <Dimensions x="7"/>
+                    <TextureCoords left="0.9375" right="0.71875" top="0.15625" bottom="0.84375"/>
+                </Texture>
+                <Texture name="$(parent)Right" textureFile="EsoUI/Art/Miscellaneous/Gamepad/gp_dynamicBar_medium_frame_white.dds">
+                    <Anchor point="TOPRIGHT"/>
+                    <Anchor point="BOTTOMRIGHT"/>
+                    <Dimensions x="7"/>
+                    <TextureCoords left="0.75" right="0.9375" top="0.15625" bottom="0.84375"/>
+                </Texture>
+                <Texture name="$(parent)Center" textureFile="EsoUI/Art/Miscellaneous/Gamepad/gp_dynamicBar_medium_frame_white.dds">
+                    <Anchor point="TOPLEFT" relativeTo="$(parent)Left" relativePoint="TOPRIGHT"/>
+                    <Anchor point="BOTTOMRIGHT" relativeTo="$(parent)Right" relativePoint="BOTTOMLEFT"/>
+                    <TextureCoords left="0.6875" right="0.4375" top="0.15625" bottom="0.84375"/>
+                </Texture>
+            </Controls>
+        </Control>
+
         <Control name="PBsConsoleHudCustomizerPlainBar" virtual="true" tier="HIGH" level="1">
             <Controls>
                 <Backdrop name="$(parent)Track" centerColor="0F0F0FFF" edgeColor="00000000" level="1">
@@ -118,23 +146,22 @@
                     <Anchor point="BOTTOMLEFT"/>
                 </Backdrop>
                 <!--
-                    The same two again for the rounded shape, in the art the gamepad UI uses for
-                    every bar of its own (gp_dynamicBar_medium_fill, with the client's own
-                    texture coordinates): a capsule with round ends, stretched across the bar the
-                    way ZO_GamepadStatusBarMedium stretches it. Tinted from Lua, and only one of
-                    the two pairs is ever shown.
+                    The same two again for MURA-HIGE Style. A rounded bar is not one stretched
+                    texture: the gamepad interface builds every one of its own from three pieces
+                    of gp_dynamicBar_medium_frame_white: a left cap, a right cap and a middle
+                    stretched between them (ZO_GamepadSlider is the plainest example). Stretching
+                    the fill art across instead, as this did, gives a square block, which is why
+                    the style came out with corners.
+
+                    Both are tinted from Lua, and only one of the two shapes is ever shown.
                 -->
-                <Texture name="$(parent)TrackTexture" level="1" hidden="true"
-                         textureFile="EsoUI/Art/Miscellaneous/Gamepad/gp_dynamicBar_medium_fill.dds">
+                <Control name="$(parent)RoundTrack" inherits="PBsConsoleHudCustomizerRoundedBar" level="1" hidden="true">
                     <AnchorFill/>
-                    <TextureCoords left="0" right="1" top="0.15625" bottom="0.84375"/>
-                </Texture>
-                <Texture name="$(parent)FillTexture" level="2" hidden="true"
-                         textureFile="EsoUI/Art/Miscellaneous/Gamepad/gp_dynamicBar_medium_fill.dds">
+                </Control>
+                <Control name="$(parent)RoundFill" inherits="PBsConsoleHudCustomizerRoundedBar" level="2" hidden="true">
                     <Anchor point="TOPLEFT"/>
                     <Anchor point="BOTTOMLEFT"/>
-                    <TextureCoords left="0" right="1" top="0.15625" bottom="0.84375"/>
-                </Texture>
+                </Control>
             </Controls>
         </Control>
     </Controls>

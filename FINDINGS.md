@@ -756,6 +756,24 @@ bar's width**. Fractions rather than distances because they are free of scale --
 scaled the same and it cancels -- so the outline holds whatever size the bar is set to, and moves
 in when the gaps are closed.
 
+## 42. A rounded bar is three pieces, not one texture
+
+MURA-HIGE Style came out with square corners. It was drawn as one stretched copy of
+`gp_dynamicBar_medium_fill.dds`, and that file is the **fill** -- a plain block, which a status
+bar stretches across its length. The round ends are not in it.
+
+Every rounded bar the gamepad interface draws is three textures from
+`gp_dynamicBar_medium_frame_white.dds`: a left cap, a right cap, and a middle stretched between
+them, each with its own texture coordinates out of the sheet
+(`statusbartemplates_gamepad.xml`, `ZO_GamepadWhiteFrameLeftMedium` / `RightMedium` /
+`CenterMedium`). `ZO_GamepadSlider` is the plainest example: its whole track is exactly those
+three. So is this style's track, and so is its fill.
+
+The caps are 7 wide for the 22-high bar the art was drawn for, and are scaled with the height so
+that a thin bar does not end up with caps fatter than it is tall. The height is passed to that
+sum rather than read off the container: a control sized by its anchors answers 0 until it has
+been laid out, and the caps would come out at their smallest.
+
 ---
 
 ## Still to measure on a PS5
