@@ -593,6 +593,27 @@ The two event-level guards stay, because they are still correct:
 `/pbhud effects` prints the last twenty effect events with what the add-on did with each -- gain,
 fade, or ignored -- so a third round of this can be answered from the console.
 
+## 33. One slot, two effects
+
+From a PS5: Blue Betty's countdown ran 22, 21, ... and then, a few seconds from the end, started
+again at 5.
+
+The number was the client's own. `GetActionSlotEffectTimeRemaining` answers with **one** number
+for a slot that can have more than one of the player's effects running at once: the netch grants
+its buff for 22 seconds and does something of its own every 5, and a few seconds from the end the
+longer of the two is the five-second one. Read straight -- which is what this add-on and the
+game's own action bar timers both do -- the countdown hands over to it.
+
+What a player wants is the ability's own effect counted to its end, so from 1.6.3 a reading whose
+duration is less than three quarters of the one already running is not taken while that one still
+has time on it. A re-cast of the same ability has the same duration, so it is taken and starts
+again. A short effect with nothing longer running is shown as it is. And a client that says
+nothing is running is believed: an effect purged, or its target dead, is over.
+
+The countdown, the shade and the target count's hold all read through the same call, so the three
+cannot disagree about which effect a slot is showing. `/pbhud slots` prints the client's raw
+number next to the one on the icon whenever they differ, and counts the readings it did not take.
+
 ---
 
 ## Still to measure on a PS5

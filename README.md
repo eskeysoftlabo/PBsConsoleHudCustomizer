@@ -6,7 +6,7 @@ as a shade that clears down the icon, a countdown, and a target count -- in The 
 Online on console.
 
 - **Author:** PinkBanther
-- **Version:** 1.6.2
+- **Version:** 1.6.3
 - **Optional:** `LibHarvensAddonSettings` >= 20106 (for the settings panel; the chat commands work
   without it)
 
@@ -132,6 +132,12 @@ smaller than the bar's, so a smaller number often reads better there.
 
 Until you move one of the row's two sliders it **follows the bar's**, so one size for both stays
 one slider. **Match the other set to this bar** puts it back to following.
+
+One slot can have more than one of your effects running at once — Blue Betty's netch grants a
+22-second buff and does something of its own every 5 seconds — and the game answers with whichever
+has the longer left, so its own timer hands over to the short one near the end. This add-on counts
+the ability's own effect out instead: a much shorter effect is not allowed to take over one that
+is still running.
 
 The countdown is **the game's own number** — `GetActionSlotEffectTimeRemaining`, the same value
 the game's own action bar timers use, and it answers for the set you are not on as well. Nothing

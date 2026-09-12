@@ -1007,9 +1007,70 @@ function timers:HoldCount(slot, hotbar, count, remaining, icon)
 	return 0
 end
 
+-- ---------------------------------------------------------------------------------------
+-- Which effect a slot's countdown is for
+--
+-- One slot can have more than one effect of the player's own running at once, and the client
+-- answers with a single number. Blue Betty is the example that came back from a PS5: the netch
+-- grants its buff for 22 seconds and does something of its own every 5, and the countdown ran
+-- 22, 21, ... and then, a few seconds from the end, started again at 5. That is the client
+-- handing over to whichever effect has the longer left.
+--
+-- Read straight, that is what an add-on shows. What a player wants is the ability's own effect,
+-- counted to the end, so a reading whose duration is much shorter than the one already running
+-- is not taken while that one still has time on it. It is picked up the moment the longer one
+-- ends, so a genuinely short effect on its own is still shown.
+--
+-- Everything on the icon comes through here -- the countdown, the shade and how long the target
+-- count is held -- so the three cannot disagree.
+-- ---------------------------------------------------------------------------------------
+
+-- A reading is a different effect, not a re-cast, below this much of the running one's length.
+local SHORTER_EFFECT_RATIO = 0.75
+
+function timers:SlotTimer(slot, hotbar, now)
+	local rawRemaining = SlotNumber(GetActionSlotEffectTimeRemaining, slot, hotbar)
+	local rawDuration = SlotNumber(GetActionSlotEffectDuration, slot, hotbar)
+	local icon = IconKey(SlotString(GetSlotTexture, slot, hotbar))
+
+	self.timers = self.timers or {}
+	local slotKey = slot .. ":" .. tostring(hotbar)
+	local state = self.timers[slotKey]
+	if not state then
+		state = {}
+		self.timers[slotKey] = state
+	end
+
+	-- Another ability in the slot is another effect, whatever was running.
+	if state.icon ~= icon then
+		state.icon, state.endAt, state.duration = icon, nil, nil
+	end
+
+	local heldLeft = state.endAt and (state.endAt - now) or 0
+
+	-- The client saying nothing is running is taken at its word: an effect purged, or its target
+	-- dead, is over, and counting it on would be a lie the same size as the one this is here to
+	-- stop.
+	if rawRemaining < MINIMUM_SHOWN_MS then
+		state.endAt, state.duration = nil, nil
+		return 0, 0, rawRemaining
+	end
+
+	-- A shorter effect while the longer one is still going: keep counting the longer one.
+	if heldLeft >= MINIMUM_SHOWN_MS and state.duration and rawDuration > 0
+		and rawDuration < state.duration * SHORTER_EFFECT_RATIO and rawRemaining < heldLeft then
+		self.shorterIgnored = (self.shorterIgnored or 0) + 1
+		return heldLeft, state.duration, rawRemaining
+	end
+
+	state.endAt = now + rawRemaining
+	state.duration = rawDuration > 0 and rawDuration or rawRemaining
+	return rawRemaining, state.duration, rawRemaining
+end
+
 -- What to write on one slot: the time left, and how many targets are under it.
 function timers:SlotText(slot, hotbar, now)
-	local remaining = SlotNumber(GetActionSlotEffectTimeRemaining, slot, hotbar)
+	local remaining = self:SlotTimer(slot, hotbar, now)
 	local timerText = nil
 	if remaining >= MINIMUM_SHOWN_MS then
 		timerText = self:FormatTime(remaining)
@@ -1113,10 +1174,9 @@ function timers:Update()
 		end
 
 		if shadeEnabled then
+			local shadeRemaining, shadeDuration = self:SlotTimer(slot, activeHotbar, now)
 			self:UpdateShade(self:Shade(slot), slot, activeHotbar,
-				SlotString(GetSlotTexture, slot, activeHotbar),
-				SlotNumber(GetActionSlotEffectTimeRemaining, slot, activeHotbar),
-				SlotNumber(GetActionSlotEffectDuration, slot, activeHotbar))
+				SlotString(GetSlotTexture, slot, activeHotbar), shadeRemaining, shadeDuration)
 		elseif self.shades[slot] then
 			self:UpdateShade(self.shades[slot], slot, nil, nil, 0, 0)
 		end
@@ -1137,10 +1197,9 @@ function timers:Update()
 					SetText(entry.timer, showBackTimer and timerText or nil)
 					SetText(entry.count, showCount and countText or nil)
 					if entry.shade then
+						local backRemaining, backDuration = self:SlotTimer(slot, backHotbar, now)
 						self:UpdateShade({ control = entry.shade, state = entry.shadeState }, slot,
-							shadeEnabled and backHotbar or nil, icon,
-							SlotNumber(GetActionSlotEffectTimeRemaining, slot, backHotbar),
-							SlotNumber(GetActionSlotEffectDuration, slot, backHotbar))
+							shadeEnabled and backHotbar or nil, icon, backRemaining, backDuration)
 					end
 				end
 			end
@@ -1294,6 +1353,7 @@ function timers:PrintSlots()
 		Line("  weapon swap available=%s%s  -> other set row=%s", tostring(available),
 			why and (" (" .. why .. ")") or "", tostring(addon:BackBarEnabled()))
 	end
+	Line("  shorter effects not allowed to take over a running one: %d", self.shorterIgnored or 0)
 	Line("  effects: gains=%d fades=%d stale fades ignored=%d already-over on arrival=%d",
 		self.gains or 0, self.fades or 0, self.staleFades or 0, self.pastEffects or 0)
 	Line("  the game's countdown faded back %d time(s)", self.redims or 0)
@@ -1307,15 +1367,20 @@ function timers:PrintSlots()
 	for slot = FIRST_SLOT, LAST_SLOT do
 		local pair = self.labels[slot]
 		local name = SlotString(GetSlotName, slot, activeHotbar) or "-"
-		local remaining = SlotNumber(GetActionSlotEffectTimeRemaining, slot, activeHotbar)
+		local shown, duration, raw = self:SlotTimer(slot, activeHotbar, now)
+		local remaining = shown
 		local timerText, countText, count, matchedBy = self:SlotText(slot, activeHotbar, now)
+		if Round(raw) ~= Round(shown) then
+			Line("      the client says %dms (over %dms); counting the longer effect out instead",
+				Round(raw), Round(SlotNumber(GetActionSlotEffectDuration, slot, activeHotbar)))
+		end
 		Line("|cFF69B4  %d|r %s  left=%dms -> %s  targets=%d%s -> %s  label=%s h=%s", slot, name, Round(remaining),
 			tostring(timerText), count or 0, matchedBy and (" by " .. matchedBy) or "",
 			tostring(countText), pair and (pair.timer:IsHidden() and "hidden" or "shown") or "not built",
 			pair and tostring(pair.timer.pbsHeight) or "-")
 		if backHotbar then
 			local backName = SlotString(GetSlotName, slot, backHotbar) or "-"
-			local backRemaining = SlotNumber(GetActionSlotEffectTimeRemaining, slot, backHotbar)
+			local backRemaining = self:SlotTimer(slot, backHotbar, now)
 			local backTimer, backCount = self:SlotText(slot, backHotbar, now)
 			Line("      other set: %s  left=%dms -> %s  count=%s  row=%s", backName, Round(backRemaining),
 				tostring(backTimer), tostring(backCount),

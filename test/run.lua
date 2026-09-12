@@ -28,7 +28,7 @@ print("\n== 1. load ==")
 Fire(EVENT_ADD_ON_LOADED, "PBsConsoleHudCustomizer")
 local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 local health, magicka, stamina = addon.barByKey.health, addon.barByKey.magicka, addon.barByKey.stamina
-check("version read from manifest", addon.version, "1.6.2")
+check("version read from manifest", addon.version, "1.6.3")
 check("slash command registered", type(SLASH_COMMANDS["/pbhud"]), "function")
 check("short slash command registered", type(SLASH_COMMANDS["/pbhc"]), "function")
 check("HUD fragment callback registered", addon.hudRegistered, true)
@@ -946,6 +946,55 @@ check("a live count replaces it", count6:GetText(), "1")
 SetSlot(HOTBAR_CATEGORY_PRIMARY, 6, { name = "Something Else", icon = "other.dds", id = 161, remaining = 18000, duration = 20000 })
 RunUpdates()
 check("a different ability in the slot holds nothing", count6:IsHidden(), true)
+
+print("\n== 39. one slot, two effects: Blue Betty ==")
+-- From a PS5: the netch's countdown ran 22, 21, ... and then, a few seconds from the end,
+-- started again at 5. One slot can have more than one effect of the player's own running, and
+-- the client answers with whichever has the longer left -- so a few seconds from the end it
+-- hands over to the thing the netch does every 5 seconds.
+addon.timers.timers = {}
+addon.timers.shorterIgnored = 0
+addon.account.text.timerMode = "addon"
+local BETTY = { name = "Blue Betty", icon = "betty.dds", id = 170 }
+local function Betty(remaining, duration)
+	SetSlot(HOTBAR_CATEGORY_PRIMARY, 7, { name = BETTY.name, icon = BETTY.icon, id = BETTY.id,
+		remaining = remaining, duration = duration })
+end
+Betty(22000, 22000)
+FireHud(SCENE_FRAGMENT_SHOWN)
+RunUpdates()
+local bettyTimer = addon.timers.labels[7].timer
+check("the buff's own time is shown", bettyTimer:GetText(), "22")
+Betty(9000, 22000)
+RunUpdates()
+check("counting down", bettyTimer:GetText(), "9.0")
+-- The client hands over to the netch's own five-second effect.
+AdvanceFrame(1000)
+Betty(5000, 5000)
+RunUpdates()
+check("the shorter one does not take over", bettyTimer:GetText(), "8.0")
+check("and that is counted", addon.timers.shorterIgnored >= 1, true)
+-- It carries on counting the buff out, whatever the client reports in the meantime.
+AdvanceFrame(4000)
+Betty(4000, 5000)
+RunUpdates()
+check("still the buff's own time", bettyTimer:GetText(), "4.0")
+-- Re-casting the same ability is not a shorter effect: same length, and it starts again.
+AdvanceFrame(1000)
+Betty(22000, 22000)
+RunUpdates()
+check("a re-cast is taken", bettyTimer:GetText(), "22")
+-- When it really is over, it is over.
+Betty(0, 0)
+RunUpdates()
+check("and the end is the end", bettyTimer:IsHidden(), true)
+-- A short effect on its own, with nothing longer running, is shown as it is.
+AdvanceFrame(1000)
+Betty(5000, 5000)
+RunUpdates()
+check("a short effect on its own is shown", bettyTimer:GetText(), "5.0")
+Betty(0, 0)
+RunUpdates()
 
 print("")
 if failures == 0 then
