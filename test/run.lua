@@ -28,7 +28,7 @@ print("\n== 1. load ==")
 Fire(EVENT_ADD_ON_LOADED, "PBsConsoleHudCustomizer")
 local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 local health, magicka, stamina = addon.barByKey.health, addon.barByKey.magicka, addon.barByKey.stamina
-check("version read from manifest", addon.version, "1.6.3")
+check("version read from manifest", addon.version, "1.7.0")
 check("slash command registered", type(SLASH_COMMANDS["/pbhud"]), "function")
 check("short slash command registered", type(SLASH_COMMANDS["/pbhc"]), "function")
 check("HUD fragment callback registered", addon.hudRegistered, true)
@@ -995,6 +995,78 @@ RunUpdates()
 check("a short effect on its own is shown", bettyTimer:GetText(), "5.0")
 Betty(0, 0)
 RunUpdates()
+
+print("\n== 40. the effect a slot's cast produced ==")
+-- Blue Betty again, and this time the way the add-ons that get it right do it: the client's
+-- per-slot reading is not asked at all while the cast's own effect is running. It is the
+-- reading that hands over -- 22 seconds of buff giving way to the five-second thing the netch
+-- does -- and no guard on top of it can tell which one the player means.
+addon.timers:Forget_All()
+addon.timers.timers = {}
+addon.account.text.timerMode = "addon"
+addon.account.text.countFromOne = true
+SetSlot(HOTBAR_CATEGORY_PRIMARY, 7, { name = "Blue Betty", icon = "betty.dds", id = 170, remaining = 22000, duration = 22000 })
+FireHud(SCENE_FRAGMENT_SHOWN)
+
+local now5 = GetGameTimeMilliseconds()
+FireCast(7)
+-- What the netch actually puts on the player is called something else entirely, and the game
+-- sends the short one first.
+FireEffect(EFFECT_RESULT_GAINED, "Netch Swipe", "player", (now5 + 5000) / 1000, 1, 900)
+FireEffect(EFFECT_RESULT_GAINED, "Major Sorcery", "player", (now5 + 22000) / 1000, 1, 901)
+RunUpdates()
+local timer7 = addon.timers.labels[7].timer
+check("the longest effect of that cast is the one counted", timer7:GetText(), "22")
+
+-- The client hands over to the short one. It is not even asked.
+AdvanceFrame(18000)
+SetSlot(HOTBAR_CATEGORY_PRIMARY, 7, { name = "Blue Betty", icon = "betty.dds", id = 170, remaining = 5000, duration = 5000 })
+RunUpdates()
+check("and the client's hand-over is not followed", timer7:GetText(), "4.0")
+
+-- The buff ends when it ends.
+AdvanceFrame(4000)
+RunUpdates()
+check("it ends with the effect", timer7:IsHidden(), true)
+
+-- And once the cast's effect is over, the little one the same ability keeps up alongside it does
+-- not step in: the icon goes quiet until the ability is cast again.
+SetSlot(HOTBAR_CATEGORY_PRIMARY, 7, { name = "Blue Betty", icon = "betty.dds", id = 170, remaining = 5000, duration = 5000 })
+RunUpdates()
+check("the netch's own five seconds do not take over at the end", timer7:IsHidden(), true)
+local now8 = GetGameTimeMilliseconds()
+FireCast(7)
+FireEffect(EFFECT_RESULT_GAINED, "Major Sorcery", "player", (now8 + 22000) / 1000, 1, 901)
+RunUpdates()
+check("casting it again starts it again", timer7:GetText(), "22")
+
+-- A cast whose effect lands on several targets: the count comes from that same effect, so it
+-- cannot be looking at one thing while the countdown looks at another.
+addon.timers:Forget_All()
+local now6 = GetGameTimeMilliseconds()
+SetSlot(HOTBAR_CATEGORY_PRIMARY, 4, { name = "Barbed Trap", icon = "trap.dds", id = 140, remaining = 0, duration = 0 })
+FireCast(4)
+FireEffect(EFFECT_RESULT_GAINED, "Trap Beast", "", (now6 + 20000) / 1000, 81, 141)
+FireEffect(EFFECT_RESULT_GAINED, "Trap Beast", "", (now6 + 20000) / 1000, 82, 141)
+RunUpdates()
+local count4 = addon.timers.labels[4].count
+check("the count is of the cast's own effect", count4:GetText(), "2")
+check("even though the client times nothing on that slot", timer7 ~= nil and addon.timers.labels[4].timer:GetText(), "20")
+-- ... and it stays for the whole of it.
+AdvanceFrame(10000)
+RunUpdates()
+check("still there half way through", count4:GetText(), "2")
+AdvanceFrame(11000)
+RunUpdates()
+check("and gone at the end", count4:IsHidden(), true)
+
+-- A cast of another slot does not steal it.
+local now7 = GetGameTimeMilliseconds()
+FireCast(6)
+FireEffect(EFFECT_RESULT_GAINED, "Something Else", "player", (now7 + 9000) / 1000, 1, 902)
+RunUpdates()
+check("the other slot got its own", addon.timers.labels[6].timer:GetText(), "9.0")
+check("and this one is untouched", addon.timers.labels[4].timer:IsHidden(), true)
 
 print("")
 if failures == 0 then

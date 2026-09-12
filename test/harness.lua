@@ -39,7 +39,7 @@ function AdvanceFrame(ms) frameTime = frameTime + (ms or 1000) end
 function GetAddOnManager()
 	return {
 		GetNumAddOns = function() return 1 end,
-		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ConsoleHudCustomizer|r 1.6.3" end,
+		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ConsoleHudCustomizer|r 1.7.0" end,
 	}
 end
 
@@ -465,6 +465,7 @@ end
 
 -- EVENT_EFFECT_CHANGED, and the update loop.
 EVENT_EFFECT_CHANGED = "EVENT_EFFECT_CHANGED"
+EVENT_ACTION_SLOT_ABILITY_USED = "EVENT_ACTION_SLOT_ABILITY_USED"
 EFFECT_RESULT_GAINED, EFFECT_RESULT_FADED, EFFECT_RESULT_UPDATED = 1, 2, 3
 REGISTER_FILTER_SOURCE_COMBAT_UNIT_TYPE, COMBAT_UNIT_TYPE_PLAYER = "source", 1
 function GetGameTimeMilliseconds() return GetFrameTimeMilliseconds() end
@@ -475,6 +476,11 @@ EVENT_MANAGER.UnregisterForUpdate = function(_, name) updates[name] = nil end
 EVENT_MANAGER.AddFilterForEvent = function() end
 function RunUpdates() for _, fn in pairs(updates) do fn() end end
 function UpdateRegistered(name) return updates[name] ~= nil end
+
+-- The slot the player pressed.
+function FireCast(slotNum)
+	Fire(EVENT_ACTION_SLOT_ABILITY_USED, slotNum)
+end
 
 -- The effect event, in the client's argument order.
 function FireEffect(changeType, effectName, unitTag, endTimeSec, unitId, abilityId)

@@ -67,6 +67,21 @@ local COUNT_COLOUR = { 1, 1, 1 }
 
 local Round = addon.Round
 
+-- The clock every effect time is measured against. The client's own code compares an effect's
+-- end time to this one ("local timeLeft = (endTime * 1000.0) - GetFrameTimeMilliseconds()",
+-- zo_stats_gamepad.lua), so this add-on does too rather than assuming the two are the same.
+local function Now()
+	if type(GetFrameTimeMilliseconds) == "function" then
+		local ok, value = pcall(GetFrameTimeMilliseconds)
+		if ok and type(value) == "number" then
+			return value
+		end
+	end
+	return GetGameTimeMilliseconds and GetGameTimeMilliseconds() or 0
+end
+
+
+
 -- ---------------------------------------------------------------------------------------
 -- Settings
 -- ---------------------------------------------------------------------------------------
@@ -295,6 +310,102 @@ end
 
 timers.IconKey = IconKey
 
+-- ---------------------------------------------------------------------------------------
+-- Which effect a slot's own is
+--
+-- The client's per-slot timer (GetActionSlotEffectTimeRemaining) answers with one number for a
+-- slot that can have several of the player's effects running, and hands over between them: Blue
+-- Betty's 22-second buff gives way to the five-second thing the netch does, a few seconds from
+-- the end. No guard on top of that reading fixed it, because the reading itself is not the
+-- ability's effect.
+--
+-- What the add-ons that get this right do instead -- Action Duration Reminder among them, which
+-- does not call that API at all -- is watch for the cast: EVENT_ACTION_SLOT_ABILITY_USED says
+-- which slot was pressed, and the effects that appear in the moment after it are that slot's.
+-- The longest of them is the one the player means by "how long is left".
+--
+-- The association lives until the next cast of that slot, or until the effect it names ends, so
+-- it survives a weapon swap: it is kept per slot *and* hotbar, and a cast records the hotbar it
+-- was made on.
+-- ---------------------------------------------------------------------------------------
+
+local CAST_WINDOW_MS = 1500
+
+-- Shorter than this is a cast time or a flash, not something to count down.
+local CAST_EFFECT_MINIMUM_MS = 900
+
+local slotEffects = {}
+local lastUse = { slot = nil, hotbar = nil, at = -CAST_WINDOW_MS * 10 }
+
+local function SlotKey(slot, hotbar)
+	return slot .. ":" .. tostring(hotbar)
+end
+
+timers.SlotKey = SlotKey
+
+function timers:OnAbilityUsed(_, slotNum)
+	if type(slotNum) ~= "number" or slotNum < FIRST_SLOT or slotNum > LAST_SLOT then
+		return
+	end
+	local _, hotbar = self:BackHotbar()
+	lastUse.slot = slotNum
+	lastUse.hotbar = hotbar
+	lastUse.at = Now()
+	self.casts = (self.casts or 0) + 1
+end
+
+-- Called for every effect that arrives. One that turns up inside the window after a cast is
+-- taken for that slot's, and the longest one of that cast wins.
+function timers:LinkToCast(key, icon, beginMs, endMs, now)
+	if not lastUse.slot or endMs == 0 or endMs - now < CAST_EFFECT_MINIMUM_MS then
+		return
+	end
+	if now - lastUse.at > CAST_WINDOW_MS then
+		return
+	end
+	local slotKey = SlotKey(lastUse.slot, lastUse.hotbar)
+	local current = slotEffects[slotKey]
+	-- Read here rather than through the slot readers further down the file: those are defined
+	-- after this, and an effect can arrive before anything else has run.
+	local slotIcon = nil
+	if type(GetSlotTexture) == "function" then
+		local ok, texture = pcall(GetSlotTexture, lastUse.slot, lastUse.hotbar)
+		if ok then
+			slotIcon = IconKey(texture)
+		end
+	end
+	if current and current.castAt == lastUse.at and current.endMs >= endMs then
+		return
+	end
+	slotEffects[slotKey] = {
+		key = key,
+		-- The icon of the *slot* as it was when the cast happened, not the effect's: what this
+		-- is for is noticing that the slot now holds another ability, and an effect's own art is
+		-- often not the ability's.
+		slotIcon = slotIcon,
+		beginMs = beginMs,
+		endMs = endMs,
+		castAt = lastUse.at,
+	}
+	self.linked = (self.linked or 0) + 1
+end
+
+-- What the last cast of this slot produced, while it is still running.
+function timers:LinkedEffect(slot, hotbar, now)
+	local linked = slotEffects[SlotKey(slot, hotbar)]
+	if not linked then
+		return nil
+	end
+	if linked.endMs <= now then
+		return nil
+	end
+	return linked
+end
+
+function timers:ForgetLinks()
+	slotEffects = {}
+end
+
 local function DropOldest()
 	local oldestKey, oldestTime = nil, nil
 	for key, entry in pairs(effects) do
@@ -389,7 +500,7 @@ function timers:OnEffectChanged(_, changeType, _, effectName, unitTag, beginTime
 	if not key then
 		return
 	end
-	local now = GetGameTimeMilliseconds and GetGameTimeMilliseconds() or 0
+	local now = Now()
 	local unitKey = (type(unitId) == "number" and unitId ~= 0) and unitId or (unitTag ~= "" and unitTag or "?")
 
 	-- endTime is in seconds on the game clock, and 0 for something that does not expire.
@@ -411,7 +522,10 @@ function timers:OnEffectChanged(_, changeType, _, effectName, unitTag, beginTime
 		self.pastEffects = (self.pastEffects or 0) + 1
 		endMs = 0
 	end
-	self:Track(key, abilityId, IconKey(iconName), unitKey, endMs, now)
+	local icon = IconKey(iconName)
+	local beginMs = (type(beginTime) == "number" and beginTime > 0) and math.floor(beginTime * 1000) or now
+	self:Track(key, abilityId, icon, unitKey, endMs, now)
+	self:LinkToCast(key, icon, beginMs, endMs, now)
 	self:Log("gain", changeType, key, unitKey, endMs, now)
 end
 
@@ -468,6 +582,7 @@ function timers:Forget_All()
 	idKeys = {}
 	iconKeys = {}
 	effectCount = 0
+	slotEffects = {}
 end
 
 -- ---------------------------------------------------------------------------------------
@@ -1033,8 +1148,30 @@ function timers:SlotTimer(slot, hotbar, now)
 	local rawDuration = SlotNumber(GetActionSlotEffectDuration, slot, hotbar)
 	local icon = IconKey(SlotString(GetSlotTexture, slot, hotbar))
 
+	-- 1. What this slot's last cast put on the world. While that is running the client's own
+	-- reading is not asked at all: it is the reading that hands over to another effect.
+	local linked = slotEffects[SlotKey(slot, hotbar)]
+	if linked and linked.slotIcon and icon and linked.slotIcon ~= icon then
+		-- The slot holds another ability now.
+		linked = nil
+	end
+	if linked then
+		local linkedDuration = math.max(1, linked.endMs - linked.beginMs)
+		if linked.endMs > now then
+			return linked.endMs - now, linkedDuration, rawRemaining, "cast"
+		end
+		-- It has run out. The little effect the same ability keeps up alongside it -- the netch
+		-- doing its own thing every five seconds -- must not step in now either: a reading much
+		-- shorter than what was cast is not this slot starting again.
+		if rawRemaining >= MINIMUM_SHOWN_MS and rawDuration > 0
+			and rawDuration < linkedDuration * SHORTER_EFFECT_RATIO then
+			self.shorterIgnored = (self.shorterIgnored or 0) + 1
+			return 0, 0, rawRemaining, "over"
+		end
+	end
+
 	self.timers = self.timers or {}
-	local slotKey = slot .. ":" .. tostring(hotbar)
+	local slotKey = SlotKey(slot, hotbar)
 	local state = self.timers[slotKey]
 	if not state then
 		state = {}
@@ -1053,19 +1190,21 @@ function timers:SlotTimer(slot, hotbar, now)
 	-- stop.
 	if rawRemaining < MINIMUM_SHOWN_MS then
 		state.endAt, state.duration = nil, nil
-		return 0, 0, rawRemaining
+		return 0, 0, rawRemaining, "none"
 	end
 
-	-- A shorter effect while the longer one is still going: keep counting the longer one.
+	-- 2. A shorter effect while the longer one is still going: keep counting the longer one.
+	-- The same problem as the cast link solves, met from the other side, and it still earns its
+	-- place for an effect that arrived without a cast of this slot behind it.
 	if heldLeft >= MINIMUM_SHOWN_MS and state.duration and rawDuration > 0
 		and rawDuration < state.duration * SHORTER_EFFECT_RATIO and rawRemaining < heldLeft then
 		self.shorterIgnored = (self.shorterIgnored or 0) + 1
-		return heldLeft, state.duration, rawRemaining
+		return heldLeft, state.duration, rawRemaining, "longer"
 	end
 
 	state.endAt = now + rawRemaining
 	state.duration = rawDuration > 0 and rawDuration or rawRemaining
-	return rawRemaining, state.duration, rawRemaining
+	return rawRemaining, state.duration, rawRemaining, "client"
 end
 
 -- What to write on one slot: the time left, and how many targets are under it.
@@ -1077,10 +1216,16 @@ function timers:SlotText(slot, hotbar, now)
 	end
 
 	local countText = nil
-	local key = Normalize(SlotString(GetSlotName, slot, hotbar))
+	-- The effect this slot's cast produced is the one to count, when there is one: it is the
+	-- ability's own effect whatever the client happens to call it.
+	local linked = self:LinkedEffect(slot, hotbar, now)
+	local key = linked and linked.key or Normalize(SlotString(GetSlotName, slot, hotbar))
 	local abilityId = SlotNumber(GetSlotBoundId, slot, hotbar)
 	local icon = IconKey(SlotString(GetSlotTexture, slot, hotbar))
 	local count, matchedBy = self:CountFor(key, abilityId, icon, now)
+	if linked and matchedBy == "name" then
+		matchedBy = "cast"
+	end
 	count = self:HoldCount(slot, hotbar, count, remaining, icon)
 	local minimum = addon:Text().countFromOne and 1 or 2
 	if count >= minimum then
@@ -1138,7 +1283,7 @@ local function SetText(label, text)
 end
 
 function timers:Update()
-	local now = GetGameTimeMilliseconds and GetGameTimeMilliseconds() or 0
+	local now = Now()
 	if now - (self.lastPrune or 0) > PRUNE_INTERVAL_MS then
 		self.lastPrune = now
 		self:Prune(now)
@@ -1303,7 +1448,7 @@ end
 
 function timers:PrintLog()
 	local Line = addon.Line
-	local now = GetGameTimeMilliseconds and GetGameTimeMilliseconds() or 0
+	local now = Now()
 	Line("|cFF69B4%s|r -- the last effect events, oldest first", addon.title)
 	Line("  gains=%d fades=%d stale fades ignored=%d already-over=%d counts held=%d",
 		self.gains or 0, self.fades or 0, self.staleFades or 0, self.pastEffects or 0, self.held or 0)
@@ -1341,7 +1486,7 @@ end
 
 function timers:PrintSlots()
 	local Line = addon.Line
-	local now = GetGameTimeMilliseconds and GetGameTimeMilliseconds() or 0
+	local now = Now()
 	local backHotbar, activeHotbar = self:BackHotbar()
 
 	Line("|cFF69B4%s|r -- the skill bar, slot by slot", addon.title)
@@ -1353,7 +1498,10 @@ function timers:PrintSlots()
 		Line("  weapon swap available=%s%s  -> other set row=%s", tostring(available),
 			why and (" (" .. why .. ")") or "", tostring(addon:BackBarEnabled()))
 	end
-	Line("  shorter effects not allowed to take over a running one: %d", self.shorterIgnored or 0)
+	Line("  casts seen=%d  effects tied to a cast=%d  shorter readings refused=%d",
+		self.casts or 0, self.linked or 0, self.shorterIgnored or 0)
+	Line("  clocks: frame=%d game=%d (they must agree for an effect's end time to mean anything)",
+		Round(Now()), Round(GetGameTimeMilliseconds and GetGameTimeMilliseconds() or 0))
 	Line("  effects: gains=%d fades=%d stale fades ignored=%d already-over on arrival=%d",
 		self.gains or 0, self.fades or 0, self.staleFades or 0, self.pastEffects or 0)
 	Line("  the game's countdown faded back %d time(s)", self.redims or 0)
@@ -1367,12 +1515,13 @@ function timers:PrintSlots()
 	for slot = FIRST_SLOT, LAST_SLOT do
 		local pair = self.labels[slot]
 		local name = SlotString(GetSlotName, slot, activeHotbar) or "-"
-		local shown, duration, raw = self:SlotTimer(slot, activeHotbar, now)
+		local shown, duration, raw, source = self:SlotTimer(slot, activeHotbar, now)
 		local remaining = shown
 		local timerText, countText, count, matchedBy = self:SlotText(slot, activeHotbar, now)
-		if Round(raw) ~= Round(shown) then
-			Line("      the client says %dms (over %dms); counting the longer effect out instead",
-				Round(raw), Round(SlotNumber(GetActionSlotEffectDuration, slot, activeHotbar)))
+		if source ~= "client" then
+			Line("      from %s; the client's own reading is %dms over %dms", source,
+				Round(raw or SlotNumber(GetActionSlotEffectTimeRemaining, slot, activeHotbar)),
+				Round(SlotNumber(GetActionSlotEffectDuration, slot, activeHotbar)))
 		end
 		Line("|cFF69B4  %d|r %s  left=%dms -> %s  targets=%d%s -> %s  label=%s h=%s", slot, name, Round(remaining),
 			tostring(timerText), count or 0, matchedBy and (" by " .. matchedBy) or "",
@@ -1402,6 +1551,12 @@ function timers:Register()
 	EVENT_MANAGER:RegisterForEvent(addon.name .. "Effects", EVENT_EFFECT_CHANGED, function(...)
 		timers:OnEffectChanged(...)
 	end)
+	-- Which slot was pressed. The effects that follow within a moment are that slot's.
+	if EVENT_ACTION_SLOT_ABILITY_USED then
+		EVENT_MANAGER:RegisterForEvent(addon.name .. "Used", EVENT_ACTION_SLOT_ABILITY_USED, function(...)
+			timers:OnAbilityUsed(...)
+		end)
+	end
 	if type(EVENT_MANAGER.AddFilterForEvent) == "function" and REGISTER_FILTER_SOURCE_COMBAT_UNIT_TYPE then
 		pcall(EVENT_MANAGER.AddFilterForEvent, EVENT_MANAGER, addon.name .. "Effects", EVENT_EFFECT_CHANGED,
 			REGISTER_FILTER_SOURCE_COMBAT_UNIT_TYPE, COMBAT_UNIT_TYPE_PLAYER)

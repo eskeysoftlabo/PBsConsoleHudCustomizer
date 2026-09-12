@@ -614,6 +614,40 @@ The countdown, the shade and the target count's hold all read through the same c
 cannot disagree about which effect a slot is showing. `/pbhud slots` prints the client's raw
 number next to the one on the icon whenever they differ, and counts the readings it did not take.
 
+## 34. The per-slot timer is the wrong source, and always was
+
+Blue Betty came back a second time, with the sentence that settles it: **other add-ons show it
+correctly**. So the information is there and reliable, and the source being used was not.
+
+`GetActionSlotEffectTimeRemaining` answers with one number for a slot that can have several of
+the player's effects running, and hands over between them -- the netch's 22-second buff giving way
+to the five-second thing it does. Guards on top of that reading (1.6.3) could not tell which of
+the two the player meant, because the reading does not say.
+
+Action Duration Reminder, which gets this right, **does not call that API at all**. It watches for
+the cast: `EVENT_ACTION_SLOT_ABILITY_USED` says which slot was pressed, and the effects that
+arrive in the moment after it belong to it. From 1.7.0 this add-on does the same:
+
+- a cast records the slot, the hotbar it was on, and the time;
+- an effect arriving within 1.5 s of a cast, lasting at least 0.9 s, is that slot's; the longest
+  of one cast's effects wins, which for Blue Betty is the 22-second buff and not the netch's five
+  seconds;
+- while that effect runs, the client's reading is not asked at all;
+- when it ends, a client reading whose duration is under three quarters of it is refused too, so
+  the little effect the same ability keeps up alongside cannot step in at the end;
+- the slot's own icon, remembered at cast time, says when the slot holds another ability and the
+  association is dropped.
+
+The target count now counts the units under **that same effect**, so the number and the countdown
+cannot be looking at different things -- and it is why the count kept vanishing: it was matched by
+the ability's name, which is not what the effect is called.
+
+The clock the add-on compares effect times against is the client's own as well:
+`GetFrameTimeMilliseconds`, which is what the client uses (`zo_stats_gamepad.lua`:
+`local timeLeft = (endTime * 1000.0) - GetFrameTimeMilliseconds()`). `/pbhud effects` prints both
+clocks, and `/pbhud slots` says for each slot whether the countdown came from the cast, from the
+client, or from a reading that was refused.
+
 ---
 
 ## Still to measure on a PS5

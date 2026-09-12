@@ -6,7 +6,7 @@ as a shade that clears down the icon, a countdown, and a target count -- in The 
 Online on console.
 
 - **Author:** PinkBanther
-- **Version:** 1.6.3
+- **Version:** 1.7.0
 - **Optional:** `LibHarvensAddonSettings` >= 20106 (for the settings panel; the chat commands work
   without it)
 
@@ -133,18 +133,15 @@ smaller than the bar's, so a smaller number often reads better there.
 Until you move one of the row's two sliders it **follows the bar's**, so one size for both stays
 one slider. **Match the other set to this bar** puts it back to following.
 
-One slot can have more than one of your effects running at once — Blue Betty's netch grants a
-22-second buff and does something of its own every 5 seconds — and the game answers with whichever
-has the longer left, so its own timer hands over to the short one near the end. This add-on counts
-the ability's own effect out instead: a much shorter effect is not allowed to take over one that
-is still running.
+The countdown is **the effect your cast produced**. When you press a slot, the effects that appear
+in the moment after it are that slot's, and the longest of them is what is counted down — so Blue
+Betty shows its 22-second buff all the way out, rather than handing over to the five-second thing
+the netch does, which is what the game's own per-slot timer does near the end. For a slot whose
+effect this add-on has not seen cast, the game's own number is used instead.
 
-The countdown is **the game's own number** — `GetActionSlotEffectTimeRemaining`, the same value
-the game's own action bar timers use, and it answers for the set you are not on as well. Nothing
-is guessed at.
-
-The target count has no API behind it: it is counted from the effects you apply, and matched to
-the slot by the ability's **name**, then its **id**, then its **icon**. The icon is what catches a
+The target count has no API behind it: it is counted from the effects you apply — the same effect
+the countdown is for, when the cast was seen, and otherwise matched to the slot by the ability's
+**name**, then its **id**, then its **icon**. The icon is what catches a
 morph whose effect is called something else, which is most of them. `/pbhud slots` says which of
 the three matched, or that nothing did. The countdown is unaffected either way, because that comes
 from the client.
