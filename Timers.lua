@@ -335,6 +335,12 @@ local CAST_WINDOW_MS = 1500
 local CAST_EFFECT_MINIMUM_MS = 900
 
 local slotEffects = {}
+
+-- The same ability is often in a slot on both weapon sets, and it is one effect however many
+-- slots it is in: a cast from either has to answer for both, or the two rows show the same skill
+-- counting down to different numbers. Kept by the slot's own art, which is the ability's.
+local linksByIcon = {}
+
 local lastUse = { slot = nil, hotbar = nil, at = -CAST_WINDOW_MS * 10 }
 
 local function SlotKey(slot, hotbar)
@@ -377,7 +383,7 @@ function timers:LinkToCast(key, icon, beginMs, endMs, now)
 	if current and current.castAt == lastUse.at and current.endMs >= endMs then
 		return
 	end
-	slotEffects[slotKey] = {
+	local entry = {
 		key = key,
 		-- The icon of the *slot* as it was when the cast happened, not the effect's: what this
 		-- is for is noticing that the slot now holds another ability, and an effect's own art is
@@ -387,16 +393,41 @@ function timers:LinkToCast(key, icon, beginMs, endMs, now)
 		endMs = endMs,
 		castAt = lastUse.at,
 	}
+	slotEffects[slotKey] = entry
+	if slotIcon then
+		linksByIcon[slotIcon] = entry
+	end
 	self.linked = (self.linked or 0) + 1
 end
 
 -- What the last cast of this slot produced, while it is still running.
-function timers:LinkedEffect(slot, hotbar, now)
-	local linked = slotEffects[SlotKey(slot, hotbar)]
-	if not linked then
-		return nil
+-- What is on record for this slot, running or not: the cast made from it, or -- for the same
+-- ability sitting in another slot or on the other weapon set -- the cast made from there.
+function timers:LinkFor(slot, hotbar, icon)
+	local entry = slotEffects[SlotKey(slot, hotbar)]
+	if entry and (entry.slotIcon == nil or icon == nil or entry.slotIcon == icon) then
+		return entry
 	end
-	if linked.endMs <= now then
+	if icon then
+		local byIcon = linksByIcon[icon]
+		if byIcon then
+			return byIcon
+		end
+	end
+	return nil
+end
+
+-- The same, but only while it is still running.
+function timers:LinkedEffect(slot, hotbar, now)
+	local icon = nil
+	if type(GetSlotTexture) == "function" then
+		local ok, texture = pcall(GetSlotTexture, slot, hotbar)
+		if ok then
+			icon = IconKey(texture)
+		end
+	end
+	local linked = self:LinkFor(slot, hotbar, icon)
+	if not linked or linked.endMs <= now then
 		return nil
 	end
 	return linked
@@ -404,6 +435,7 @@ end
 
 function timers:ForgetLinks()
 	slotEffects = {}
+	linksByIcon = {}
 end
 
 local function DropOldest()
@@ -583,6 +615,7 @@ function timers:Forget_All()
 	iconKeys = {}
 	effectCount = 0
 	slotEffects = {}
+	linksByIcon = {}
 end
 
 -- ---------------------------------------------------------------------------------------
@@ -1148,13 +1181,11 @@ function timers:SlotTimer(slot, hotbar, now)
 	local rawDuration = SlotNumber(GetActionSlotEffectDuration, slot, hotbar)
 	local icon = IconKey(SlotString(GetSlotTexture, slot, hotbar))
 
-	-- 1. What this slot's last cast put on the world. While that is running the client's own
-	-- reading is not asked at all: it is the reading that hands over to another effect.
-	local linked = slotEffects[SlotKey(slot, hotbar)]
-	if linked and linked.slotIcon and icon and linked.slotIcon ~= icon then
-		-- The slot holds another ability now.
-		linked = nil
-	end
+	-- 1. What this slot's last cast put on the world -- or the same ability's, cast from the
+	-- other weapon set. While that is running the client's own reading is not asked at all: it
+	-- is the reading that hands over to another effect, and it answers differently for the two
+	-- bars, which is how one skill ends up counting down to two different numbers.
+	local linked = self:LinkFor(slot, hotbar, icon)
 	if linked then
 		local linkedDuration = math.max(1, linked.endMs - linked.beginMs)
 		if linked.endMs > now then

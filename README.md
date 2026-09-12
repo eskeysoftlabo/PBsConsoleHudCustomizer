@@ -6,7 +6,7 @@ as a shade that clears down the icon, a countdown, and a target count -- in The 
 Online on console.
 
 - **Author:** PinkBanther
-- **Version:** 1.7.0
+- **Version:** 1.7.1
 - **Optional:** `LibHarvensAddonSettings` >= 20106 (for the settings panel; the chat commands work
   without it)
 
@@ -136,8 +136,9 @@ one slider. **Match the other set to this bar** puts it back to following.
 The countdown is **the effect your cast produced**. When you press a slot, the effects that appear
 in the moment after it are that slot's, and the longest of them is what is counted down — so Blue
 Betty shows its 22-second buff all the way out, rather than handing over to the five-second thing
-the netch does, which is what the game's own per-slot timer does near the end. For a slot whose
-effect this add-on has not seen cast, the game's own number is used instead.
+the netch does, which is what the game's own per-slot timer does near the end. The same ability on both weapon sets shows the same number on both, because it is one effect: a
+cast is on record against the ability, not just the slot it was made from. For a slot whose effect
+this add-on has not seen cast at all, the game's own number is used instead.
 
 The target count has no API behind it: it is counted from the effects you apply — the same effect
 the countdown is for, when the cast was seen, and otherwise matched to the slot by the ability's

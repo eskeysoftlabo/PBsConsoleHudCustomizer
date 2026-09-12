@@ -648,6 +648,20 @@ The clock the add-on compares effect times against is the client's own as well:
 clocks, and `/pbhud slots` says for each slot whether the countdown came from the cast, from the
 client, or from a reading that was refused.
 
+## 35. One ability, two slots, one countdown
+
+The netch on both weapon sets counted down to two different numbers.
+
+A cast was on record against the slot **and the hotbar** it was made on, so only that bar had it;
+the other fell back to the client's per-slot reading, which is the reading that hands over to
+something else (§34). But it is one effect however many slots the ability sits in, so a cast is
+now also on record against the **slot's own art** -- the ability's icon -- and a slot with no cast
+of its own looks there before it falls back to the client.
+
+That is also what makes a weapon swap invisible to the countdown: the bar coming into hand finds
+the same record. A different ability in the slot has different art, so it is not given somebody
+else's time.
+
 ---
 
 ## Still to measure on a PS5

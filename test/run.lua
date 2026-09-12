@@ -28,7 +28,7 @@ print("\n== 1. load ==")
 Fire(EVENT_ADD_ON_LOADED, "PBsConsoleHudCustomizer")
 local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 local health, magicka, stamina = addon.barByKey.health, addon.barByKey.magicka, addon.barByKey.stamina
-check("version read from manifest", addon.version, "1.7.0")
+check("version read from manifest", addon.version, "1.7.1")
 check("slash command registered", type(SLASH_COMMANDS["/pbhud"]), "function")
 check("short slash command registered", type(SLASH_COMMANDS["/pbhc"]), "function")
 check("HUD fragment callback registered", addon.hudRegistered, true)
@@ -1067,6 +1067,44 @@ FireEffect(EFFECT_RESULT_GAINED, "Something Else", "player", (now7 + 9000) / 100
 RunUpdates()
 check("the other slot got its own", addon.timers.labels[6].timer:GetText(), "9.0")
 check("and this one is untouched", addon.timers.labels[4].timer:IsHidden(), true)
+
+print("\n== 41. the same ability on both weapon sets ==")
+-- From a PS5: the netch on both bars counted down to two different numbers. It is one effect,
+-- and only the bar it was cast from had it on record; the other fell back to the client's
+-- per-slot reading, which is the one that hands over to something else.
+addon.timers:Forget_All()
+addon.timers.timers = {}
+SetSlot(HOTBAR_CATEGORY_PRIMARY, 5, { name = "Blue Betty", icon = "betty.dds", id = 170, remaining = 22000, duration = 22000 })
+-- Slotted on the other set as well, in a different slot, as it usually is.
+SetSlot(HOTBAR_CATEGORY_BACKUP, 7, { name = "Blue Betty", icon = "betty.dds", id = 170, remaining = 5000, duration = 5000 })
+FireHud(SCENE_FRAGMENT_SHOWN)
+
+local now9 = GetGameTimeMilliseconds()
+FireCast(5)
+FireEffect(EFFECT_RESULT_GAINED, "Major Sorcery", "player", (now9 + 22000) / 1000, 1, 901)
+RunUpdates()
+local front5 = addon.timers.labels[5].timer
+local back7 = CreatedControls["PBsConsoleHudCustomizerBack7"].namedChildren.Timer
+check("the bar it was cast from counts the buff", front5:GetText(), "22")
+check("and the other set's row says the same", back7:GetText(), "22")
+
+AdvanceFrame(13000)
+RunUpdates()
+check("both count together", front5:GetText(), "9.0")
+check("whatever the client says about the other bar", back7:GetText(), "9.0")
+
+-- A weapon swap does not change the answer: the cast is on record by the ability, not the bar.
+ActiveHotbar = HOTBAR_CATEGORY_BACKUP
+RunUpdates()
+local swappedFront = addon.timers.labels[7].timer
+check("after swapping, the bar in hand still has it", swappedFront:GetText(), "9.0")
+ActiveHotbar = HOTBAR_CATEGORY_PRIMARY
+RunUpdates()
+
+-- A different ability keeps its own answer.
+SetSlot(HOTBAR_CATEGORY_BACKUP, 7, { name = "Something Else", icon = "other.dds", id = 180, remaining = 4000, duration = 4000 })
+RunUpdates()
+check("another ability is not given the netch's time", back7:GetText(), "4.0")
 
 print("")
 if failures == 0 then
