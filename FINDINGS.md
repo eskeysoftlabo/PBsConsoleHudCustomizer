@@ -1154,26 +1154,17 @@ filled) or "tube" (the glass and the drain; must stay inside the bar), and all m
 the band and clear of the points, at seven amounts and many moments. Moving the glass above the
 band, not cutting the currents to the fill, and turning the slosh off each fail the tests.
 
-## 54. A square tube, and see-through (1.26.0)
+## 54. See-through, and a square tube tried and put back (1.26.0 → 1.26.1)
 
-From the PS5: the game's frame comes to a point at each end, and a straight tube of liquid does
-not fit it; and the liquid wanted to be more see-through.
+**See-through (kept).** The game's fill is written at 62% of its gradient's alpha (92% in 1.25.0)
+and every effect over it at 80% of its 1.25.0 strength (`LIQUID_EFFECT_ALPHA`).
 
-**The frame.** Liquid now does what Square does with the game's dressing -- `FrameLeft`,
-`FrameCenter`, `FrameRight` and `BgContainer` are hidden, and put back when the style changes --
-and draws one square frame per bar in the 17-pixel band: a track at `DT_LOW` under the game's
-fill (which is drawn at its default tier) and a one-pixel outline at `DT_HIGH`, level 8, under the
-lifted resource numbers at 10. The frame is anchored to the left end of the first status bar and
-the right end of the last, so health's frame goes round both halves. The **Draw an outline** switch
-and **Outline colour** apply to it as they do to Square and MURA-HIGE.
-
-With no pointed ends, the half-band clearance at each outer end (§52) is gone, and a full bar also
-drops the two-pixel clearance of the leading edge: the liquid meets the end of the tube.
-
-**See-through.** The game's fill is written at 62% of its gradient's alpha (92% in 1.25.0), every
-effect over it at 80% of its 1.25.0 strength, and the track is 45% dark, so what is behind the HUD
-shows through the whole bar. The preview now draws over a striped stand-in scene so that is
-visible there too.
+**The square tube (withdrawn).** 1.26.0 hid the game's arrow-ended frame and background for
+Liquid and drew a square frame of its own, on a reading of "the triangular ends do not fit" as a
+request to replace them. It was not what was wanted: the game's own frame stays. 1.26.1 is
+1.25.0's Liquid -- the game's frame and background, the half-band clearance at the pointed outer
+ends (§52) -- with the see-through values above. The outline switch and colour are Square's and
+MURA-HIGE's again, not Liquid's.
 
 ---
 
@@ -1258,11 +1249,9 @@ visible there too.
     show above or below the coloured band or past the pointed ends. `/pbhud plain` must read
     `control 224x64` (or `111x64` for a health half); if it reads another height, the band is
     worked out from the container and should still be right, but that is the number to report.
-22. **Does Liquid's square frame sit on the bar?** The outline must be a plain rectangle round each
-    whole bar (health's round both halves), level with the coloured band, with no arrow points
-    left showing at the ends, and the scene must show faintly through the liquid.
-23. **Does Liquid read as liquid on the HUD?** In a fight: the surface at the end of each bar should
+22. **Does Liquid read as liquid on the HUD?** In a fight: the surface at the end of each bar should
     shimmer and visibly slosh when you take a hit or drink a potion, the trace of lost health should
-    drain away behind it, and the soft currents should be visible without being busy. If the masses
+    drain away behind it, the soft currents should be visible without being busy, and the liquid
+    should be see-through without looking washed out. If the masses
     look like flat blocks rather than soft glows, per-corner colours (`SetVertexColors`) are not doing
     what they do on PC, and that is the thing to report.

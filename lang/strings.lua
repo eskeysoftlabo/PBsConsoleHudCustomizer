@@ -16,7 +16,7 @@ local strings = {
 	-- ---- The look of the resource bars ---------------------------------------------------
 	SI_PBSCHC_SECTION_STYLE = "The look of the bars",
 	SI_PBSCHC_STYLE = "Bar style",
-	SI_PBSCHC_STYLE_TOOLTIP = "Standard is the game's own bars, untouched. Liquid turns the fill into a see-through liquid in a square glass tube, in place of the game's arrow-ended frame: soft currents drifting through it, a surface that sloshes when the amount changes, a trace of what was lost draining away, rising bubbles and a glint along the glass. Square draws each bar as a flat rectangle -- a dark track and a solid block of the power's own colour -- with the game's arrow-shaped frame and background put away, at the size the game draws it. MURA-HIGE Style is the same rectangle at a width and a height of your own, set below. MURA-HIGE NEO Style uses the same size settings, with health, magicka and stamina all filling from left to right. In these styles the bars themselves are left in place and still doing their work, so damage shields, armour changes and the low-health warning all still show on top.",
+	SI_PBSCHC_STYLE_TOOLTIP = "Standard is the game's own bars, untouched. Liquid keeps the game's own shape, frame and gloss and turns the fill into a see-through liquid in a glass tube: soft currents drifting through it, a surface that sloshes when the amount changes, a trace of what was lost draining away, rising bubbles and a glint along the glass. Square draws each bar as a flat rectangle -- a dark track and a solid block of the power's own colour -- with the game's arrow-shaped frame and background put away, at the size the game draws it. MURA-HIGE Style is the same rectangle at a width and a height of your own, set below. MURA-HIGE NEO Style uses the same size settings, with health, magicka and stamina all filling from left to right. In these styles the bars themselves are left in place and still doing their work, so damage shields, armour changes and the low-health warning all still show on top.",
 	SI_PBSCHC_STYLE_LIQUIDFLOW = "Liquid",
 	SI_PBSCHC_STYLE_STANDARD = "Standard",
 	SI_PBSCHC_STYLE_PLAIN = "Square",
@@ -25,7 +25,7 @@ local strings = {
 	SI_PBSCHC_PLAIN_OPACITY = "How solid",
 	SI_PBSCHC_PLAIN_OPACITY_TOOLTIP = "How solid the rectangles are. 100% hides the game's own fill completely; below that it shows through, which is one way to keep a little of the original look.",
 	SI_PBSCHC_BORDER_COLOUR = "Outline colour",
-	SI_PBSCHC_BORDER_COLOUR_TOOLTIP = "Outline colour shared by health, magicka and stamina in Square, MURA-HIGE Style, MURA-HIGE NEO Style and Liquid. Visible when Draw an outline is enabled.",
+	SI_PBSCHC_BORDER_COLOUR_TOOLTIP = "Outline colour shared by health, magicka and stamina in Square, MURA-HIGE Style and MURA-HIGE NEO Style. Visible when Draw an outline is enabled.",
 	SI_PBSCHC_BORDER_BLACK = "Black (default)",
 	SI_PBSCHC_BORDER_WHITE = "White",
 	SI_PBSCHC_BORDER_SILVER = "Silver",
@@ -39,7 +39,7 @@ local strings = {
 	SI_PBSCHC_RESOURCE_ALIGN_CENTER = "Center",
 
 	SI_PBSCHC_PLAIN_BORDER = "Draw an outline",
-	SI_PBSCHC_PLAIN_BORDER_TOOLTIP = "Draw a thin line in the selected colour round each bar (Square, both MURA-HIGE styles and Liquid). The game's own arrow-shaped frame is always put away while one of these styles is chosen -- a flat rectangle inside an arrow frame is neither one thing nor the other -- so this is the only frame on offer. Off, the bar is a block of colour with no line at all.",
+	SI_PBSCHC_PLAIN_BORDER_TOOLTIP = "Draw a thin line in the selected colour round each bar. The game's own arrow-shaped frame is always put away while one of these styles is chosen -- a flat rectangle inside an arrow frame is neither one thing nor the other -- so this is the only frame on offer. Off, the bar is a block of colour with no line at all.",
 
 	-- ---- The shade over a skill ----------------------------------------------------------
 	SI_PBSCHC_SECTION_SHADE = "Shade over a skill in use",
