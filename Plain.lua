@@ -670,52 +670,38 @@ function plain:UpdateOverlay(overlay, fraction)
 	fill:SetHidden(false)
 end
 
--- Liquid keeps the native status bars, fill textures, gloss, clipping and frames.
--- Animate their colours and inset highlights: the engine still owns the fill amount and
--- silhouette, including the reversed bars and the two native health halves.
--- Two travelling ribbons, sampled into small untextured strips. Their vertical
--- position moves independently of the colour pulse, so the fill has visible flow.
--- Parent to the attribute container (not StatusBar) for console visibility.
-local LIQUID_SAMPLES = 24
-local LIQUID_BUBBLES, BUBBLE_POINTS = 3, 12
-local LIQUID_BODY_ALPHA = 0.70
+-- ---------------------------------------------------------------------------------------
+-- Liquid
+--
+-- The native status bars keep their fill, gloss, frames and the amount they show; the engine
+-- still owns all of that, including the reversed bars and health's two halves. What is laid over
+-- them is meant to read as a liquid in a glass tube, the way Diablo's orbs do, out of nothing but
+-- untextured rectangles -- no art ships with this add-on:
+--
+--   depth     the lower part of the liquid sinks into shadow
+--   currents  soft light and dark masses drifting through it at different speeds. Each is four
+--             rectangles whose corners are coloured so the brightness falls away from the middle
+--             (SetVertexColors), which is what makes them soft rather than lines
+--   surface   the moving end of the fill is the liquid's surface: a bright wobbling edge with a
+--             glow behind it, which sloshes when the amount changes and settles again
+--   drain     what was just lost stays a moment as a pale trace, then drains away
+--   bubbles   small beads with a point of light, rising and popping at the top
+--   glass     a reflection along the top of the whole tube, and a glint that crosses it now and
+--             then
+--
+-- Parented to the attribute container (not the StatusBar) for console visibility.
+-- ---------------------------------------------------------------------------------------
+local LIQUID_BODY_ALPHA = 0.92
+local LIQUID_CURRENTS = 6
+local LIQUID_SURFACE_SEGMENTS = 5
+local LIQUID_BUBBLES = 4
+-- How quickly a slosh settles, and how much a change in the amount stirs it.
+local LIQUID_SLOSH_SETTLE_MS = 450
+local LIQUID_SLOSH_GAIN = 6
+-- The pale trace of what was lost: how long it waits, and how fast it drains (fraction per ms).
+local LIQUID_DRAIN_HOLD_MS = 150
+local LIQUID_DRAIN_RATE = 0.0009
 
--- Reusable hollow bubbles made from small untextured highlights. Each rises,
--- drifts sideways and fades as it reaches the surface; no image assets needed.
-local function UpdateBubbles(group, from, to, top, bottom, seconds, r, g, b)
-	local span, depth = to - from, bottom - top
-	local radiusMax = math.min(3, depth / 4, span / 8)
-	if radiusMax < 1 then
-		for _, bubble in ipairs(group.bubbles) do bubble.control:SetHidden(true) end
-		return
-	end
-	for i, bubble in ipairs(group.bubbles) do
-		local progress = (seconds / (2.1 + i * 0.45) + i * 0.29) % 1
-		local radius = radiusMax * (0.6 + 0.4 * progress)
-		local size = radius * 2
-		local x = from + span * i / (LIQUID_BUBBLES + 1) + math.sin(seconds * 1.7 + i) * 2
-		x = Clamp(x, from + radiusMax, to - radiusMax)
-		local y = bottom - radiusMax - (depth - radiusMax * 2) * progress
-		local alpha = math.sin(math.pi * progress) * 0.85
-		bubble.control:SetHidden(false)
-		bubble.control:ClearAnchors()
-		bubble.control:SetAnchor(TOPLEFT, group.control, TOPLEFT, x - radius, y - radius)
-		bubble.control:SetDimensions(size, size)
-		local dot = math.min(0.9, radius * 0.6)
-		for point, piece in ipairs(bubble.points) do
-			local angle = (point - 1) * math.pi * 2 / BUBBLE_POINTS
-			-- Center each dot on the ring, but keep its entire rectangle inside
-			-- the bubble box, which itself lies strictly inside the fill bounds.
-			local px = radius + math.cos(angle) * (radius - dot / 2) - dot / 2
-			local py = radius + math.sin(angle) * (radius - dot / 2) - dot / 2
-			piece:ClearAnchors()
-			piece:SetAnchor(TOPLEFT, bubble.control, TOPLEFT, px, py)
-			piece:SetDimensions(dot, dot)
-			local shine = math.sin(angle) < 0 and 1 or 0.6
-			piece:SetColor(r + (1-r)*0.9, g + (1-g)*0.9, b + (1-b)*0.9, alpha * shine)
-		end
-	end
-end
 -- Where the effect may draw, inside one native status bar.
 --
 -- The status bar a console draws is ZO_PlayerAttributeStatusBar_Gamepad_Template: 64 high
@@ -738,8 +724,6 @@ end
 local LIQUID_BAND_OF_CONTAINER = 17 / 23
 local LIQUID_BAND_MARGIN = 0.12
 local LIQUID_LEADING_EDGE = 2
--- How many strips at an open end fade in, so an end is soft rather than cut.
-local LIQUID_FADE_SAMPLES = 3
 
 function plain:LiquidBounds(bar, entry, native, fraction)
 	local width, height = native:GetDimensions()
@@ -752,9 +736,8 @@ function plain:LiquidBounds(bar, entry, native, fraction)
 		end
 	end
 	local band = math.min(height, containerHeight * LIQUID_BAND_OF_CONTAINER)
+	local bandTop = (height - band) / 2
 	local margin = math.max(1, band * LIQUID_BAND_MARGIN)
-	local top = (height - band) / 2 + margin
-	local bottom = top + band - margin * 2
 
 	-- Which ends of this control are the pointed outer ends of the bar.
 	local halves = #bar.controls > 1
@@ -762,6 +745,8 @@ function plain:LiquidBounds(bar, entry, native, fraction)
 	local pointedLeft = not halves or not isRightHalf
 	local pointedRight = not halves or isRightHalf
 	local taper = band / 2
+	local barFrom = pointedLeft and taper or 0
+	local barTo = pointedRight and width - taper or width
 
 	local filled = width * Clamp(fraction or 0, 0, 1)
 	local from, to
@@ -770,98 +755,318 @@ function plain:LiquidBounds(bar, entry, native, fraction)
 	else
 		from, to = 0, filled - LIQUID_LEADING_EDGE
 	end
-	if pointedLeft then
-		from = math.max(from, taper)
+	-- The surface is only drawn where the leading edge is really inside the tube, not pressed
+	-- into a pointed end.
+	local edgeOpen
+	if entry.reverse then
+		edgeOpen = from > barFrom
+	else
+		edgeOpen = to < barTo
 	end
-	if pointedRight then
-		to = math.min(to, width - taper)
-	end
+	from = math.max(from, barFrom)
+	to = math.min(to, barTo)
 
 	return {
+		width = width,
 		from = from,
 		to = to,
-		top = top,
-		bottom = bottom,
-		-- Health's right half carries on the wave where the left half stops.
+		top = bandTop + margin,
+		bottom = bandTop + band - margin,
+		bandTop = bandTop,
+		bandBottom = bandTop + band,
+		barFrom = barFrom,
+		barTo = barTo,
+		edgeOpen = edgeOpen and filled > 0,
+		reverse = entry.reverse and true or false,
+		filled = filled,
+		-- Health's right half carries on where the left half stops, so what moves along the bar
+		-- is placed in one coordinate that runs the whole length of it.
 		offset = isRightHalf and width or 0,
-		-- An end fades unless it is where health's two halves meet.
-		fadeLeft = not isRightHalf,
-		fadeRight = not (halves and not isRightHalf),
+		length = halves and width * 2 or width,
 	}
 end
 
-function plain:LiquidRibbons(bar, entry, native, fraction, now)
+local VERTEX_TL, VERTEX_TR = VERTEX_POINTS_TOPLEFT, VERTEX_POINTS_TOPRIGHT
+local VERTEX_BL, VERTEX_BR = VERTEX_POINTS_BOTTOMLEFT, VERTEX_POINTS_BOTTOMRIGHT
+
+local function Lighten(r, g, b, k)
+	return r + (1 - r) * k, g + (1 - g) * k, b + (1 - b) * k
+end
+
+local function Place(texture, parent, x, y, w, h)
+	texture:ClearAnchors()
+	texture:SetAnchor(TOPLEFT, parent, TOPLEFT, x, y)
+	texture:SetDimensions(w, h)
+	texture:SetHidden(false)
+end
+
+-- One colour, a different alpha at each corner. Without per-corner colours the texture takes
+-- the average, which is dimmer but still in the right place.
+local function Corners(texture, r, g, b, topLeft, topRight, bottomLeft, bottomRight)
+	if VERTEX_TL and type(texture.SetVertexColors) == "function" then
+		texture:SetColor(r, g, b, math.max(topLeft, topRight, bottomLeft, bottomRight))
+		texture:SetVertexColors(VERTEX_TL, r, g, b, topLeft)
+		texture:SetVertexColors(VERTEX_TR, r, g, b, topRight)
+		texture:SetVertexColors(VERTEX_BL, r, g, b, bottomLeft)
+		texture:SetVertexColors(VERTEX_BR, r, g, b, bottomRight)
+	else
+		texture:SetColor(r, g, b, (topLeft + topRight + bottomLeft + bottomRight) / 4)
+	end
+end
+
+-- A rectangle cut to the bounds it may draw in, or nil when nothing is left of it.
+local function Clip(x0, y0, x1, y1, bx0, by0, bx1, by1)
+	x0, y0 = math.max(x0, bx0), math.max(y0, by0)
+	x1, y1 = math.min(x1, bx1), math.min(y1, by1)
+	if x1 - x0 < 0.5 or y1 - y0 < 0.5 then
+		return nil
+	end
+	return x0, y0, x1, y1
+end
+
+-- A soft mass of light: four quarters around (cx, cy), each brightest at the middle corner and
+-- falling to nothing at the rim, cut to the bounds. The alpha at a corner is worked out from where
+-- that corner really is, so a mass cut by the edge of the fill still fades correctly.
+local function SoftMass(pieces, parent, cx, cy, hw, hh, r, g, b, alpha, bx0, by0, bx1, by1)
+	local function At(x, y)
+		local fx = 1 - math.abs(x - cx) / hw
+		local fy = 1 - math.abs(y - cy) / hh
+		if fx <= 0 or fy <= 0 then
+			return 0
+		end
+		return alpha * fx * fy
+	end
+	local quarters = {
+		{ cx - hw, cy - hh, cx, cy },
+		{ cx, cy - hh, cx + hw, cy },
+		{ cx - hw, cy, cx, cy + hh },
+		{ cx, cy, cx + hw, cy + hh },
+	}
+	for index, quarter in ipairs(quarters) do
+		local piece = pieces[index]
+		local x0, y0, x1, y1 = Clip(quarter[1], quarter[2], quarter[3], quarter[4], bx0, by0, bx1, by1)
+		if x0 then
+			Place(piece, parent, x0, y0, x1 - x0, y1 - y0)
+			Corners(piece, r, g, b, At(x0, y0), At(x1, y0), At(x0, y1), At(x1, y1))
+		else
+			piece:SetHidden(true)
+		end
+	end
+end
+
+function plain:LiquidGroup(bar, entry, native)
 	self.liquidRibbons = self.liquidRibbons or {}
 	local group = self.liquidRibbons[entry.name]
-	if not group then
-		if not WINDOW_MANAGER or not CT_TEXTURE then return end
-		local root = WINDOW_MANAGER:CreateControl("PBsLiquid" .. entry.name, Control(bar.container), CT_CONTROL)
-		root:SetAnchor(TOPLEFT, native, TOPLEFT, 0, 0)
-		root:SetAnchor(BOTTOMRIGHT, native, BOTTOMRIGHT, 0, 0)
-		root:SetDrawTier(DT_HIGH)
-		root:SetDrawLevel(1)
-		group = { control = root, strips = {}, bubbles = {}, native = native }
-		for i = 1, LIQUID_SAMPLES * 2 do
-			local strip = WINDOW_MANAGER:CreateControl("PBsLiquid" .. entry.name .. "Strip" .. i, root, CT_TEXTURE)
-			strip:SetDrawLevel(1)
-			group.strips[i] = strip
+	if group then
+		if group.native ~= native then
+			group.control:SetParent(Control(bar.container))
+			group.control:ClearAnchors()
+			group.control:SetAnchor(TOPLEFT, native, TOPLEFT, 0, 0)
+			group.control:SetAnchor(BOTTOMRIGHT, native, BOTTOMRIGHT, 0, 0)
+			group.native = native
 		end
-		for i = 1, LIQUID_BUBBLES do
-			local name = "PBsLiquid" .. entry.name .. "Bubble" .. i
-			local bubble = { control = WINDOW_MANAGER:CreateControl(name, root, CT_CONTROL), points = {} }
-			for point = 1, BUBBLE_POINTS do
-				local piece = WINDOW_MANAGER:CreateControl(name .. "Point" .. point, bubble.control, CT_TEXTURE)
-				piece:SetDrawLevel(2)
-				bubble.points[point] = piece
-			end
-			group.bubbles[i] = bubble
+		return group
+	end
+	if not WINDOW_MANAGER or not CT_TEXTURE then
+		return nil
+	end
+	local prefix = "PBsLiquid" .. entry.name
+	local root = WINDOW_MANAGER:CreateControl(prefix, Control(bar.container), CT_CONTROL)
+	root:SetAnchor(TOPLEFT, native, TOPLEFT, 0, 0)
+	root:SetAnchor(BOTTOMRIGHT, native, BOTTOMRIGHT, 0, 0)
+	root:SetDrawTier(DT_HIGH)
+	root:SetDrawLevel(1)
+	group = { control = root, native = native, textures = {}, currents = {}, surface = {}, bubbles = {} }
+	local count = 0
+	local function Texture(level, role)
+		count = count + 1
+		local texture = WINDOW_MANAGER:CreateControl(prefix .. "Piece" .. count, root, CT_TEXTURE)
+		texture:SetDrawLevel(level)
+		texture:SetHidden(true)
+		texture.pbsLiquidRole = role
+		group.textures[#group.textures + 1] = texture
+		return texture
+	end
+	-- Back to front.
+	group.shade = Texture(1, "fill")
+	for index = 1, LIQUID_CURRENTS do
+		local pieces = {}
+		for quarter = 1, 4 do
+			pieces[quarter] = Texture(2, "fill")
 		end
-		self.liquidRibbons[entry.name] = group
+		group.currents[index] = pieces
 	end
-	if group.native ~= native then
-		group.control:SetParent(Control(bar.container))
-		group.control:ClearAnchors()
-		group.control:SetAnchor(TOPLEFT, native, TOPLEFT, 0, 0)
-		group.control:SetAnchor(BOTTOMRIGHT, native, BOTTOMRIGHT, 0, 0)
-		group.native = native
+	group.drain = Texture(2, "tube")
+	for index = 1, LIQUID_BUBBLES do
+		group.bubbles[index] = { body = Texture(3, "fill"), shine = Texture(4, "fill") }
 	end
+	group.glow = Texture(4, "fill")
+	for index = 1, LIQUID_SURFACE_SEGMENTS do
+		group.surface[index] = Texture(5, "fill")
+	end
+	group.glass = Texture(6, "tube")
+	group.glint = { Texture(6, "tube"), Texture(6, "tube") }
+	self.liquidRibbons[entry.name] = group
+	return group
+end
 
+function plain:LiquidRibbons(bar, entry, native, fraction, now)
+	local group = self:LiquidGroup(bar, entry, native)
+	if not group then
+		return
+	end
+	local root = group.control
 	local bounds = self:LiquidBounds(bar, entry, native, fraction)
 	local from, to, top, bottom = bounds.from, bounds.to, bounds.top, bounds.bottom
 	local depth = bottom - top
-	if depth < 3 or to - from < 2 then
-		group.control:SetHidden(true)
-		return
-	end
-	group.control:SetHidden(false)
-	local step = (to - from) / LIQUID_SAMPLES
-	local r, g, b = self:PowerColour(bar)
-	local seconds = now / 1000
-	for layer = 1, 2 do
-		for i = 1, LIQUID_SAMPLES do
-			local x = from + (i - 1) * step
-			-- The phase runs along the whole bar, so health's wave does not restart at the middle.
-			local phase = (bounds.offset + x + step / 2) / 25 + seconds * (layer == 1 and -2.4 or 1.7)
-			local thickness = math.min(depth / 3, math.max(1, depth * (layer == 1 and 0.20 or 0.24)))
-			local y = top + depth * (layer == 1 and 0.25 or 0.62) + math.sin(phase) * depth * 0.16
-			y = Clamp(y, top, bottom - thickness)
-			-- Full strength along the bar; only an open end fades in, over a few strips.
-			local fade = 1
-			if bounds.fadeLeft then
-				fade = math.min(fade, i / LIQUID_FADE_SAMPLES)
-			end
-			if bounds.fadeRight then
-				fade = math.min(fade, (LIQUID_SAMPLES + 1 - i) / LIQUID_FADE_SAMPLES)
-			end
-			local glint = (0.44 + 0.36 * ((math.sin(phase * 0.7) + 1) / 2)) * fade
-			local strip = group.strips[(layer - 1) * LIQUID_SAMPLES + i]
-			strip:ClearAnchors()
-			strip:SetAnchor(TOPLEFT, group.control, TOPLEFT, x, y)
-			strip:SetDimensions(step, thickness)
-			strip:SetColor(r + (1 - r) * 0.8, g + (1 - g) * 0.8, b + (1 - b) * 0.8, glint)
+	fraction = Clamp(fraction or 0, 0, 1)
+
+	-- The slosh and the drain both need to know how the amount moved since last time.
+	local dt = group.lastNow and Clamp(now - group.lastNow, 0, 200) or 0
+	group.lastNow = now
+	local moved = group.lastFraction and math.abs(fraction - group.lastFraction) or 0
+	group.lastFraction = fraction
+	group.slosh = math.min(1, (group.slosh or 0) * math.exp(-dt / LIQUID_SLOSH_SETTLE_MS) + moved * LIQUID_SLOSH_GAIN)
+	if not group.drainLevel or fraction >= group.drainLevel then
+		group.drainLevel, group.drainSince = fraction, nil
+	else
+		group.drainSince = group.drainSince or now
+		if now - group.drainSince > LIQUID_DRAIN_HOLD_MS then
+			group.drainLevel = math.max(fraction, group.drainLevel - dt * LIQUID_DRAIN_RATE)
 		end
 	end
-	UpdateBubbles(group, from, to, top, bottom, seconds, r, g, b)
+	local draining = group.drainLevel - fraction
+
+	local liquid = depth >= 3 and to - from >= 2
+	if not liquid and draining <= 0.002 then
+		root:SetHidden(true)
+		return
+	end
+	root:SetHidden(false)
+	for _, texture in ipairs(group.textures) do
+		texture:SetHidden(true)
+	end
+
+	local r, g, b = self:PowerColour(bar)
+	local seconds = now / 1000
+	local lr, lg, lb = Lighten(r, g, b, 0.55)
+
+	if liquid then
+		-- Depth: the lower part of the liquid sinks into shadow.
+		local shadeTop = top + depth * 0.35
+		Place(group.shade, root, from, shadeTop, to - from, bottom - shadeTop)
+		Corners(group.shade, 0, 0, 0, 0, 0, 0.5, 0.5)
+
+		-- Currents, placed along the whole bar and cut to what is filled.
+		for index, pieces in ipairs(group.currents) do
+			local light = index % 3 ~= 0
+			local direction = index % 2 == 0 and -1 or 1
+			local speed = direction * (7 + index * 4)
+			local hw = 14 + (index * 7) % 13
+			local hh = depth * (0.42 + (index % 3) * 0.1)
+			local travel = bounds.length + hw * 2
+			local centre = ((index * 53.7 + speed * seconds) % travel) - hw - bounds.offset
+			local cy = top + depth * (0.5 + 0.3 * math.sin(seconds * (0.5 + 0.11 * index) + index * 1.7))
+			local breathe = 0.8 + 0.2 * math.sin(seconds * 1.3 + index)
+			if light then
+				SoftMass(pieces, root, centre, cy, hw, hh, lr, lg, lb, 0.42 * breathe, from, top, to, bottom)
+			else
+				SoftMass(pieces, root, centre, cy, hw, hh, r * 0.25, g * 0.25, b * 0.25, 0.4 * breathe, from, top, to, bottom)
+			end
+		end
+
+		-- Bubbles: beads with a point of light that rise and pop at the top.
+		if to - from >= 6 then
+			for index, bubble in ipairs(group.bubbles) do
+				local period = 1.8 + index * 0.35
+				local progress = (seconds / period + index * 0.37) % 1
+				local size = 1.8 + 0.6 * progress
+				local x = from + (to - from) * ((index * 0.29 + 0.11) % 1) + math.sin(seconds * 1.3 + index) * 2
+				x = Clamp(x, from, to - size)
+				local y = bottom - size - (depth - size) * progress
+				local alpha = math.sin(math.pi * progress)
+				Place(bubble.body, root, x, y, size, size)
+				bubble.body:SetColor(lr, lg, lb, 0.55 * alpha)
+				Place(bubble.shine, root, x, y, math.min(1, size), math.min(1, size))
+				bubble.shine:SetColor(1, 1, 1, 0.9 * alpha)
+			end
+		end
+
+		-- The surface, where the fill ends inside the tube.
+		if bounds.edgeOpen and to - from >= 6 then
+			local slosh = group.slosh
+			local amplitude = 0.6 + slosh * 3
+			local segment = depth / LIQUID_SURFACE_SEGMENTS
+			local lineWidth = 1.5
+			local sr, sg, sb = Lighten(r, g, b, 0.8)
+			for index, piece in ipairs(group.surface) do
+				local wobble = (math.sin(seconds * (7 + slosh * 6) + index * 1.1) * 0.5 + 0.5) * amplitude
+				local x = bounds.reverse and from + wobble or to - lineWidth - wobble
+				Place(piece, root, x, top + (index - 1) * segment, lineWidth, segment)
+				piece:SetColor(sr, sg, sb, 0.85)
+			end
+			local glowWidth = math.min(8 + slosh * 6, to - from)
+			local glowAlpha = 0.35 + slosh * 0.3
+			if bounds.reverse then
+				Place(group.glow, root, from, top, glowWidth, depth)
+				Corners(group.glow, lr, lg, lb, glowAlpha, 0, glowAlpha, 0)
+			else
+				Place(group.glow, root, to - glowWidth, top, glowWidth, depth)
+				Corners(group.glow, lr, lg, lb, 0, glowAlpha, 0, glowAlpha)
+			end
+		end
+	end
+
+	-- What was just lost, draining away beyond the surface.
+	if draining > 0.002 then
+		local width = bounds.width
+		local x0, x1
+		if bounds.reverse then
+			x0, x1 = width - width * group.drainLevel, width - bounds.filled
+		else
+			x0, x1 = bounds.filled, width * group.drainLevel
+		end
+		local cx0, cy0, cx1, cy1 = Clip(x0, top, x1, bottom, bounds.barFrom, top, bounds.barTo, bottom)
+		if cx0 then
+			local alpha = 0.5 * Clamp(draining * 10, 0, 1)
+			Place(group.drain, root, cx0, cy0, cx1 - cx0, cy1 - cy0)
+			-- Strongest against the liquid, thinning out towards where the level was.
+			if bounds.reverse then
+				Corners(group.drain, lr, lg, lb, alpha * 0.3, alpha, alpha * 0.3, alpha)
+			else
+				Corners(group.drain, lr, lg, lb, alpha, alpha * 0.3, alpha, alpha * 0.3)
+			end
+		end
+	end
+
+	-- Glass: a reflection along the top of the whole tube, and a glint that crosses it.
+	local glassTop = bounds.bandTop + math.max(1, depth * 0.08)
+	local glassHeight = 1.2
+	local gx0, gy0, gx1, gy1 = Clip(bounds.barFrom, glassTop, bounds.barTo, glassTop + glassHeight,
+		bounds.barFrom, bounds.bandTop, bounds.barTo, bounds.bandBottom)
+	if gx0 then
+		Place(group.glass, root, gx0, gy0, gx1 - gx0, gy1 - gy0)
+		group.glass:SetColor(1, 1, 1, 0.16)
+	end
+	local sweep = bounds.length + 240
+	local glintCentre = ((seconds * 70) % sweep) - 120 - bounds.offset
+	local glintHalf = 16
+	local halvesOfGlint = {
+		{ glintCentre - glintHalf, glintCentre, 0, 0.5 },
+		{ glintCentre, glintCentre + glintHalf, 0.5, 0 },
+	}
+	for index, part in ipairs(halvesOfGlint) do
+		local piece = group.glint[index]
+		local x0, y0, x1, y1 = Clip(part[1], glassTop, part[2], glassTop + 2,
+			bounds.barFrom, bounds.bandTop, bounds.barTo, bounds.bandBottom)
+		if x0 then
+			local function At(x)
+				return part[3] + (part[4] - part[3]) * (x - part[1]) / (part[2] - part[1])
+			end
+			Place(piece, root, x0, y0, x1 - x0, y1 - y0)
+			Corners(piece, 1, 1, 1, At(x0), At(x1), At(x0), At(x1))
+		end
+	end
 end
 
 function plain:RestoreLiquid()

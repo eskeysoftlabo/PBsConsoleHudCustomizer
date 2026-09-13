@@ -1121,6 +1121,39 @@ the band leaves the bar.
 `/pbhud plain` prints, per status bar, the control's size, the band and the span the effect is
 drawn in, and whether it is shown -- the three numbers to read if a PS5 disagrees.
 
+## 53. Liquid that reads as liquid (1.25.0)
+
+1.24.1 put the effect in the right place, and it still looked like two white wires crossing a
+bar: thin hard lines at full strength, rings for bubbles, nothing that said *depth* or *surface*.
+What makes Diablo's orbs read as liquid, translated to a 17-pixel horizontal tube:
+
+| orb | here |
+| --- | --- |
+| dark depths | a shade over the lower 65% of the liquid, clear at the top, 50% black at the bottom |
+| swirling contents | six soft masses, four light and two dark, drifting both ways at different speeds and breathing; each is four quarters brightest at the centre corner, so it has no edges |
+| the surface | the end of the fill is a bright wobbling edge with a glow behind it; a change in the amount stirs it (6x the change, capped) and it settles over ~450 ms |
+| drain | what was just lost stays 150 ms as a pale trace, then drains at 0.9 of the bar per second |
+| bubbles | beads with a point of light, rising and fading out at the top |
+| the glass | a faint reflection along the top of the whole tube, and a glint that crosses it |
+
+**No art, and no lines.** The softness is `SetVertexColors`: a rectangle given a different alpha at
+each corner is interpolated across, so a quarter with alpha only at its inner corner falls off to
+nothing at the rim. A mass cut by the edge of the fill has its corner alphas worked out from where
+the cut corners really are, so it still fades rather than stopping hard.
+
+**Cheaper than what it replaced.** 43 textures per bar section against 84 (48 strips and 36 bubble
+dots), and no per-strip wave: the masses carry the motion.
+
+**Judged offline.** `test/preview_liquid.lua` runs the add-on in the harness through a hit, a
+refill and a drop, records every texture's rectangle and corner colours as the add-on wrote them,
+and writes a page that plays them back. The game's own fill art is not in the source, so it is
+drawn as its gradient; everything over it is the add-on's own output.
+
+**Tests that fail when they should.** Every piece is either "fill" (must stay inside what is
+filled) or "tube" (the glass and the drain; must stay inside the bar), and all must stay inside
+the band and clear of the points, at seven amounts and many moments. Moving the glass above the
+band, not cutting the currents to the fill, and turning the slosh off each fail the tests.
+
 ---
 
 ## Still to measure on a PS5
@@ -1204,3 +1237,8 @@ drawn in, and whether it is shown -- the three numbers to read if a PS5 disagree
     show above or below the coloured band or past the pointed ends. `/pbhud plain` must read
     `control 224x64` (or `111x64` for a health half); if it reads another height, the band is
     worked out from the container and should still be right, but that is the number to report.
+22. **Does Liquid read as liquid on the HUD?** In a fight: the surface at the end of each bar should
+    shimmer and visibly slosh when you take a hit or drink a potion, the trace of lost health should
+    drain away behind it, and the soft currents should be visible without being busy. If the masses
+    look like flat blocks rather than soft glows, per-corner colours (`SetVertexColors`) are not doing
+    what they do on PC, and that is the thing to report.

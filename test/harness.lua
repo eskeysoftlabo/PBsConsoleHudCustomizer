@@ -39,7 +39,7 @@ function AdvanceFrame(ms) frameTime = frameTime + (ms or 1000) end
 function GetAddOnManager()
 	return {
 		GetNumAddOns = function() return 1 end,
-		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ConsoleHudCustomizer|r 1.24.1" end,
+		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ConsoleHudCustomizer|r 1.25.0" end,
 	}
 end
 
@@ -284,7 +284,7 @@ function BuildAttributeBars()
 
 	-- The status bars inside each container: two halves for health, one each for the others.
 	-- 64 high, as on a console: ZO_PlayerAttributeStatusBar_Gamepad_Template. The coloured band
-	-- is only the middle of that; the 17 here until 1.24.1 was the keyboard size, and it let a
+	-- is only the middle of that; the 17 here until 1.25.0 was the keyboard size, and it let a
 	-- liquid effect pass every test while it drew nothing on a PS5's health bar (FINDINGS 52).
 	local function MakeFill(name, parent, width)
 		local fill = MakeControl(name, parent, "statusbar")

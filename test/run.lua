@@ -28,7 +28,7 @@ print("\n== 1. load ==")
 Fire(EVENT_ADD_ON_LOADED, "PBsConsoleHudCustomizer")
 local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 local health, magicka, stamina = addon.barByKey.health, addon.barByKey.magicka, addon.barByKey.stamina
-check("version read from manifest", addon.version, "1.24.1")
+check("version read from manifest", addon.version, "1.25.0")
 check("slash command registered", type(SLASH_COMMANDS["/pbhud"]), "function")
 check("short slash command registered", type(SLASH_COMMANDS["/pbhc"]), "function")
 check("HUD fragment callback registered", addon.hudRegistered, true)
@@ -2248,185 +2248,204 @@ do
 	addon:Account().enabled = true
 end
 
-print("\n== Liquid moving ribbons stay within the filled region ==")
+print("\n== Liquid: a liquid in a glass tube, inside the bar a console really draws ==")
+-- The status bars here are 64 high, as on a console, with the 17-pixel band in their middle.
+-- Liquid's pieces come in two kinds: "fill" pieces belong to the liquid and must stay inside what
+-- is filled; "tube" pieces (the glass, and the trace of what drained) belong to the tube and must
+-- stay inside the bar. Both must stay inside the band, and clear of the pointed outer ends.
 do
+	local plain = addon.plain
 	addon:Account().enabled = true
 	addon:SetBarStyle("liquidflow")
-	for _, power in ipairs({ COMBAT_MECHANIC_FLAGS_HEALTH, COMBAT_MECHANIC_FLAGS_MAGICKA, COMBAT_MECHANIC_FLAGS_STAMINA }) do
-		SetPower(power, 750, 1000)
-	end
 	FireHud(SCENE_FRAGMENT_SHOWN)
 	addon:Refresh()
-	for _, bar in ipairs(addon.plain.bars) do
-		for _, entry in ipairs(bar.controls) do
-			local native = _G[entry.name]
-			local group = addon.plain.liquidRibbons[entry.name]
-			check("ribbons are visible at usable fill width", group.control:IsHidden(), false)
-			check("ribbons inherit the attribute container", group.control:GetParent(), _G[bar.container])
-			check("two ribbons have bounded strip counts", #group.strips, 48)
-			local width, height = native:GetDimensions()
-			local left = entry.reverse and width * 0.25 or 0
-			local right = entry.reverse and width or width * 0.75
-			-- A hidden group never placed its strips; the visibility check above reports that.
-			for _, strip in ipairs(group.control:IsHidden() and {} or group.strips) do
-				local x, y = strip.anchors[1].offsetX, strip.anchors[1].offsetY
-				check("strip stays inside current fill", x >= left and x + strip:GetWidth() <= right, true)
-				check("strip stays inside native height", y >= 0 and y + strip:GetHeight() <= height, true)
-			end
-		end
-	end
-	local group = addon.plain.liquidRibbons.ZO_PlayerAttributeStaminaBar
-	local strip = group.strips[1]
-	local y = strip.anchors[1] and strip.anchors[1].offsetY
-	AdvanceFrame(150)
-	RunUpdates()
-	check("wave geometry moves rather than just changing colour", y ~= nil and strip.anchors[1].offsetY ~= y, true)
-	check("animation reuses its strips", addon.plain.liquidRibbons.ZO_PlayerAttributeStaminaBar.strips[1], strip)
-	SetPower(COMBAT_MECHANIC_FLAGS_STAMINA, 0, 1000)
-	RunUpdates()
-	check("no ribbon on an empty resource", group.control:IsHidden(), true)
-	SetPower(COMBAT_MECHANIC_FLAGS_STAMINA, 10, 1000)
-	RunUpdates()
-	check("tiny fills do not leak into pointed ends", group.control:IsHidden(), true)
-	SetPower(COMBAT_MECHANIC_FLAGS_STAMINA, 1000, 1000)
-	RunUpdates()
-	check("ribbons return when resource fills", group.control:IsHidden(), false)
-	FireHud(SCENE_FRAGMENT_HIDDEN)
-	check("ribbons hide with HUD", group.control:IsHidden(), true)
-	FireHud(SCENE_FRAGMENT_SHOWN)
-	check("ribbons return with HUD", group.control:IsHidden(), false)
-	addon:SetBarStyle("standard")
-	addon:Refresh()
-	check("changing style removes ribbons", group.control:IsHidden(), true)
-end
 
-print("\n== Liquid interior margins, stronger highlights and bubbles ==")
-do
-	addon:SetBarStyle("liquidflow")
-	addon:Refresh()
-	for _, bar in ipairs(addon.plain.bars) do
-		local gradient = ZO_POWER_BAR_GRADIENT_COLORS[_G["COMBAT_MECHANIC_FLAGS_" .. bar.power:upper()]]
-		local _, _, _, alpha = gradient[1]:UnpackRGBA()
-		for _, entry in ipairs(bar.controls) do
-			local native = _G[entry.name]
-			check("liquid body is more translucent", native.gradient[4], alpha * 0.70)
-			-- Every strip and bubble, at every fill and phase, inside the band the player sees
-			-- and inside what is filled -- on the 64-high bar a console really has.
-			local width, height = native:GetDimensions()
-			local bandTop, bandBottom = (height - 17) / 2, (height + 17) / 2
-			local fits = true
-			for _, fraction in ipairs({ 0.05, 0.25, 0.5, 0.75, 1 }) do
-				local filledFrom = entry.reverse and width * (1 - fraction) or 0
-				local filledTo = entry.reverse and width or width * fraction
-				for phase = 0, 8 do
-					addon.plain:LiquidRibbons(bar, entry, native, fraction, phase * 350)
-					local group = addon.plain.liquidRibbons[entry.name]
-					if not group.control:IsHidden() then
-						local function Inside(control, minX, maxX, minY, maxY)
-							local anchor = control.anchors[1]
-							return anchor.offsetX >= minX - 0.00001 and anchor.offsetY >= minY - 0.00001
-								and anchor.offsetX + control:GetWidth() <= maxX + 0.00001
-								and anchor.offsetY + control:GetHeight() <= maxY + 0.00001
-						end
-						for _, strip in ipairs(group.strips) do
-							fits = Inside(strip, filledFrom, filledTo, bandTop, bandBottom) and fits
-						end
-						for _, bubble in ipairs(group.bubbles) do
-							if not bubble.control:IsHidden() then
-								fits = Inside(bubble.control, filledFrom, filledTo, bandTop, bandBottom) and fits
-								for _, point in ipairs(bubble.points) do
-									fits = Inside(point, 0, bubble.control:GetWidth(), 0, bubble.control:GetHeight()) and fits
-								end
-							end
-						end
+	local TAPER = 17 / 2
+	local function Entry(barIndex, controlIndex)
+		local bar = plain.bars[barIndex]
+		local entry = bar.controls[controlIndex]
+		return { bar = bar, entry = entry, name = entry.name, native = _G[entry.name] }
+	end
+	local entries = { Entry(1, 1), Entry(1, 2), Entry(2, 1), Entry(3, 1) }
+	local function Pointed(which)
+		local halves = #which.bar.controls > 1
+		local right = halves and which.bar.controls[2].name == which.name
+		return not halves or not right, not halves or right
+	end
+	local function Draw(which, fraction, now)
+		plain:LiquidRibbons(which.bar, which.entry, which.native, fraction, now)
+		return plain.liquidRibbons[which.name]
+	end
+	local function Shown(group)
+		local list = {}
+		if group.control:IsHidden() then return list end
+		for _, texture in ipairs(group.textures) do
+			if not texture:IsHidden() then list[#list + 1] = texture end
+		end
+		return list
+	end
+	local function Box(texture)
+		local a = texture.anchors[1]
+		return a.offsetX, a.offsetY, a.offsetX + texture:GetWidth(), a.offsetY + texture:GetHeight()
+	end
+	local E = 0.0001
+
+	-- Nothing leaves the band, the fill or the tube, at any amount, at any moment, on any bar.
+	for _, which in ipairs(entries) do
+		local width, height = which.native:GetDimensions()
+		local bandTop, bandBottom = (height - 17) / 2, (height + 17) / 2
+		local pointedLeft, pointedRight = Pointed(which)
+		local tubeFrom, tubeTo = pointedLeft and TAPER or 0, pointedRight and width - TAPER or width
+		local fits, drawn = true, 0
+		local time = 100000
+		for _, fraction in ipairs({ 1, 0.75, 0.5, 0.25, 0.05, 0.6, 0.02 }) do
+			for step = 0, 12 do
+				time = time + 83
+				local group = Draw(which, fraction, time)
+				local fillFrom = which.entry.reverse and width * (1 - fraction) or 0
+				local fillTo = which.entry.reverse and width or width * fraction
+				for _, texture in ipairs(Shown(group)) do
+					drawn = drawn + 1
+					local x0, y0, x1, y1 = Box(texture)
+					local inside = y0 >= bandTop - E and y1 <= bandBottom + E and x0 >= tubeFrom - E and x1 <= tubeTo + E
+					if texture.pbsLiquidRole == "fill" then
+						inside = inside and x0 >= fillFrom - E and x1 <= fillTo + E
 					end
+					if not inside then fits = false end
 				end
 			end
-			check("nothing leaves the visible band or the fill: " .. entry.name, fits, true)
 		end
+		check("nothing leaves the band, the fill or the tube: " .. which.name, fits, true)
+		check("and there was something to check on " .. which.name, drawn > 100, true)
 	end
 
-	-- The three things a PS5 showed, on the geometry a PS5 has.
-	local function Span(entry, fraction)
-		local bar = entry.bar
-		local native = _G[entry.name]
-		addon.plain:LiquidRibbons(bar, entry.entry, native, fraction, 0)
-		local group = addon.plain.liquidRibbons[entry.name]
-		if group.control:IsHidden() then
-			return nil
-		end
+	-- The liquid runs the length of what is filled -- the PS5's "only in the middle" and "nothing
+	-- on health" -- measured as how much of the bar the fill pieces cover.
+	local function Covered(which, fraction, now)
+		local group = Draw(which, fraction, now)
 		local left, right = math.huge, -math.huge
-		for i = 1, 24 do
-			local strip = group.strips[i]
-			left = math.min(left, strip.anchors[1].offsetX)
-			right = math.max(right, strip.anchors[1].offsetX + strip:GetWidth())
+		for _, texture in ipairs(Shown(group)) do
+			if texture.pbsLiquidRole == "fill" then
+				local x0, _, x1 = Box(texture)
+				left, right = math.min(left, x0), math.max(right, x1)
+			end
 		end
-		return left, right, native:GetWidth(), group
+		return left, right, which.native:GetWidth()
 	end
-	local function Entry(barIndex, controlIndex)
-		local bar = addon.plain.bars[barIndex]
-		local entry = bar.controls[controlIndex]
-		return { bar = bar, entry = entry, name = entry.name }
+	for _, which in ipairs(entries) do
+		local left, right, width = Covered(which, 1, 200000)
+		check("the liquid covers " .. which.name, left ~= math.huge and (right - left) / width > 0.9, true)
 	end
+	local _, leftHalfRight, leftHalfWidth = Covered(entries[1], 1, 200000)
+	local rightHalfLeft = Covered(entries[2], 1, 200000)
+	check("health's left half reaches the middle", math.abs(leftHalfRight - leftHalfWidth) < E, true)
+	check("health's right half starts at the middle", math.abs(rightHalfLeft) < E, true)
+	check("health still draws at half", Covered(entries[1], 0.5, 200000) ~= math.huge and Covered(entries[2], 0.5, 200000) ~= math.huge, true)
 
-	-- 1. Health showed nothing: each half was narrower than the two insets together.
-	local healthLeft, healthRight = Entry(1, 1), Entry(1, 2)
-	check("health's left half draws at full", Span(healthLeft, 1) ~= nil, true)
-	check("health's right half draws at full", Span(healthRight, 1) ~= nil, true)
-	local l1, r1, w1 = Span(healthLeft, 1)
-	local l2, r2, w2 = Span(healthRight, 1)
-	check("health's left half reaches the middle", l1 ~= nil and w1 - r1 < 0.001, true)
-	check("health's right half starts at the middle", l2 ~= nil and l2 < 0.001, true)
-	check("health's left half covers most of it", l1 ~= nil and (r1 - l1) / w1 > 0.9, true)
-	check("health's right half covers most of it", l2 ~= nil and (r2 - l2) / w2 > 0.9, true)
-	check("health still draws at half", Span(healthLeft, 0.5) ~= nil and Span(healthRight, 0.5) ~= nil, true)
-
-	-- 2. Magicka and stamina only lit their middle 32 pixels.
-	for _, which in ipairs({ Entry(2, 1), Entry(3, 1) }) do
-		local left, right, width = Span(which, 1)
-		check("the effect runs across " .. which.name, left ~= nil and (right - left) / width > 0.9, true)
+	-- Soft, not lines: the currents fade from their middle to nothing at the rim.
+	local group = Draw(entries[4], 1, 210000)
+	local soft = false
+	for _, pieces in ipairs(group.currents) do
+		for _, piece in ipairs(pieces) do
+			if not piece:IsHidden() and piece.vertices then
+				local alphas = {}
+				for _, corner in ipairs({ 1, 2, 4, 8 }) do alphas[#alphas + 1] = piece.vertices[corner][4] end
+				if math.max(unpack(alphas)) > 0.1 and math.min(unpack(alphas)) < 0.05 then soft = true end
+			end
+		end
 	end
-	local stamina = Entry(3, 1)
-	local sLeft, sRight, sWidth = Span(stamina, 0.5)
-	check("and across what is filled at half", sLeft ~= nil and sLeft < 10 and sRight > sWidth * 0.5 - 4, true)
+	check("the currents are soft masses, not lines", soft, true)
+	check("the lower part of the liquid sinks into shadow",
+		group.shade.vertices[1][4] == 0 and group.shade.vertices[4][4] > 0.3, true)
 
-	-- 3. Brightness is even along the bar, not a hump in the middle: the strips a quarter of
-	-- the way along are as strong as the middle ones.
-	local _, _, _, group = Span(stamina, 1)
-	local function Strength(i)
-		-- Undo the travelling glint so only the fade along the bar is compared.
-		return group.strips[i].color[4]
-	end
-	local quarter, middle = 0, 0
-	for phase = 0, 20 do
-		addon.plain:LiquidRibbons(stamina.bar, stamina.entry, _G[stamina.name], 1, phase * 97)
-		quarter = math.max(quarter, Strength(6))
-		middle = math.max(middle, Strength(12))
-	end
-	check("a quarter along is as bright as the middle", math.abs(quarter - middle) < 0.08, true)
+	-- The surface: where the fill ends inside the tube, and not when it is pressed into the point.
+	local stamina = entries[4]
+	group = Draw(stamina, 0.6, 220000)
+	check("a part-filled bar has a surface", group.surface[1]:IsHidden(), false)
+	local surfaceX = group.surface[1].anchors[1].offsetX
+	check("the surface is at the level", math.abs(surfaceX - 224 * 0.6) < 8, true)
+	group = Draw(stamina, 1, 220100)
+	check("a full bar has no surface pressed into its point", group.surface[1]:IsHidden(), true)
 
-	local bar, entry = addon.plain.bars[3], addon.plain.bars[3].controls[1]
-	local native = _G[entry.name]
-	addon.plain:LiquidRibbons(bar, entry, native, 1, 0)
-	local group = addon.plain.liquidRibbons[entry.name]
-	check("three bubbles are pooled per native bar", #group.bubbles, 3)
-	local bubble = group.bubbles[1]
-	local y, x = bubble.control.anchors[1].offsetY, bubble.control.anchors[1].offsetX
-	addon.plain:LiquidRibbons(bar, entry, native, 1, 200)
-	check("bubble rises over time", bubble.control.anchors[1].offsetY < y, true)
-	check("bubble drifts sideways", bubble.control.anchors[1].offsetX ~= x, true)
-	check("bubble controls are reused", group.bubbles[1], bubble)
-	local strongest = 0
-	for _, strip in ipairs(group.strips) do strongest = math.max(strongest, strip.color[4]) end
-	check("ribbons are stronger than the previous 0.42 maximum", strongest > 0.42, true)
-	addon.plain:LiquidRibbons(bar, entry, native, 0, 200)
-	check("empty resource hides waves and bubbles together", group.control:IsHidden(), true)
+	-- It sloshes when the amount changes, and settles again.
+	local function Spread(fraction, from, frames)
+		local low, high = math.huge, -math.huge
+		for frame = 1, frames do
+			local g = Draw(stamina, fraction, from + frame * 50)
+			for _, piece in ipairs(g.surface) do
+				local x = piece.anchors[1].offsetX
+				low, high = math.min(low, x), math.max(high, x)
+			end
+		end
+		return high - low
+	end
+	Draw(stamina, 0.6, 300000)
+	for frame = 1, 40 do Draw(stamina, 0.6, 300000 + frame * 50) end
+	local calm = Spread(0.6, 302000, 6)
+	Draw(stamina, 0.4, 302400)
+	local stirred = Spread(0.4, 302400, 6)
+	check("a sudden change stirs the surface", stirred > calm + 1, true)
+	for frame = 1, 60 do Draw(stamina, 0.4, 302700 + frame * 50) end
+	check("and it settles again", Spread(0.4, 305800, 6) < stirred - 1, true)
+
+	-- What was lost stays a moment, then drains away.
+	Draw(stamina, 0.8, 400000)
+	group = Draw(stamina, 0.3, 400050)
+	check("a hit leaves a trace of what was lost", group.drain:IsHidden(), false)
+	local dx0, _, dx1 = Box(group.drain)
+	check("the trace lies between the new level and the old", dx0 >= 224 * 0.3 - E and dx1 <= 224 * 0.8 + E, true)
+	for frame = 1, 40 do group = Draw(stamina, 0.3, 400050 + frame * 50) end
+	check("and has drained away two seconds later", group.drain:IsHidden(), true)
+
+	-- The glass runs along the tube, full or not.
+	group = Draw(stamina, 0.3, 500000)
+	local gx0, _, gx1 = Box(group.glass)
+	check("the glass runs along the whole tube", group.glass:IsHidden() == false and (gx1 - gx0) > 224 - 17 - 1, true)
+
+	-- Bubbles rise.
+	group = Draw(stamina, 1, 600000)
+	local bubble = group.bubbles[1].body
+	local y = bubble.anchors[1].offsetY
+	group = Draw(stamina, 1, 600200)
+	check("bubbles rise", bubble.anchors[1].offsetY < y, true)
+
+	-- Empty, and no trace left: nothing drawn. Filled again: back.
+	for frame = 1, 80 do group = Draw(stamina, 0, 700000 + frame * 50) end
+	check("nothing on an empty bar", group.control:IsHidden(), true)
+	group = Draw(stamina, 0.004, 705000)
+	check("nor on a sliver pressed into the point", group.control:IsHidden(), true)
+	group = Draw(stamina, 1, 705050)
+	check("and back when it fills", group.control:IsHidden(), false)
+
+	-- Built once and reused: a long fight must not create controls.
+	local created = 0
+	for _ in pairs(CreatedControls) do created = created + 1 end
+	for frame = 1, 200 do
+		for _, which in ipairs(entries) do Draw(which, 0.5 + 0.4 * math.sin(frame / 7), 800000 + frame * 50) end
+	end
+	local after = 0
+	for _ in pairs(CreatedControls) do after = after + 1 end
+	check("no controls are created while it runs", after, created)
+	check("and each bar section is a modest number of pieces", #plain.liquidRibbons[stamina.name].textures <= 45, true)
+
+	-- The liquid body is nearly solid, and the loop keeps it there.
+	SetPower(COMBAT_MECHANIC_FLAGS_STAMINA, 600, 1000)
+	RunUpdates()
+	local gradient = ZO_POWER_BAR_GRADIENT_COLORS[COMBAT_MECHANIC_FLAGS_STAMINA]
+	local _, _, _, alpha = gradient[1]:UnpackRGBA()
+	check("the liquid body is nearly solid", math.abs(_G[stamina.name].gradient[4] - alpha * 0.92) < E, true)
+
+	-- It goes with the HUD and with the style.
+	group = plain.liquidRibbons[stamina.name]
+	FireHud(SCENE_FRAGMENT_HIDDEN)
+	check("the liquid hides with the HUD", group.control:IsHidden(), true)
+	FireHud(SCENE_FRAGMENT_SHOWN)
+	RunUpdates()
+	check("and returns with it", group.control:IsHidden(), false)
 	addon:SetBarStyle("standard")
 	addon:Refresh()
-	local gradient = ZO_POWER_BAR_GRADIENT_COLORS[COMBAT_MECHANIC_FLAGS_STAMINA]
-	local _,_,_,alpha = gradient[1]:UnpackRGBA()
-	check("leaving Liquid restores original body opacity", native.gradient[4], alpha)
-	check("leaving Liquid hides all bubbles", group.control:IsHidden(), true)
+	check("choosing another style removes it", group.control:IsHidden(), true)
+	check("and the body's own opacity comes back", _G[stamina.name].gradient[4], alpha)
 end
 
 print("")
