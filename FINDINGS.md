@@ -1166,6 +1166,40 @@ request to replace them. It was not what was wanted: the game's own frame stays.
 ends (§52) -- with the see-through values above. The outline switch and colour are Square's and
 MURA-HIGE's again, not Liquid's.
 
+## 55. An upright line at the full end (1.26.2)
+
+From the PS5: using a resource put an upright line at the bar's full end. A bar spends most of a
+fight regenerating a few percent short of full, so the moving end of the fill sits right beside
+the full end -- and Liquid drew the surface there as a straight upright line, beside a frame whose
+end is a point. The drain's far end (the old level, which is the full end whenever a resource is
+spent from full) was the same: an upright edge, only thinned to 30% rather than gone. And every
+soft piece -- the shade, the currents -- was cut off square wherever it met the end of the fill or
+a pointed end, which leaves a faint upright edge of its own.
+
+**One shape for every end.** The frame's pointed ends are a point at the middle of the band sloping
+back 45 degrees to the top and bottom (§52's half-band taper). The fill's moving end is given the
+same shape, pointing the way the fill moves -- towards the end it fills to, so a bar nearly full
+shows its surface parallel to that end. A row a distance `d` from the middle of the band stops `d`
+short of a pointed end and `d` short of the moving end.
+
+- **The surface and its glow** are drawn in seven rows, each stepped back by its own `d`: a `>` on
+  a bar that fills rightwards, a `<` on one that fills leftwards.
+- **The drain** is seven rows too, so both its ends -- the new level and the old -- have that shape,
+  and it fades to nothing at the old level instead of stopping there.
+- **Upright pieces** (the shade, the currents, the bubbles) stay inside the upright rectangle their
+  farthest row allows, and the shade and the currents fade to nothing over the last 5 pixels before
+  any cut, so none of them leaves a line. Health's halves meet in the middle, which is not a cut.
+- **The glass and the glint** stop where their own rows meet the pointed ends.
+
+59 textures per bar section (43 before): the rows cost 16.
+
+**Tests.** The containment rule is now the shape itself: every piece, at every amount and moment,
+stops `d` short of each pointed end and, if it belongs to the liquid, `d` short of the moving end.
+The surface must point the way its bar fills, the drain's far end must have the shape and nothing
+at it, and a soft piece at a cut must have nothing at that cut. Making the surface upright, making
+the drain's far end upright and solid, and taking the fade off the cuts each fail them. The
+preview now draws the game's fill inside its pointed shape and regenerates magicka up to full.
+
 ---
 
 ## Still to measure on a PS5
@@ -1255,3 +1289,7 @@ MURA-HIGE's again, not Liquid's.
     should be see-through without looking washed out. If the masses
     look like flat blocks rather than soft glows, per-corner colours (`SetVertexColors`) are not doing
     what they do on PC, and that is the thing to report.
+23. **Is the full end clean while a bar regenerates?** Spend some magicka and let it come back:
+    near the full end the surface must look like the frame's point -- a `<` on magicka, a `>` on
+    stamina -- never an upright line, and a spend from full must leave a pale trace that fades out
+    into the point rather than stopping at an upright edge.

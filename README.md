@@ -54,7 +54,7 @@ gives it the same size so the pair still lines up.
   colour, with the game's own resource numbers lifted over it.
 - **Liquid** — keeps the standard shapes, frames and gloss, and makes the fill read as a see-through
   liquid in a glass tube, the way Diablo's orbs do (the body at 62%, the effects over it at 80%): the lower part sinks into shadow, soft light and dark
-  currents drift through it, the end of the fill is a bright surface that sloshes when the amount
+  currents drift through it, the end of the fill is a bright surface shaped like the frame's pointed ends that sloshes when the amount
   changes and settles again, what was just lost stays a moment as a pale trace and drains away,
   bubbles rise and pop, and a reflection runs along the top of the glass with a glint crossing it.
   All of it is untextured rectangles with per-corner colours -- no art -- about forty per bar

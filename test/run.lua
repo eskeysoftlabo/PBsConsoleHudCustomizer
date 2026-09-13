@@ -28,7 +28,7 @@ print("\n== 1. load ==")
 Fire(EVENT_ADD_ON_LOADED, "PBsConsoleHudCustomizer")
 local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 local health, magicka, stamina = addon.barByKey.health, addon.barByKey.magicka, addon.barByKey.stamina
-check("version read from manifest", addon.version, "1.26.1")
+check("version read from manifest", addon.version, "1.26.2")
 check("slash command registered", type(SLASH_COMMANDS["/pbhud"]), "function")
 check("short slash command registered", type(SLASH_COMMANDS["/pbhc"]), "function")
 check("HUD fragment callback registered", addon.hudRegistered, true)
@@ -2290,32 +2290,41 @@ do
 	end
 	local E = 0.0001
 
-	-- Nothing leaves the band, the fill or the tube, at any amount, at any moment, on any bar.
+	-- Nothing leaves the band, the fill or the tube, at any amount, at any moment, on any bar --
+	-- and nothing crosses the shape of an end. The frame's pointed ends and the fill's moving end
+	-- are a point at the middle of the band sloping back at 45 degrees, so a piece whose farthest
+	-- row is d from the middle must stop d short of a pointed end, and d short of the moving end.
 	for _, which in ipairs(entries) do
 		local width, height = which.native:GetDimensions()
 		local bandTop, bandBottom = (height - 17) / 2, (height + 17) / 2
+		local middle = height / 2
 		local pointedLeft, pointedRight = Pointed(which)
-		local tubeFrom, tubeTo = pointedLeft and TAPER or 0, pointedRight and width - TAPER or width
 		local fits, drawn = true, 0
 		local time = 100000
-		for _, fraction in ipairs({ 1, 0.75, 0.5, 0.25, 0.05, 0.6, 0.02 }) do
+		for _, fraction in ipairs({ 1, 0.97, 0.75, 0.5, 0.25, 0.05, 0.6, 0.02 }) do
 			for step = 0, 12 do
 				time = time + 83
 				local group = Draw(which, fraction, time)
-				local fillFrom = which.entry.reverse and width * (1 - fraction) or 0
-				local fillTo = which.entry.reverse and width or width * fraction
+				local filled = width * fraction
 				for _, texture in ipairs(Shown(group)) do
 					drawn = drawn + 1
 					local x0, y0, x1, y1 = Box(texture)
-					local inside = y0 >= bandTop - E and y1 <= bandBottom + E and x0 >= tubeFrom - E and x1 <= tubeTo + E
+					local d = math.max(math.abs(y0 - middle), math.abs(y1 - middle))
+					local inside = y0 >= bandTop - E and y1 <= bandBottom + E and x0 >= -E and x1 <= width + E
+					if pointedLeft then inside = inside and x0 >= d - E end
+					if pointedRight then inside = inside and x1 <= width - d + E end
 					if texture.pbsLiquidRole == "fill" then
-						inside = inside and x0 >= fillFrom - E and x1 <= fillTo + E
+						if which.entry.reverse then
+							inside = inside and x0 >= width - filled + d - E
+						else
+							inside = inside and x1 <= filled - d + E
+						end
 					end
 					if not inside then fits = false end
 				end
 			end
 		end
-		check("nothing leaves the band, the fill or the tube: " .. which.name, fits, true)
+		check("nothing crosses the band, the fill or an end's shape: " .. which.name, fits, true)
 		check("and there was something to check on " .. which.name, drawn > 100, true)
 	end
 
@@ -2356,28 +2365,66 @@ do
 	end
 	check("the currents are soft masses, not lines", soft, true)
 	check("the lower part of the liquid sinks into shadow",
-		group.shade.vertices[1][4] == 0 and group.shade.vertices[4][4] > 0.3, true)
+		group.shade[2].vertices[1][4] == 0 and group.shade[2].vertices[4][4] > 0.3, true)
+
+	-- No hard upright line where the liquid is cut: every soft piece that reaches a cut has
+	-- nothing at that cut. (Health's halves meet in the middle, which is not a cut.)
+	local function Cuts(which, fraction, now)
+		local g = Draw(which, fraction, now)
+		local bounds = plain:LiquidBounds(which.bar, which.entry, which.native, fraction)
+		local clean = true
+		for _, texture in ipairs(Shown(g)) do
+			if texture.pbsLiquidSoft and texture.vertices then
+				local x0, _, x1 = Box(texture)
+				local v = texture.vertices
+				if bounds.softRight and x1 >= bounds.to - 0.01 and (v[2][4] > 0.001 or v[8][4] > 0.001) then clean = false end
+				if bounds.softLeft and x0 <= bounds.from + 0.01 and (v[1][4] > 0.001 or v[4][4] > 0.001) then clean = false end
+			end
+		end
+		return clean
+	end
+	for _, which in ipairs(entries) do
+		local clean = true
+		for step = 0, 30 do
+			clean = Cuts(which, 0.6, 230000 + step * 97) and Cuts(which, 1, 240000 + step * 97) and clean
+		end
+		check("no hard line where the liquid is cut: " .. which.name, clean, true)
+	end
 
 	-- The surface: where the fill ends inside the tube, and not when it is pressed into the point.
 	local stamina = entries[4]
-	group = Draw(stamina, 0.6, 220000)
-	check("a part-filled bar has a surface", group.surface[1]:IsHidden(), false)
-	local surfaceX = group.surface[1].anchors[1].offsetX
+	for frame = 1, 40 do group = Draw(stamina, 0.6, 220000 + frame * 50) end
+	check("a part-filled bar has a surface", group.surface[4]:IsHidden(), false)
+	local surfaceX = group.surface[4].anchors[1].offsetX
 	check("the surface is at the level", math.abs(surfaceX - 224 * 0.6) < 8, true)
+	-- The shape of the frame's end, not an upright line: the middle row reaches farthest, and the
+	-- top and bottom rows step back by about the slope (a calm surface wobbles under a pixel).
+	local function RowX(g, index) return g.surface[index].anchors[1].offsetX end
+	check("stamina's surface points the way its end does", RowX(group, 1) < RowX(group, 4) - 3 and RowX(group, 7) < RowX(group, 4) - 3, true)
+	local magicka = entries[3]
+	local mg
+	for frame = 1, 40 do mg = Draw(magicka, 0.6, 250000 + frame * 50) end
+	check("magicka's surface points the other way", RowX(mg, 1) > RowX(mg, 4) + 3 and RowX(mg, 7) > RowX(mg, 4) + 3, true)
 	group = Draw(stamina, 1, 220100)
 	check("a full bar has no surface pressed into its point", group.surface[1]:IsHidden(), true)
 
 	-- It sloshes when the amount changes, and settles again.
+	-- How far each row of the surface moves over a few frames; the shape itself does not count.
 	local function Spread(fraction, from, frames)
-		local low, high = math.huge, -math.huge
+		local low, high = {}, {}
 		for frame = 1, frames do
 			local g = Draw(stamina, fraction, from + frame * 50)
-			for _, piece in ipairs(g.surface) do
-				local x = piece.anchors[1].offsetX
-				low, high = math.min(low, x), math.max(high, x)
+			for index, piece in ipairs(g.surface) do
+				if not piece:IsHidden() then
+					local x = piece.anchors[1].offsetX
+					low[index] = math.min(low[index] or math.huge, x)
+					high[index] = math.max(high[index] or -math.huge, x)
+				end
 			end
 		end
-		return high - low
+		local most = 0
+		for index in pairs(low) do most = math.max(most, high[index] - low[index]) end
+		return most
 	end
 	Draw(stamina, 0.6, 300000)
 	for frame = 1, 40 do Draw(stamina, 0.6, 300000 + frame * 50) end
@@ -2391,16 +2438,40 @@ do
 	-- What was lost stays a moment, then drains away.
 	Draw(stamina, 0.8, 400000)
 	group = Draw(stamina, 0.3, 400050)
-	check("a hit leaves a trace of what was lost", group.drain:IsHidden(), false)
-	local dx0, _, dx1 = Box(group.drain)
-	check("the trace lies between the new level and the old", dx0 >= 224 * 0.3 - E and dx1 <= 224 * 0.8 + E, true)
+	local function AnyShown(list) for _, piece in ipairs(list) do if not piece:IsHidden() then return true end end return false end
+	check("a hit leaves a trace of what was lost", AnyShown(group.drain), true)
+	local between = true
+	for _, piece in ipairs(group.drain) do
+		if not piece:IsHidden() then
+			local dx0, _, dx1 = Box(piece)
+			between = between and dx0 >= 224 * 0.3 - 8.5 - E and dx1 <= 224 * 0.8 + E
+		end
+	end
+	check("the trace lies between the new level and the old", between, true)
+	-- Both ends in the frame's shape, and nothing at the far end.
+	local function DrainEnd(index) local _, _, x1 = Box(group.drain[index]); return x1 end
+	check("the trace's far end has the frame's shape", DrainEnd(1) < DrainEnd(4) - 3 and DrainEnd(7) < DrainEnd(4) - 3, true)
+	check("and fades to nothing there", group.drain[4].vertices[2][4] == 0 and group.drain[4].vertices[8][4] == 0, true)
+	-- From full, the far end is the full end: it must follow that point.
+	Draw(stamina, 1, 410000)
+	group = Draw(stamina, 0.85, 410050)
+	local fromFull = true
+	for index, piece in ipairs(group.drain) do
+		if not piece:IsHidden() then
+			local _, y0, x1, y1 = Box(piece)
+			local d = math.max(math.abs(y0 - 32), math.abs(y1 - 32))
+			fromFull = fromFull and x1 <= 224 - d + E
+		end
+	end
+	check("a trace from a full bar follows its point", fromFull, true)
 	for frame = 1, 40 do group = Draw(stamina, 0.3, 400050 + frame * 50) end
-	check("and has drained away two seconds later", group.drain:IsHidden(), true)
+	for frame = 1, 40 do group = Draw(stamina, 0.85, 410050 + frame * 50) end
+	check("and has drained away two seconds later", AnyShown(group.drain), false)
 
 	-- The glass runs along the tube, full or not.
 	group = Draw(stamina, 0.3, 500000)
 	local gx0, _, gx1 = Box(group.glass)
-	check("the glass runs along the whole tube", group.glass:IsHidden() == false and (gx1 - gx0) > 224 - 17 - 1, true)
+	check("the glass runs along the whole tube", group.glass:IsHidden() == false and (gx1 - gx0) > 224 - 17, true)
 
 	-- Bubbles rise.
 	group = Draw(stamina, 1, 600000)
@@ -2426,7 +2497,7 @@ do
 	local after = 0
 	for _ in pairs(CreatedControls) do after = after + 1 end
 	check("no controls are created while it runs", after, created)
-	check("and each bar section is a modest number of pieces", #plain.liquidRibbons[stamina.name].textures <= 45, true)
+	check("and each bar section is a modest number of pieces", #plain.liquidRibbons[stamina.name].textures <= 60, true)
 
 	-- The liquid body is nearly solid, and the loop keeps it there.
 	SetPower(COMBAT_MECHANIC_FLAGS_STAMINA, 600, 1000)

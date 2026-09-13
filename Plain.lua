@@ -696,7 +696,11 @@ end
 local LIQUID_BODY_ALPHA = 0.62
 local LIQUID_EFFECT_ALPHA = 0.8
 local LIQUID_CURRENTS = 6
-local LIQUID_SURFACE_SEGMENTS = 5
+-- The surface, its glow and the drain are drawn in rows, so that their ends can step in the shape
+-- of the frame's pointed ends rather than stand as a straight upright line.
+local LIQUID_EDGE_ROWS = 7
+-- How far a soft piece fades out before a cut, so the cut is never a hard line.
+local LIQUID_SOFT_CUT = 5
 local LIQUID_BUBBLES = 4
 -- How quickly a slosh settles, and how much a change in the amount stirs it.
 local LIQUID_SLOSH_SETTLE_MS = 450
@@ -728,6 +732,13 @@ local LIQUID_BAND_OF_CONTAINER = 17 / 23
 local LIQUID_BAND_MARGIN = 0.12
 local LIQUID_LEADING_EDGE = 2
 
+-- The frame's pointed ends, and the fill's moving end, share one shape: a point at the middle of
+-- the band, sloping back at 45 degrees to the top and the bottom (half the band across, half the
+-- band back -- the taper §52 measured). So a row of pixels a distance d from the middle of the band
+-- may reach d less far into a pointed end, and d less far towards the moving end, than the middle
+-- row does. Anything drawn as one upright rectangle has to stop where its farthest row must stop,
+-- and anything that meets an end is drawn in rows so it can follow the slope (1.26.2: a straight
+-- surface standing at the full end of a regenerating bar read as a stray upright line).
 function plain:LiquidBounds(bar, entry, native, fraction)
 	local width, height = native:GetDimensions()
 	local container = Control(bar.container)
@@ -741,52 +752,69 @@ function plain:LiquidBounds(bar, entry, native, fraction)
 	local band = math.min(height, containerHeight * LIQUID_BAND_OF_CONTAINER)
 	local bandTop = (height - band) / 2
 	local margin = math.max(1, band * LIQUID_BAND_MARGIN)
+	local top, bottom = bandTop + margin, bandTop + band - margin
+	local middle = bandTop + band / 2
+	-- How far the farthest row of the liquid is from the middle of the band.
+	local reach = (bottom - top) / 2
 
 	-- Which ends of this control are the pointed outer ends of the bar.
 	local halves = #bar.controls > 1
 	local isRightHalf = halves and bar.controls[2].name == entry.name
 	local pointedLeft = not halves or not isRightHalf
 	local pointedRight = not halves or isRightHalf
-	local taper = band / 2
-	local barFrom = pointedLeft and taper or 0
-	local barTo = pointedRight and width - taper or width
 
-	local filled = width * Clamp(fraction or 0, 0, 1)
+	fraction = Clamp(fraction or 0, 0, 1)
+	local filled = width * fraction
+	-- A full bar has no moving end to keep clear of.
+	local edgeClear = fraction < 0.99 and LIQUID_LEADING_EDGE or 0
+	-- Where the middle row of the liquid ends.
+	local edge = entry.reverse and width - filled + edgeClear or filled - edgeClear
+
+	-- The upright rectangle every row of the liquid is inside.
 	local from, to
 	if entry.reverse then
-		from, to = width - filled + LIQUID_LEADING_EDGE, width
+		from, to = edge + reach, width
 	else
-		from, to = 0, filled - LIQUID_LEADING_EDGE
+		from, to = 0, edge - reach
 	end
-	-- The surface is only drawn where the leading edge is really inside the tube, not pressed
-	-- into a pointed end.
-	local edgeOpen
-	if entry.reverse then
-		edgeOpen = from > barFrom
-	else
-		edgeOpen = to < barTo
-	end
-	from = math.max(from, barFrom)
-	to = math.min(to, barTo)
+	if pointedLeft then from = math.max(from, reach) end
+	if pointedRight then to = math.min(to, width - reach) end
 
 	return {
 		width = width,
 		from = from,
 		to = to,
-		top = bandTop + margin,
-		bottom = bandTop + band - margin,
+		top = top,
+		bottom = bottom,
+		middle = middle,
+		reach = reach,
 		bandTop = bandTop,
 		bandBottom = bandTop + band,
-		barFrom = barFrom,
-		barTo = barTo,
-		edgeOpen = edgeOpen and filled > 0,
+		pointedLeft = pointedLeft,
+		pointedRight = pointedRight,
+		edge = edge,
+		edgeOpen = fraction > 0 and fraction < 0.99,
 		reverse = entry.reverse and true or false,
 		filled = filled,
+		-- A cut fades out unless it is where health's two halves meet.
+		softLeft = not isRightHalf,
+		softRight = not (halves and not isRightHalf),
 		-- Health's right half carries on where the left half stops, so what moves along the bar
 		-- is placed in one coordinate that runs the whole length of it.
 		offset = isRightHalf and width or 0,
 		length = halves and width * 2 or width,
 	}
+end
+
+-- How far a row between y0 and y1 is from the middle of the band, at its farthest.
+local function Slope(bounds, y0, y1)
+	return math.max(math.abs(y0 - bounds.middle), math.abs(y1 - bounds.middle))
+end
+
+-- The left and right limits of a row: the pointed ends, stepped back by the row's slope.
+local function RowLimits(bounds, y0, y1)
+	local d = Slope(bounds, y0, y1)
+	return bounds.pointedLeft and d or 0, bounds.pointedRight and bounds.width - d or bounds.width, d
 end
 
 local VERTEX_TL, VERTEX_TR = VERTEX_POINTS_TOPLEFT, VERTEX_POINTS_TOPRIGHT
@@ -830,14 +858,18 @@ end
 -- A soft mass of light: four quarters around (cx, cy), each brightest at the middle corner and
 -- falling to nothing at the rim, cut to the bounds. The alpha at a corner is worked out from where
 -- that corner really is, so a mass cut by the edge of the fill still fades correctly.
-local function SoftMass(pieces, parent, cx, cy, hw, hh, r, g, b, alpha, bx0, by0, bx1, by1)
+local function SoftMass(pieces, parent, cx, cy, hw, hh, r, g, b, alpha, bx0, by0, bx1, by1, softLeft, softRight)
 	local function At(x, y)
 		local fx = 1 - math.abs(x - cx) / hw
 		local fy = 1 - math.abs(y - cy) / hh
 		if fx <= 0 or fy <= 0 then
 			return 0
 		end
-		return alpha * fx * fy
+		-- Nothing at a cut, so the fill's end or a pointed end is never a hard upright line.
+		local fade = 1
+		if softLeft then fade = fade * Clamp((x - bx0) / LIQUID_SOFT_CUT, 0, 1) end
+		if softRight then fade = fade * Clamp((bx1 - x) / LIQUID_SOFT_CUT, 0, 1) end
+		return alpha * fx * fy * fade
 	end
 	local quarters = {
 		{ cx - hw, cy - hh, cx, cy },
@@ -879,32 +911,40 @@ function plain:LiquidGroup(bar, entry, native)
 	root:SetAnchor(BOTTOMRIGHT, native, BOTTOMRIGHT, 0, 0)
 	root:SetDrawTier(DT_HIGH)
 	root:SetDrawLevel(1)
-	group = { control = root, native = native, textures = {}, currents = {}, surface = {}, bubbles = {} }
+	group = { control = root, native = native, textures = {}, currents = {}, surface = {}, glow = {}, drain = {}, bubbles = {}, shade = {} }
 	local count = 0
-	local function Texture(level, role)
+	local function Texture(level, role, soft)
 		count = count + 1
 		local texture = WINDOW_MANAGER:CreateControl(prefix .. "Piece" .. count, root, CT_TEXTURE)
 		texture:SetDrawLevel(level)
 		texture:SetHidden(true)
 		texture.pbsLiquidRole = role
+		texture.pbsLiquidSoft = soft
 		group.textures[#group.textures + 1] = texture
 		return texture
 	end
 	-- Back to front.
-	group.shade = Texture(1, "fill")
+	-- The shade in three: a fade-in, the body, a fade-out.
+	for index = 1, 3 do
+		group.shade[index] = Texture(1, "fill", true)
+	end
 	for index = 1, LIQUID_CURRENTS do
 		local pieces = {}
 		for quarter = 1, 4 do
-			pieces[quarter] = Texture(2, "fill")
+			pieces[quarter] = Texture(2, "fill", true)
 		end
 		group.currents[index] = pieces
 	end
-	group.drain = Texture(2, "tube")
+	for index = 1, LIQUID_EDGE_ROWS do
+		group.drain[index] = Texture(2, "tube")
+	end
 	for index = 1, LIQUID_BUBBLES do
 		group.bubbles[index] = { body = Texture(3, "fill"), shine = Texture(4, "fill") }
 	end
-	group.glow = Texture(4, "fill")
-	for index = 1, LIQUID_SURFACE_SEGMENTS do
+	for index = 1, LIQUID_EDGE_ROWS do
+		group.glow[index] = Texture(4, "fill")
+	end
+	for index = 1, LIQUID_EDGE_ROWS do
 		group.surface[index] = Texture(5, "fill")
 	end
 	group.glass = Texture(6, "tube")
@@ -955,10 +995,23 @@ function plain:LiquidRibbons(bar, entry, native, fraction, now)
 	local lr, lg, lb = Lighten(r, g, b, 0.55)
 
 	if liquid then
-		-- Depth: the lower part of the liquid sinks into shadow.
+		-- Depth: the lower part of the liquid sinks into shadow, fading in and out at a cut.
 		local shadeTop = top + depth * 0.35
-		Place(group.shade, root, from, shadeTop, to - from, bottom - shadeTop)
-		Corners(group.shade, 0, 0, 0, 0, 0, 0.5 * LIQUID_EFFECT_ALPHA, 0.5 * LIQUID_EFFECT_ALPHA)
+		local shadeAlpha = 0.5 * LIQUID_EFFECT_ALPHA
+		local span = to - from
+		local fadeLeft = bounds.softLeft and math.min(LIQUID_SOFT_CUT, span / 2) or 0
+		local fadeRight = bounds.softRight and math.min(LIQUID_SOFT_CUT, span / 2) or 0
+		local parts = {
+			{ from, from + fadeLeft, 0, shadeAlpha },
+			{ from + fadeLeft, to - fadeRight, shadeAlpha, shadeAlpha },
+			{ to - fadeRight, to, shadeAlpha, 0 },
+		}
+		for index, part in ipairs(parts) do
+			if part[2] - part[1] >= 0.5 then
+				Place(group.shade[index], root, part[1], shadeTop, part[2] - part[1], bottom - shadeTop)
+				Corners(group.shade[index], 0, 0, 0, 0, 0, part[3], part[4])
+			end
+		end
 
 		-- Currents, placed along the whole bar and cut to what is filled.
 		for index, pieces in ipairs(group.currents) do
@@ -972,9 +1025,9 @@ function plain:LiquidRibbons(bar, entry, native, fraction, now)
 			local cy = top + depth * (0.5 + 0.3 * math.sin(seconds * (0.5 + 0.11 * index) + index * 1.7))
 			local breathe = 0.8 + 0.2 * math.sin(seconds * 1.3 + index)
 			if light then
-				SoftMass(pieces, root, centre, cy, hw, hh, lr, lg, lb, 0.42 * breathe * LIQUID_EFFECT_ALPHA, from, top, to, bottom)
+				SoftMass(pieces, root, centre, cy, hw, hh, lr, lg, lb, 0.42 * breathe * LIQUID_EFFECT_ALPHA, from, top, to, bottom, bounds.softLeft, bounds.softRight)
 			else
-				SoftMass(pieces, root, centre, cy, hw, hh, r * 0.25, g * 0.25, b * 0.25, 0.4 * breathe * LIQUID_EFFECT_ALPHA, from, top, to, bottom)
+				SoftMass(pieces, root, centre, cy, hw, hh, r * 0.25, g * 0.25, b * 0.25, 0.4 * breathe * LIQUID_EFFECT_ALPHA, from, top, to, bottom, bounds.softLeft, bounds.softRight)
 			end
 		end
 
@@ -995,49 +1048,77 @@ function plain:LiquidRibbons(bar, entry, native, fraction, now)
 			end
 		end
 
-		-- The surface, where the fill ends inside the tube.
+		-- The surface, where the fill ends: in rows, stepping back from the middle of the band in
+		-- the shape of the frame's pointed ends, with a glow behind it.
 		if bounds.edgeOpen and to - from >= 6 then
 			local slosh = group.slosh
 			local amplitude = 0.6 + slosh * 3
-			local segment = depth / LIQUID_SURFACE_SEGMENTS
+			local row = depth / LIQUID_EDGE_ROWS
 			local lineWidth = 1.5
 			local sr, sg, sb = Lighten(r, g, b, 0.8)
-			for index, piece in ipairs(group.surface) do
-				local wobble = (math.sin(seconds * (7 + slosh * 6) + index * 1.1) * 0.5 + 0.5) * amplitude
-				local x = bounds.reverse and from + wobble or to - lineWidth - wobble
-				Place(piece, root, x, top + (index - 1) * segment, lineWidth, segment)
-				piece:SetColor(sr, sg, sb, 0.85 * LIQUID_EFFECT_ALPHA)
-			end
-			local glowWidth = math.min(8 + slosh * 6, to - from)
+			local glowWidth = 8 + slosh * 6
 			local glowAlpha = (0.35 + slosh * 0.3) * LIQUID_EFFECT_ALPHA
-			if bounds.reverse then
-				Place(group.glow, root, from, top, glowWidth, depth)
-				Corners(group.glow, lr, lg, lb, glowAlpha, 0, glowAlpha, 0)
-			else
-				Place(group.glow, root, to - glowWidth, top, glowWidth, depth)
-				Corners(group.glow, lr, lg, lb, 0, glowAlpha, 0, glowAlpha)
+			for index = 1, LIQUID_EDGE_ROWS do
+				local y0 = top + (index - 1) * row
+				local y1 = y0 + row
+				local left, right, d = RowLimits(bounds, y0, y1)
+				local wobble = (math.sin(seconds * (7 + slosh * 6) + index * 1.1) * 0.5 + 0.5) * amplitude
+				local line, glow = group.surface[index], group.glow[index]
+				if bounds.reverse then
+					local x = math.max(bounds.edge + d + wobble, left)
+					if x + lineWidth <= right then
+						Place(line, root, x, y0, lineWidth, row)
+						line:SetColor(sr, sg, sb, 0.85 * LIQUID_EFFECT_ALPHA)
+						local g1 = math.min(x + glowWidth, right)
+						if g1 - x >= 0.5 then
+							Place(glow, root, x, y0, g1 - x, row)
+							Corners(glow, lr, lg, lb, glowAlpha, 0, glowAlpha, 0)
+						end
+					end
+				else
+					local x = math.min(bounds.edge - d - wobble, right) - lineWidth
+					if x >= left then
+						Place(line, root, x, y0, lineWidth, row)
+						line:SetColor(sr, sg, sb, 0.85 * LIQUID_EFFECT_ALPHA)
+						local g0 = math.max(x + lineWidth - glowWidth, left)
+						if x + lineWidth - g0 >= 0.5 then
+							Place(glow, root, g0, y0, x + lineWidth - g0, row)
+							Corners(glow, lr, lg, lb, 0, glowAlpha, 0, glowAlpha)
+						end
+					end
+				end
 			end
 		end
 	end
 
-	-- What was just lost, draining away beyond the surface.
+	-- What was just lost, draining away beyond the surface. In rows, so both of its ends -- where
+	-- the liquid now stops and where it stopped before -- have the frame's shape, and fading to
+	-- nothing at the far end rather than stopping there.
 	if draining > 0.002 then
 		local width = bounds.width
-		local x0, x1
-		if bounds.reverse then
-			x0, x1 = width - width * group.drainLevel, width - bounds.filled
-		else
-			x0, x1 = bounds.filled, width * group.drainLevel
-		end
-		local cx0, cy0, cx1, cy1 = Clip(x0, top, x1, bottom, bounds.barFrom, top, bounds.barTo, bottom)
-		if cx0 then
-			local alpha = 0.5 * Clamp(draining * 10, 0, 1) * LIQUID_EFFECT_ALPHA
-			Place(group.drain, root, cx0, cy0, cx1 - cx0, cy1 - cy0)
-			-- Strongest against the liquid, thinning out towards where the level was.
+		local alpha = 0.5 * Clamp(draining * 10, 0, 1) * LIQUID_EFFECT_ALPHA
+		local row = depth / LIQUID_EDGE_ROWS
+		local old = width * group.drainLevel
+		for index = 1, LIQUID_EDGE_ROWS do
+			local y0 = top + (index - 1) * row
+			local y1 = y0 + row
+			local left, right, d = RowLimits(bounds, y0, y1)
+			local x0, x1
 			if bounds.reverse then
-				Corners(group.drain, lr, lg, lb, alpha * 0.3, alpha, alpha * 0.3, alpha)
+				x0, x1 = width - old + d, width - bounds.filled + d
 			else
-				Corners(group.drain, lr, lg, lb, alpha, alpha * 0.3, alpha, alpha * 0.3)
+				x0, x1 = bounds.filled - d, old - d
+			end
+			x0, x1 = math.max(x0, left), math.min(x1, right)
+			local piece = group.drain[index]
+			if x1 - x0 >= 0.5 then
+				Place(piece, root, x0, y0, x1 - x0, row)
+				-- Strongest against the liquid, nothing where the level was.
+				if bounds.reverse then
+					Corners(piece, lr, lg, lb, 0, alpha, 0, alpha)
+				else
+					Corners(piece, lr, lg, lb, alpha, 0, alpha, 0)
+				end
 			end
 		end
 	end
@@ -1045,8 +1126,9 @@ function plain:LiquidRibbons(bar, entry, native, fraction, now)
 	-- Glass: a reflection along the top of the whole tube, and a glint that crosses it.
 	local glassTop = bounds.bandTop + math.max(1, depth * 0.08)
 	local glassHeight = 1.2
-	local gx0, gy0, gx1, gy1 = Clip(bounds.barFrom, glassTop, bounds.barTo, glassTop + glassHeight,
-		bounds.barFrom, bounds.bandTop, bounds.barTo, bounds.bandBottom)
+	local glassLeft, glassRight = RowLimits(bounds, glassTop, glassTop + glassHeight)
+	local gx0, gy0, gx1, gy1 = Clip(glassLeft, glassTop, glassRight, glassTop + glassHeight,
+		glassLeft, bounds.bandTop, glassRight, bounds.bandBottom)
 	if gx0 then
 		Place(group.glass, root, gx0, gy0, gx1 - gx0, gy1 - gy0)
 		group.glass:SetColor(1, 1, 1, 0.16 * LIQUID_EFFECT_ALPHA)
@@ -1060,8 +1142,9 @@ function plain:LiquidRibbons(bar, entry, native, fraction, now)
 	}
 	for index, part in ipairs(halvesOfGlint) do
 		local piece = group.glint[index]
+		local glintLeft, glintRight = RowLimits(bounds, glassTop, glassTop + 2)
 		local x0, y0, x1, y1 = Clip(part[1], glassTop, part[2], glassTop + 2,
-			bounds.barFrom, bounds.bandTop, bounds.barTo, bounds.bandBottom)
+			glintLeft, bounds.bandTop, glintRight, bounds.bandBottom)
 		if x0 then
 			local function At(x)
 				return part[3] + (part[4] - part[3]) * (x - part[1]) / (part[2] - part[1])

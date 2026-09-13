@@ -21,7 +21,7 @@ local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 addon:Account().enabled = true
 addon:SetBarStyle("liquidflow")
 SetPower(COMBAT_MECHANIC_FLAGS_HEALTH, 800, 1000)
-SetPower(COMBAT_MECHANIC_FLAGS_MAGICKA, 550, 1000)
+SetPower(COMBAT_MECHANIC_FLAGS_MAGICKA, 880, 1000)
 SetPower(COMBAT_MECHANIC_FLAGS_STAMINA, 900, 1000)
 FireHud(SCENE_FRAGMENT_SHOWN)
 addon:Refresh()
@@ -29,9 +29,17 @@ addon:Refresh()
 local FRAMES, STEP = 100, 50
 local events = {
 	[30] = function() SetPower(COMBAT_MECHANIC_FLAGS_HEALTH, 450, 1000) end,
-	[60] = function() SetPower(COMBAT_MECHANIC_FLAGS_MAGICKA, 850, 1000) end,
 	[75] = function() SetPower(COMBAT_MECHANIC_FLAGS_STAMINA, 600, 1000) end,
 }
+-- Magicka regenerates up to full the whole time: the moving end spends it near the full end,
+-- which is where an upright surface used to stand out.
+local magicka = 880
+local function Regenerate()
+	if magicka < 1000 then
+		magicka = math.min(1000, magicka + 2)
+		SetPower(COMBAT_MECHANIC_FLAGS_MAGICKA, magicka, 1000)
+	end
+end
 
 local function Visible(control, stop)
 	while control and control ~= stop do
@@ -57,6 +65,7 @@ local function Num(v) return string.format("%.3f", v or 0) end
 local frames = {}
 for frame = 1, FRAMES do
 	if events[frame] then events[frame]() end
+	Regenerate()
 	AdvanceFrame(STEP)
 	RunUpdates()
 	local bars = {}
@@ -104,7 +113,7 @@ body{background:#1b1d22;color:#ddd;font:13px system-ui;margin:0;padding:16px}
 canvas{display:block;background:#2a2d33;border-radius:6px;max-width:100%}
 p{margin:6px 0 12px}
 </style>
-<p>PB's ConsoleHudCustomizer - Liquid, rendered from the add-on's own writes (x4). Health is hit at 1.5s, magicka refills at 3.0s, stamina drops at 3.75s. <span id="t"></span></p>
+<p>PB's ConsoleHudCustomizer - Liquid, rendered from the add-on's own writes (x4). Magicka regenerates from 88% to full, health is hit at 1.5s, stamina drops at 3.75s. <span id="t"></span></p>
 <canvas id="c" width="1000" height="330"></canvas>
 <script>
 const FRAMES=]] .. "[" .. table.concat(frames, ",") .. "]" .. [[;
@@ -114,6 +123,11 @@ const rgba=(r,g,b,a)=>`rgba(${r*255|0},${g*255|0},${b*255|0},${a})`;
 function drawBar(entries, ox, oy){
   // The band the art occupies: 17 of 64, centred.
   const h=entries[0].h, bandTop=(h-17)/2;
+  const total=entries.reduce((a,e)=>a+e.w,0), T=(oy+bandTop)*S, B=(oy+bandTop+17)*S, M=(T+B)/2, P=8.5*S;
+  const shape=()=>{ ctx.beginPath(); ctx.moveTo(ox*S,M); ctx.lineTo(ox*S+P,T); ctx.lineTo((ox+total)*S-P,T); ctx.lineTo((ox+total)*S,M); ctx.lineTo((ox+total)*S-P,B); ctx.lineTo(ox*S+P,B); ctx.closePath(); };
+  // The game's own track and fill live inside its pointed shape; the add-on's pieces do not get
+  // this clip, so anything of theirs outside the shape would show.
+  ctx.save(); shape(); ctx.clip();
   let x=ox;
   for(const e of entries){
     const w=e.w;
@@ -125,6 +139,12 @@ function drawBar(entries, ox, oy){
     const c1=rgba(e.grad[0],e.grad[1],e.grad[2],e.grad[3]), c2=rgba(e.grad[4],e.grad[5],e.grad[6],e.grad[7]);
     gr.addColorStop(0,e.reverse?c2:c1); gr.addColorStop(1,e.reverse?c1:c2);
     ctx.fillStyle=gr; ctx.fillRect(fx*S,(oy+bandTop)*S,filled*S,17*S);
+    x+=w;
+  }
+  ctx.restore();
+  x=ox;
+  for(const e of entries){
+    const w=e.w;
     // the add-on's controls
     for(const r of e.rects){
       const [rx,ry,rw,rh]=r, tl=r.slice(4,8), tr=r.slice(8,12), bl=r.slice(12,16), br=r.slice(16,20);
@@ -139,11 +159,8 @@ function drawBar(entries, ox, oy){
     }
     x+=w;
   }
-  // frame: the band outline with pointed ends
-  const total=x-ox, t=(oy+bandTop)*S, b=(oy+bandTop+17)*S, m=(t+b)/2, p=8.5*S;
-  ctx.strokeStyle='rgba(220,210,180,.55)'; ctx.lineWidth=2; ctx.beginPath();
-  ctx.moveTo(ox*S-p/2,m); ctx.lineTo(ox*S+p/2,t); ctx.lineTo((ox+total)*S-p/2,t); ctx.lineTo((ox+total)*S+p/2,m);
-  ctx.lineTo((ox+total)*S-p/2,b); ctx.lineTo(ox*S+p/2,b); ctx.closePath(); ctx.stroke();
+  // the game's frame, on its pointed shape
+  ctx.strokeStyle='rgba(220,210,180,.7)'; ctx.lineWidth=2; shape(); ctx.stroke();
 }
 let f=0;
 function tick(){
