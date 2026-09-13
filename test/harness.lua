@@ -39,7 +39,7 @@ function AdvanceFrame(ms) frameTime = frameTime + (ms or 1000) end
 function GetAddOnManager()
 	return {
 		GetNumAddOns = function() return 1 end,
-		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ConsoleHudCustomizer|r 1.15.0" end,
+		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ConsoleHudCustomizer|r 1.23.0" end,
 	}
 end
 
@@ -147,7 +147,15 @@ function Control:SetMouseEnabled() end
 function Control:SetDrawLayer(v) self.drawLayer = v end
 function Control:SetDrawTier(v) self.drawTier = v end
 function Control:SetHandler(name, fn) self.handlers[name] = fn end
-function Control:SetColor(r, g, b, a) self.color = { r, g, b, a } end
+VERTEX_POINTS_TOPLEFT, VERTEX_POINTS_TOPRIGHT = 1, 2
+VERTEX_POINTS_BOTTOMLEFT, VERTEX_POINTS_BOTTOMRIGHT = 4, 8
+function Control:SetColor(r, g, b, a)
+	self.color = { r, g, b, a }
+	self.vertices = { [1] = self.color, [2] = self.color, [4] = self.color, [8] = self.color }
+end
+function Control:SetVertexColors(point, r, g, b, a)
+	self.vertices[point] = { r, g, b, a }
+end
 function Control:SetText(t) self.text = t end
 function Control:SetFont(f) self.font = f end
 function Control:SetTexture(t) self.texture = t end
@@ -171,7 +179,8 @@ function Control:SetEdgeColor(r, g, b, a) self.edgeColor = { r, g, b, a } end
 function Control:GetAlpha() return self.alpha or 1 end
 function Control:GetFontHeight() local size = tonumber((self.font or ""):match("|(%d+)|")) or 0; return math.ceil(size * 1.25) end
 function Control:GetText() return self.text end
-function Control:SetHorizontalAlignment() end
+function Control:SetHorizontalAlignment(value) self.horizontalAlignment = value end
+function Control:GetHorizontalAlignment() return self.horizontalAlignment or TEXT_ALIGN_CENTER end
 function Control:SetVerticalAlignment() end
 function Control:Tick() if self.handlers.OnUpdate then self.handlers.OnUpdate(self) end end
 
@@ -211,6 +220,11 @@ function CreateControlFromVirtual(name, parent, template, suffix)
 	control.namedChildren = {}
 	for _, child in ipairs(VIRTUAL_CHILDREN[template]) do
 		control.namedChildren[child] = MakeControl(fullName .. child, control, "control")
+	end
+	-- Match the back-row template's independent frame/icon dimensions in Controls.xml.
+	if template == "PBsConsoleHudCustomizerBackBarSlot" then
+		control:SetDimensions(52, 68)
+		control.namedChildren.Icon:SetDimensions(44, 44)
 	end
 	CreatedControls[fullName] = control
 	return control

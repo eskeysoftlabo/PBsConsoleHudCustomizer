@@ -16,14 +16,29 @@ local strings = {
 	-- ---- The look of the resource bars ---------------------------------------------------
 	SI_PBSCHC_SECTION_STYLE = "The look of the bars",
 	SI_PBSCHC_STYLE = "Bar style",
-	SI_PBSCHC_STYLE_TOOLTIP = "Standard is the game's own bars, untouched. Square draws each bar as a flat rectangle -- a dark track and a solid block of the power's own colour -- with the game's arrow-shaped frame and background put away, at the size the game draws it. MURA-HIGE Style is the same rectangle at a width and a height of your own, set below. Either way the bars themselves are left in place and still doing their work, so damage shields, armour changes and the low-health warning all still show on top.",
+	SI_PBSCHC_STYLE_TOOLTIP = "Standard is the game's own bars, untouched. Square draws each bar as a flat rectangle -- a dark track and a solid block of the power's own colour -- with the game's arrow-shaped frame and background put away, at the size the game draws it. MURA-HIGE Style is the same rectangle at a width and a height of your own, set below. MURA-HIGE NEO Style uses the same size settings, with health, magicka and stamina all filling from left to right. In these styles the bars themselves are left in place and still doing their work, so damage shields, armour changes and the low-health warning all still show on top.",
 	SI_PBSCHC_STYLE_STANDARD = "Standard",
 	SI_PBSCHC_STYLE_PLAIN = "Square",
 	SI_PBSCHC_STYLE_ROUNDED = "MURA-HIGE Style",
+	SI_PBSCHC_STYLE_NEO = "MURA-HIGE NEO Style",
 	SI_PBSCHC_PLAIN_OPACITY = "How solid",
 	SI_PBSCHC_PLAIN_OPACITY_TOOLTIP = "How solid the rectangles are. 100% hides the game's own fill completely; below that it shows through, which is one way to keep a little of the original look.",
+	SI_PBSCHC_BORDER_COLOUR = "Outline colour",
+	SI_PBSCHC_BORDER_COLOUR_TOOLTIP = "Outline colour shared by health, magicka and stamina in Square, MURA-HIGE Style and MURA-HIGE NEO Style. Visible when Draw an outline is enabled.",
+	SI_PBSCHC_BORDER_BLACK = "Black (default)",
+	SI_PBSCHC_BORDER_WHITE = "White",
+	SI_PBSCHC_BORDER_SILVER = "Silver",
+	SI_PBSCHC_BORDER_GOLD = "Gold",
+	SI_PBSCHC_BORDER_RED = "Red",
+	SI_PBSCHC_BORDER_BLUE = "Blue",
+	SI_PBSCHC_RESOURCE_ALIGN = "Resource text alignment",
+	SI_PBSCHC_RESOURCE_ALIGN_TOOLTIP = "Text alignment shared by health, magicka and stamina in MURA-HIGE Style and MURA-HIGE NEO Style. Defaults to left.",
+	SI_PBSCHC_RESOURCE_ALIGN_LEFT = "Left",
+	SI_PBSCHC_RESOURCE_ALIGN_RIGHT = "Right",
+	SI_PBSCHC_RESOURCE_ALIGN_CENTER = "Center",
+
 	SI_PBSCHC_PLAIN_BORDER = "Draw an outline",
-	SI_PBSCHC_PLAIN_BORDER_TOOLTIP = "Draw a thin dark line round each bar. The game's own arrow-shaped frame is always put away while one of these styles is chosen -- a flat rectangle inside an arrow frame is neither one thing nor the other -- so this is the only frame on offer. Off, the bar is a block of colour with no line at all.",
+	SI_PBSCHC_PLAIN_BORDER_TOOLTIP = "Draw a thin line in the selected colour round each bar. The game's own arrow-shaped frame is always put away while one of these styles is chosen -- a flat rectangle inside an arrow frame is neither one thing nor the other -- so this is the only frame on offer. Off, the bar is a block of colour with no line at all.",
 
 	-- ---- The shade over a skill ----------------------------------------------------------
 	SI_PBSCHC_SECTION_SHADE = "Shade over a skill in use",
@@ -41,9 +56,9 @@ local strings = {
 	SI_PBSCHC_SKILLBAR_ENABLED = "Let this add-on touch the skill bar",
 	SI_PBSCHC_SKILLBAR_ENABLED_TOOLTIP = "Turn this off to hand the skill bar back to the game, and to any other add-on that lays it out. Its position and size, the spacing along it, the other weapon set's row, the countdown and target count on the icons and the shade over a skill in use are all put back and stay off; the settings are kept for when you turn it on again. The health, magicka and stamina bars are not affected.",
 	SI_PBSCHC_BAR_WIDTH = "<<1>>: bar width",
-	SI_PBSCHC_BAR_WIDTH_TOOLTIP = "How wide the bar is drawn, in pixels. MURA-HIGE Style only: that style draws the bar itself, so it can be given a size. The other styles scale the game's own bar instead, because the width of those controls is the game's to write. The game's own is 224.",
+	SI_PBSCHC_BAR_WIDTH_TOOLTIP = "How wide the bar is drawn, in pixels. MURA-HIGE Style and MURA-HIGE NEO Style only: that style draws the bar itself, so it can be given a size. The other styles scale the game's own bar instead, because the width of those controls is the game's to write. The game's own is 224.",
 	SI_PBSCHC_BAR_HEIGHT = "<<1>>: bar height",
-	SI_PBSCHC_BAR_HEIGHT_TOOLTIP = "How tall the bar is drawn, in pixels. MURA-HIGE Style only. The game's own is 17.",
+	SI_PBSCHC_BAR_HEIGHT_TOOLTIP = "How tall the bar is drawn, in pixels. MURA-HIGE Style and MURA-HIGE NEO Style only. The game's own is 17.",
 
 	-- ---- The gaps along the skill bar ----------------------------------------------------
 	SI_PBSCHC_SECTION_GAPS = "Spacing along the skill bar",

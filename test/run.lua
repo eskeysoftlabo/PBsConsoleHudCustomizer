@@ -28,7 +28,7 @@ print("\n== 1. load ==")
 Fire(EVENT_ADD_ON_LOADED, "PBsConsoleHudCustomizer")
 local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 local health, magicka, stamina = addon.barByKey.health, addon.barByKey.magicka, addon.barByKey.stamina
-check("version read from manifest", addon.version, "1.15.0")
+check("version read from manifest", addon.version, "1.23.0")
 check("slash command registered", type(SLASH_COMMANDS["/pbhud"]), "function")
 check("short slash command registered", type(SLASH_COMMANDS["/pbhc"]), "function")
 check("HUD fragment callback registered", addon.hudRegistered, true)
@@ -51,7 +51,7 @@ check("HUD fragment callback registered", addon.hudRegistered, true)
 -- hands the whole bar back.
 -- ... and the three attribute bars carry two more rows each: the width and the height
 -- MURA-HIGE Style draws them at.
-check("settings rows", #PanelRows, 3 + 4 + 4 * 5 + 3 * 2 + 1 + 5 + 6 + 11 + 6 + 3 + 4)
+check("settings rows", #PanelRows, 3 + 6 + 4 * 5 + 3 * 2 + 1 + 5 + 6 + 11 + 6 + 3 + 4)
 
 print("\n== 2. the first apply waits for the bars ==")
 Fire(EVENT_PLAYER_ACTIVATED)
@@ -240,7 +240,7 @@ FireHud(SCENE_FRAGMENT_SHOWN)
 check("the update loop is running", UpdateRegistered("PBsConsoleHudCustomizerTimers"), true)
 local back3 = CreatedControls["PBsConsoleHudCustomizerBack3"]
 check("a row control was built per slot", back3 ~= nil, true)
-check("it hangs on the game's own button", back3:GetParent():GetName(), "ActionButton3")
+check("it inherits visibility from the bar", back3:GetParent():GetName(), "ZO_ActionBar1")
 check("above it", string.format("%d", back3.anchors[1].offsetY), "-4")
 check("it shows the other set's ability", back3.namedChildren.Icon.texture, "back3.dds")
 check("the ultimate too", CreatedControls["PBsConsoleHudCustomizerBack8"].namedChildren.Icon.texture, "back8.dds")
@@ -279,10 +279,11 @@ Row(GetString(SI_PBSCHC_TIMER_DECIMALS)).setFunction(false)
 RunUpdates()
 check("whole seconds when tenths are off", frontTimer:GetText(), "8")
 Row(GetString(SI_PBSCHC_TIMER_DECIMALS)).setFunction(true)
--- Under a second is noise; the game does not show it either.
+-- The addon keeps counting through the final second.
 SetSlot(HOTBAR_CATEGORY_PRIMARY, 3, { name = "Front 3", icon = "front3.dds", id = 103, remaining = 400 })
 RunUpdates()
-check("nothing under a second", frontTimer:IsHidden(), true)
+check("still visible under a second", frontTimer:IsHidden(), false)
+check("tenths continue under a second", frontTimer:GetText(), "0.4")
 SetSlot(HOTBAR_CATEGORY_PRIMARY, 3, { name = "Front 3", icon = "front3.dds", id = 103, remaining = 8400 })
 RunUpdates()
 
@@ -490,7 +491,7 @@ check("the row is there to begin with", CreatedControls["PBsConsoleHudCustomizer
 -- second return. No setting of ours is touched.
 WeaponPairLocked = true
 RunUpdates()
-check("locked to one bar: the row goes", CreatedControls["PBsConsoleHudCustomizerBack3"]:IsHidden(), true)
+check("weapon swap locked: configured row stays visible", CreatedControls["PBsConsoleHudCustomizerBack3"]:IsHidden(), false)
 check("and says why", select(2, addon:WeaponSwapState()), "locked")
 check("the setting is untouched", addon:BackBar().enabled, true)
 WeaponPairLocked = false
@@ -499,7 +500,7 @@ check("take the ring off and it is back", CreatedControls["PBsConsoleHudCustomiz
 -- A character too low to have earned the second bar.
 PlayerLevel = 10
 RunUpdates()
-check("too low a level: the row goes", CreatedControls["PBsConsoleHudCustomizerBack3"]:IsHidden(), true)
+check("visibility follows setting even before swap unlock", CreatedControls["PBsConsoleHudCustomizerBack3"]:IsHidden(), false)
 check("and says why", select(2, addon:WeaponSwapState()), "unearned")
 PlayerLevel = 50
 RunUpdates()
@@ -577,7 +578,7 @@ check("built on the container", magickaPlain:GetParent():GetName(), "ZO_PlayerAt
 check("over the bar's own rectangle", magickaPlain.anchors[1].relativeTo:GetName(), "ZO_PlayerAttributeMagickaBar")
 check("the track is a backdrop, not a texture", magickaPlain.namedChildren.Track.kind, "control")
 check("coloured, with no art", magickaPlain.namedChildren.Track.centerColor ~= nil, true)
-check("and the fill takes the power's own colour", magickaPlain.namedChildren.Fill.centerColor[3], 0.8)
+check("and the fill takes the power's own colour", magickaPlain.namedChildren.Fill.color[3], 0.8)
 
 -- Magicka fills towards its left, so its block hangs off the right edge and is as wide as the
 -- bar is full: half, here.
@@ -1016,6 +1017,7 @@ addon.account.text.countFromOne = true
 SetSlot(HOTBAR_CATEGORY_PRIMARY, 7, { name = "Blue Betty", icon = "betty.dds", id = 170, remaining = 22000, duration = 22000 })
 FireHud(SCENE_FRAGMENT_SHOWN)
 
+SetAbilityDuration(170, 22000)
 local now5 = GetGameTimeMilliseconds()
 FireCast(7)
 -- What the netch actually puts on the player is called something else entirely, and the game
@@ -1024,7 +1026,7 @@ FireEffect(EFFECT_RESULT_GAINED, "Netch Swipe", "player", (now5 + 5000) / 1000, 
 FireEffect(EFFECT_RESULT_GAINED, "Major Sorcery", "player", (now5 + 22000) / 1000, 1, 901)
 RunUpdates()
 local timer7 = addon.timers.labels[7].timer
-check("the longest effect of that cast is the one counted", timer7:GetText(), "22")
+check("the ability duration is used instead of unrelated buffs", timer7:GetText(), "22")
 
 -- The client hands over to the short one. It is not even asked.
 AdvanceFrame(18000)
@@ -1051,11 +1053,12 @@ check("casting it again starts it again", timer7:GetText(), "22")
 -- A cast whose effect lands on several targets: the count comes from that same effect, so it
 -- cannot be looking at one thing while the countdown looks at another.
 addon.timers:Forget_All()
+SetAbilityDuration(140, 20000)
 local now6 = GetGameTimeMilliseconds()
 SetSlot(HOTBAR_CATEGORY_PRIMARY, 4, { name = "Barbed Trap", icon = "trap.dds", id = 140, remaining = 0, duration = 0 })
 FireCast(4)
-FireEffect(EFFECT_RESULT_GAINED, "Trap Beast", "", (now6 + 20000) / 1000, 81, 141)
-FireEffect(EFFECT_RESULT_GAINED, "Trap Beast", "", (now6 + 20000) / 1000, 82, 141)
+FireEffect(EFFECT_RESULT_GAINED, "Trap Beast", "", (now6 + 20000) / 1000, 81, 141, "trap.dds")
+FireEffect(EFFECT_RESULT_GAINED, "Trap Beast", "", (now6 + 20000) / 1000, 82, 141, "trap.dds")
 RunUpdates()
 local count4 = addon.timers.labels[4].count
 check("the count is of the cast's own effect", count4:GetText(), "2")
@@ -1073,7 +1076,7 @@ local now7 = GetGameTimeMilliseconds()
 FireCast(6)
 FireEffect(EFFECT_RESULT_GAINED, "Something Else", "player", (now7 + 9000) / 1000, 1, 902)
 RunUpdates()
-check("the other slot got its own", addon.timers.labels[6].timer:GetText(), "9.0")
+check("the other slot matches its own named effect", addon.timers.labels[6].timer:GetText(), "9.0")
 check("and this one is untouched", addon.timers.labels[4].timer:IsHidden(), true)
 
 print("\n== 41. the same ability on both weapon sets ==")
@@ -1394,7 +1397,7 @@ FireEffect(EFFECT_RESULT_GAINED, "Rally", "", (now16 + 30000) / 1000, 4, 191)
 RunUpdates()
 check("two enemies are", rallyCount:GetText(), "2")
 
-print("\n== 53. the countdown starts at the cast, and runs to the furthest target ==")
+print("\n== 53. the countdown stays tied to the cast across targets ==")
 -- Two things FancyActionBar+ does that this did not.
 --
 -- One: it starts counting at the cast, from the ability's own length, rather than waiting for an
@@ -1424,17 +1427,16 @@ FireEffect(EFFECT_RESULT_GAINED, "Ritual", "", (now17 + 20000) / 1000, 41, 221)
 RunUpdates()
 check("the effect takes over from the tooltip", ritual:GetText(), "20")
 
--- Two: the same effect landing on another target carries the countdown out to whichever ends
--- last, and never shortens it ("if maxEnd > effect.endTime then effect.endTime = maxEnd").
+-- Later targets affect the count, but must not move the skill countdown origin.
 AdvanceFrame(10000)
 local now18 = GetGameTimeMilliseconds()
 FireEffect(EFFECT_RESULT_GAINED, "Ritual", "", (now18 + 20000) / 1000, 42, 221)
 RunUpdates()
-check("a later target carries it out", ritual:GetText(), "20")
+check("a later target does not restart the countdown", ritual:GetText(), "10")
 -- And a shorter one does not pull it in.
 FireEffect(EFFECT_RESULT_GAINED, "Ritual", "", (now18 + 3000) / 1000, 43, 221)
 RunUpdates()
-check("a shorter one does not pull it in", ritual:GetText(), "20")
+check("a shorter one does not pull it in", ritual:GetText(), "10")
 check("all three are counted as targets", addon.timers.labels[4].count:GetText(), "3")
 
 print("\n== 54. a ten-second ability that also puts a six-second effect out ==")
@@ -1655,6 +1657,533 @@ RunUpdates()
 check("another ability counts while a circle is pending", addon.timers.labels[5].timer:GetText(), "6.0")
 check("and the circle is forgotten by the press that followed", T.groundPending, nil)
 SetGroundTargeting(false)
+
+print("\n== 57. fixed cast origin and stale effects ==")
+T:Forget_All()
+ActiveHotbar = HOTBAR_CATEGORY_PRIMARY
+SetSlot(HOTBAR_CATEGORY_PRIMARY, 4, { name = "Ritual", icon = "ritual.dds", id = 220, remaining = 0, duration = 0 })
+SetAbilityDuration(220, 16000)
+FireCast(4)
+local castAt = GetFrameTimeMilliseconds()
+AdvanceFrame(600)
+local arrived = GetFrameTimeMilliseconds()
+FireEffect(EFFECT_RESULT_GAINED, "Ritual", "player", (arrived + 16000) / 1000, 1, 220, "ritual.dds", nil, arrived / 1000)
+check("delayed effect retains the player cast origin", T:SlotTimer(4, HOTBAR_CATEGORY_PRIMARY, arrived), 15400)
+AdvanceFrame(16000)
+SetSlot(HOTBAR_CATEGORY_PRIMARY, 4, { name = "Ritual", icon = "ritual.dds", id = 220, remaining = 16000, duration = 16000 })
+check("client refresh cannot revive an expired cast", T:SlotTimer(4, HOTBAR_CATEGORY_PRIMARY, GetFrameTimeMilliseconds()), 0)
+FireCast(4)
+local recastAt = GetFrameTimeMilliseconds()
+FireEffect(EFFECT_RESULT_UPDATED, "Old Ritual", "player", (recastAt + 15000) / 1000, 1, 220, "ritual.dds", nil, (recastAt - 1000) / 1000)
+check("old effect cannot claim the new cast", T:LinkedEffect(4, HOTBAR_CATEGORY_PRIMARY, recastAt).key, nil)
+SetSlot(HOTBAR_CATEGORY_BACKUP, 4, { name = "Ritual", icon = "ritual.dds", id = 220, remaining = 0, duration = 0 })
+AdvanceFrame(3000)
+ActiveHotbar = HOTBAR_CATEGORY_BACKUP
+FireCast(4)
+check("both slotted copies follow the latest cast", T:SlotTimer(4, HOTBAR_CATEGORY_PRIMARY, GetFrameTimeMilliseconds()), 16000)
+ActiveHotbar = HOTBAR_CATEGORY_PRIMARY
+T:Forget_All()
+SetGroundTargeting(true)
+FireCast(4)
+local aimingAt = GetFrameTimeMilliseconds()
+FireEffect(EFFECT_RESULT_GAINED, "Ritual", "player", (aimingAt + 16000) / 1000, 1, 220)
+check("effect during aiming cannot confirm placement", T:LinkedEffect(4, HOTBAR_CATEGORY_PRIMARY, aimingAt), nil)
+T:OnGroundCancel()
+SetGroundTargeting(false)
+FireEffect(EFFECT_RESULT_GAINED, "Ritual", "player", (aimingAt + 16000) / 1000, 1, 220)
+check("effect after cancellation cannot confirm a cast", T:LinkedEffect(4, HOTBAR_CATEGORY_PRIMARY, aimingAt), nil)
+
+print("\n== 58. interrupted icon animations and ultimate fit ==")
+local gamepadMode = true
+IsInGamepadPreferredMode = function() return gamepadMode end
+local buttons = {}
+for slot = 3, 8 do
+	local control = _G["ActionButton" .. slot]
+	buttons[slot] = { icon = control:GetNamedChild("Icon"),
+		flipCard = MakeControl("TestFlip" .. slot, control, "control") }
+end
+ZO_ActionBar_GetButton = function(slot) return buttons[slot] end
+local playing = true
+buttons[3].iconBounceAnimation = { IsPlaying = function() return playing end }
+buttons[3].icon:SetDimensions(75, 75)
+buttons[8].icon:SetDimensions(74, 74)
+buttons[8].flipCard:SetDimensions(61, 61)
+addon.skillbar:RepairIcons()
+check("live bounce retains its animated size", buttons[3].icon:GetWidth(), 75)
+check("ultimate icon restored to meter's reference size", buttons[8].icon:GetWidth(), 67)
+check("ultimate reference frame restored too", buttons[8].flipCard:GetWidth(), 67)
+playing = false
+RunUpdates()
+check("interrupted bounce returns to normal size", buttons[3].icon:GetWidth(), 61)
+local dimensionWrites = WriteCount("ActionButton3Icon", "dimensions")
+RunUpdates()
+check("settled icons are not rewritten every tick", WriteCount("ActionButton3Icon", "dimensions"), dimensionWrites)
+buttons[3].hotbarSwapAnimation = { IsPlaying = function() return true end }
+buttons[3].flipCard:SetDimensions(12, 61)
+RunUpdates()
+check("weapon swap size animation is preserved", buttons[3].flipCard:GetWidth(), 12)
+gamepadMode = false
+buttons[8].icon:SetDimensions(47, 47)
+RunUpdates()
+check("keyboard dimensions are untouched", buttons[8].icon:GetWidth(), 47)
+gamepadMode = true
+addon:SetSkillBarAllowed(false)
+addon.skillbar:RepairIcons()
+check("skill bar opt-out prevents icon repairs", buttons[8].icon:GetWidth(), 47)
+addon:SetSkillBarAllowed(true)
+_G.ActionButton3:SetHidden(true)
+WeaponPairLocked = true
+RunUpdates()
+local persistentBack = T.back[3].control
+check("back row stays shown while front slot hides", persistentBack:IsHidden(), false)
+check("hidden front slot is not its parent", persistentBack:GetParent():GetName(), "ZO_ActionBar1")
+_G.ActionButton3:SetHidden(false)
+WeaponPairLocked = false
+
+print("\n== 59. independent front/back sizes survive repeated weapon swaps ==")
+-- Model the client's cached size-animation endpoints, including a style update
+-- that captures an already shrunken FlipCard before the swap finishes.
+local function SizeAnimation()
+	return {
+		SetStartAndEndWidth = function(self, a, b) self.startWidth, self.endWidth = a, b end,
+		SetStartAndEndHeight = function(self, a, b) self.startHeight, self.endHeight = a, b end,
+	}
+end
+local function SwapTimeline(size)
+	local first, last = SizeAnimation(), SizeAnimation()
+	first:SetStartAndEndWidth(size, size)
+	first:SetStartAndEndHeight(size, 0)
+	last:SetStartAndEndWidth(size, size)
+	last:SetStartAndEndHeight(0, size)
+	return {
+		playing = false,
+		IsPlaying = function(self) return self.playing end,
+		GetFirstAnimation = function() return first end,
+		GetLastAnimation = function() return last end,
+	}
+end
+local function VisibleWidth(control)
+	local width = control:GetWidth()
+	while control and control ~= GuiRoot do
+		width = width * control:GetScale()
+		control = control:GetParent()
+	end
+	return width
+end
+T:HideAll()
+-- Earlier harness sections rebuilt the game bar; reconnect existing mock controls.
+for slot, entry in pairs(T.back) do
+	entry.control.parent = _G.ZO_ActionBar1
+	entry.button = _G["ActionButton" .. slot]
+end
+for slot = 3, 8 do
+	buttons[slot].slot = _G["ActionButton" .. slot]
+	buttons[slot].hotbarSwapAnimation = SwapTimeline(44)
+end
+for _, sizes in ipairs({ { 140, 65 }, { 60, 180 }, { 100, 70 } }) do
+	addon:SetScalePercent(addon.actionBar, sizes[1])
+	addon:SetBackBarScale(sizes[2])
+	addon:Refresh()
+	for swap = 1, 2 do
+		ActiveHotbar = ActiveHotbar == HOTBAR_CATEGORY_PRIMARY and HOTBAR_CATEGORY_BACKUP or HOTBAR_CATEGORY_PRIMARY
+		for _, slot in ipairs({ 3, 8 }) do
+			local button = buttons[slot]
+			local timeline = button.hotbarSwapAnimation
+			timeline.playing = true
+			-- A stale template/scale and cached endpoint must not persist as the
+			-- final front size, even if dimensions alone already look correct.
+			button.slot:SetScale(sizes[2] / 100)
+			button.flipCard:SetScale(sizes[2] / 100)
+			button.icon:SetScale(sizes[2] / 100)
+			button.flipCard:SetDimensions(44, 0)
+			timeline:GetLastAnimation():SetStartAndEndWidth(44, 44)
+			timeline:GetLastAnimation():SetStartAndEndHeight(0, 44)
+		end
+		RunUpdates()
+		check("swap keeps ownership of intermediate dimensions", buttons[3].flipCard:GetHeight(), 0)
+		for _, slot in ipairs({ 3, 8 }) do
+			local button = buttons[slot]
+			local last = button.hotbarSwapAnimation:GetLastAnimation()
+			button.flipCard:SetDimensions(last.endWidth, last.endHeight)
+			button.icon:SetDimensions(last.endWidth, last.endHeight)
+			button.hotbarSwapAnimation.playing = false
+		end
+		RunUpdates()
+		for _, slot in ipairs({ 3, 8 }) do
+			local size = slot == 8 and 67 or 61
+			local button = buttons[slot]
+			check("front uses its own scale after swap", addon.Round(VisibleWidth(button.icon) * 100), addon.Round(size * sizes[1]))
+			check("front frame matches icon after swap", VisibleWidth(button.flipCard), VisibleWidth(button.icon))
+			check("next swap restores the front size", button.hotbarSwapAnimation:GetLastAnimation().endHeight, size)
+			check("back keeps its own scale after swap", T.back[slot].control:GetScale(), sizes[2] / 100)
+			check("back icon dimensions never become front dimensions", T.back[slot].icon:GetWidth(), 44)
+		end
+	end
+end
+-- Recover scale alone, even with no custom front setting and no size change.
+_G.ZO_ActionBar1:SetScale(0.7)
+buttons[3].icon:SetScale(0.7)
+RunUpdates()
+check("default front scale is restored too", _G.ZO_ActionBar1:GetScale(), 1)
+check("scale-only drift is repaired", buttons[3].icon:GetScale(), 1)
+local lastSwap = buttons[3].hotbarSwapAnimation:GetLastAnimation()
+local originalSetter = lastSwap.SetStartAndEndHeight
+local endpointWrites = 0
+lastSwap.SetStartAndEndHeight = function(self, a, b)
+	endpointWrites = endpointWrites + 1
+	originalSetter(self, a, b)
+end
+RunUpdates()
+check("settled swap endpoints are not rewritten every tick", endpointWrites, 0)
+-- Replacing a timeline must initialize its endpoint even without another swap.
+buttons[3].hotbarSwapAnimation = SwapTimeline(44)
+RunUpdates()
+check("replacement timeline gets the front endpoint", buttons[3].hotbarSwapAnimation:GetLastAnimation().endHeight, 61)
+FireHud(SCENE_FRAGMENT_HIDDEN)
+buttons[3].icon:SetScale(0.65)
+FireHud(SCENE_FRAGMENT_SHOWN)
+check("returning to HUD repairs scale without reload", buttons[3].icon:GetScale(), 1)
+
+print("\n== 60. channel duration and conservative effect association ==")
+do
+	T:Forget_All()
+	ActiveHotbar = HOTBAR_CATEGORY_PRIMARY
+	SetGroundTargeting(false)
+	local savedCastInfo, savedDuration = GetAbilityCastInfo, GetAbilityDuration
+	local castInfo = {}
+	GetAbilityCastInfo = function(id)
+		local info = castInfo[id] or { false, 0, 0 }
+		return info[1], info[2], info[3]
+	end
+	local function Prepare(id, duration, channel, castMs, channelMs)
+		T:Forget_All()
+		SetSlot(HOTBAR_CATEGORY_PRIMARY, 3, { name = "Test Skill", icon = "testskill.dds", id = id, remaining = 20000, duration = 20000 })
+		SetAbilityDuration(id, duration)
+		castInfo[id] = { channel, castMs, channelMs }
+		FireCast(3)
+		return GetFrameTimeMilliseconds()
+	end
+	local function Effect(name, id, icon, duration)
+		local now = GetFrameTimeMilliseconds()
+		FireEffect(EFFECT_RESULT_GAINED, name, "player", (now + duration) / 1000, 1, id, icon, nil, now / 1000)
+	end
+	local function Remaining()
+		return T:SlotTimer(3, HOTBAR_CATEGORY_PRIMARY, GetFrameTimeMilliseconds())
+	end
+	Prepare(800001, 0, true, 0, 3800)
+	check("channel counts without an ordinary effect duration", Remaining(), 3800)
+	Effect("Triggered Passive", 800099, "passive.dds", 20000)
+	check("20-second passive cannot replace 3.8-second channel", Remaining(), 3800)
+	Effect("Test Skill", 800001, "testskill.dds", 5000)
+	check("channel remains authoritative even for matching effects", Remaining(), 3800)
+	AdvanceFrame(1000)
+	check("channel counts from the cast", Remaining(), 2800)
+	AdvanceFrame(2800)
+	check("expired channel cannot fall back to passive client timer", Remaining(), 0)
+	Prepare(800002, 20000, true, 0, 3800)
+	check("channel takes priority over nonzero effect duration", Remaining(), 3800)
+	Prepare(800003, 0, true, 3800, 0)
+	check("channel supports clients reporting time in second result", Remaining(), 3800)
+	Prepare(800004, 20000, true, 0, 0)
+	Effect("Test Skill", 800004, "testskill.dds", 20000)
+	check("unknown channel time never substitutes a buff duration", Remaining(), 0)
+	Prepare(800005, 10000, false, 1200, 0)
+	check("ordinary cast time does not replace effect duration", Remaining(), 10000)
+	Effect("Triggered Passive", 800099, "passive.dds", 10000)
+	check("same-length unrelated passive has no association", T:LinkedEffect(3, HOTBAR_CATEGORY_PRIMARY, GetFrameTimeMilliseconds()).key, nil)
+	Effect("Test Skill", 800005, "testskill.dds", 20000)
+	check("wrong-length matching effect is rejected", Remaining(), 10000)
+	Effect("Test Skill", 800005, "testskill.dds", 11000)
+	check("matching ordinary effect can refine the duration", Remaining(), 11000)
+	Prepare(800006, 0, false, 0, 0)
+	Effect("Triggered Passive", 800099, "passive.dds", 20000)
+	check("unknown duration does not pick the longest effect", Remaining(), 0)
+	SetSlot(HOTBAR_CATEGORY_BACKUP, 3, { name = "Test Skill", icon = "testskill.dds", id = 800006, remaining = 20000, duration = 20000 })
+	check("unidentified timer also stays hidden on the other bar", T:SlotTimer(3, HOTBAR_CATEGORY_BACKUP, GetFrameTimeMilliseconds()), 0)
+	Effect("Renamed Effect", 800006, "different.dds", 6000)
+	check("unknown duration can be resolved by ability ID", Remaining(), 6000)
+	Prepare(800007, 0, false, 0, 0)
+	Effect("Test Skill", 800099, "different.dds", 7000)
+	check("unknown duration can be resolved by name", Remaining(), 7000)
+	Prepare(800008, 0, false, 0, 0)
+	Effect("Renamed Effect", 800099, "testskill.dds", 8000)
+	check("unknown duration can be resolved by icon", Remaining(), 8000)
+	Effect("Another Effect", 800098, "testskill.dds", 20000)
+	check("a longer equally weak match does not win", Remaining(), 8000)
+	GetAbilityDuration = nil
+	Prepare(800009, 0, true, 0, 3800)
+	check("channel API works independently of duration API", Remaining(), 3800)
+	GetAbilityDuration = savedDuration
+	GetAbilityCastInfo = function() error("not available") end
+	SetAbilityDuration(800009, 9000)
+	check("cast-info failure still permits ordinary duration", T:AbilityDuration(3, HOTBAR_CATEGORY_PRIMARY), 9000)
+	GetAbilityCastInfo = nil
+	check("absent cast-info API still permits ordinary duration", T:AbilityDuration(3, HOTBAR_CATEGORY_PRIMARY), 9000)
+	GetAbilityCastInfo = savedCastInfo
+end
+
+print("\n== 61. countdown and shade continue through the final second ==")
+do
+	T:Forget_All()
+	ActiveHotbar = HOTBAR_CATEGORY_PRIMARY
+	addon:Text().decimals = true
+	for _, hotbar in ipairs({ HOTBAR_CATEGORY_PRIMARY, HOTBAR_CATEGORY_BACKUP }) do
+		SetSlot(hotbar, 3, { name = "Final Second", icon = "finalsecond.dds", id = 810001, remaining = 0, duration = 0 })
+	end
+	SetAbilityDuration(810001, 3800)
+	FireCast(3)
+	RunUpdates()
+	local front, back = T.labels[3].timer, T.back[3].timer
+	AdvanceFrame(2800)
+	for _, sample in ipairs({ { 0, "1.0" }, { 100, "0.9" }, { 500, "0.4" }, { 300, "0.1" } }) do
+		AdvanceFrame(sample[1])
+		RunUpdates()
+		check("front shows the final second", front:GetText(), sample[2])
+		check("front remains visible until expiry", front:IsHidden(), false)
+		check("back shows the final second", back:GetText(), sample[2])
+		check("back remains visible until expiry", back:IsHidden(), false)
+		check("front shade continues until expiry", T.shades[3].control:IsHidden(), false)
+		check("back shade continues until expiry", T.back[3].shade:IsHidden(), false)
+	end
+	addon:Text().decimals = false
+	RunUpdates()
+	check("integer setting still keeps final second visible", front:IsHidden(), false)
+	check("integer rounding is preserved", front:GetText(), "0")
+	addon:Text().decimals = true
+	AdvanceFrame(100)
+	RunUpdates()
+	check("front hides at zero", front:IsHidden(), true)
+	check("back hides at zero", back:IsHidden(), true)
+	check("front shade hides at zero", T.shades[3].control:IsHidden(), true)
+	check("back shade hides at zero", T.back[3].shade:IsHidden(), true)
+	T:Forget_All()
+	T.timers = {}
+	for _, hotbar in ipairs({ HOTBAR_CATEGORY_PRIMARY, HOTBAR_CATEGORY_BACKUP }) do
+		SetSlot(hotbar, 3, { name = "Final Second", icon = "finalsecond.dds", id = 810001, remaining = 100, duration = 3800 })
+	end
+	RunUpdates()
+	check("client fallback also shows final tenths on front", front:GetText(), "0.1")
+	check("client fallback also shows final tenths on back", back:GetText(), "0.1")
+	check("client fallback is visible under a second", front:IsHidden(), false)
+	SetSlot(HOTBAR_CATEGORY_PRIMARY, 3, { name = "Final Second", icon = "finalsecond.dds", id = 810001, remaining = -1, duration = 3800 })
+	RunUpdates()
+	check("negative remaining time is hidden", front:IsHidden(), true)
+end
+
+print("\n== 62. only equipped Oakensoul overrides back-row visibility ==")
+do
+	local savedInfo, savedBag = GetItemInfo, BAG_WORN
+	local savedRing1, savedRing2 = EQUIP_SLOT_RING1, EQUIP_SLOT_RING2
+	BAG_WORN, EQUIP_SLOT_RING1, EQUIP_SLOT_RING2 = "worn", "ring1", "ring2"
+	local worn = {}
+	GetItemInfo = function(bag, slot)
+		assert(bag == BAG_WORN, "must only inspect equipped items")
+		return worn[slot] or ""
+	end
+	addon:BackBar().enabled = true
+	ActiveHotbar = HOTBAR_CATEGORY_PRIMARY
+	WeaponPairLocked = true
+	RunUpdates()
+	check("temporary swap lock does not hide back row", T.back[3].control:IsHidden(), false)
+	for _, ring in ipairs({ EQUIP_SLOT_RING1, EQUIP_SLOT_RING2 }) do
+		worn[ring] = "/esoui/art/icons/u34_mythic_oakensoul_ring.dds"
+		RunUpdates()
+		check("Oakensoul in either worn slot is detected", addon:OakensoulEquipped(), true)
+		check("Oakensoul hides the back ability", T.back[3].control:IsHidden(), true)
+		check("Oakensoul hides the back ultimate", T.back[8].control:IsHidden(), true)
+		check("equipping the ring preserves the saved setting", addon:BackBar().enabled, true)
+		worn[ring] = nil
+		RunUpdates()
+		check("removing the ring restores back row without reload", T.back[3].control:IsHidden(), false)
+	end
+	worn[EQUIP_SLOT_RING1] = "ESOUI/ART/ICONS/U34_MYTHIC_OAKENSOUL_RING.DDS"
+	check("icon normalization handles case and leading slash", addon:OakensoulEquipped(), true)
+	addon:BackBar().enabled = false
+	worn[EQUIP_SLOT_RING1] = nil
+	RunUpdates()
+	check("removing ring respects disabled display setting", T.back[3].control:IsHidden(), true)
+	addon:BackBar().enabled = true
+	worn[EQUIP_SLOT_RING1] = "/esoui/art/icons/another_ring.dds"
+	check("other rings do not trigger the exception", addon:OakensoulEquipped(), false)
+	GetItemInfo = function() error("unavailable") end
+	check("unavailable equipment data does not hide row", addon:BackBarEnabled(), true)
+	GetItemInfo = nil
+	check("missing equipment API does not hide row", addon:BackBarEnabled(), true)
+	GetItemInfo, BAG_WORN = savedInfo, savedBag
+	EQUIP_SLOT_RING1, EQUIP_SLOT_RING2 = savedRing1, savedRing2
+	WeaponPairLocked = false
+end
+
+print("\n== MURA-HIGE NEO fills every resource to the right ==")
+do
+	addon:Account().enabled = true
+	Row(GetString(SI_PBSCHC_STYLE)).setFunction(nil, nil, { data = "neo" })
+	check("NEO style is selectable", addon:BarStyle(), "neo")
+	check("NEO has its requested display name", GetString(SI_PBSCHC_STYLE_NEO), "MURA-HIGE NEO Style")
+	check("NEO enables width and height controls", addon:BarsAreMuraHige(), true)
+	for _, key in ipairs({ "health", "magicka", "stamina" }) do
+		addon:SetBarSize(addon.barByKey[key], "width", 400)
+		addon:SetBarSize(addon.barByKey[key], "height", 20)
+	end
+	FireHud(SCENE_FRAGMENT_SHOWN)
+	local powers = { COMBAT_MECHANIC_FLAGS_HEALTH, COMBAT_MECHANIC_FLAGS_MAGICKA, COMBAT_MECHANIC_FLAGS_STAMINA }
+	local names = { "ZO_PlayerAttributeHealthBarLeft", "ZO_PlayerAttributeMagickaBar", "ZO_PlayerAttributeStaminaBar" }
+	for _, amount in ipairs({ 0, 250, 500, 1000, 250 }) do
+		for _, power in ipairs(powers) do SetPower(power, amount, 1000) end
+		RunUpdates()
+		for _, name in ipairs(names) do
+			local overlay = addon.plain.overlays[name]
+			check("NEO uses the full configured width", overlay.control:GetWidth(), 400)
+			check("NEO uses the configured height", overlay.control:GetHeight(), 20)
+			check("empty resource hides only its fill", overlay.fill:IsHidden(), amount == 0)
+			check("resource track stays visible", overlay.control:IsHidden(), false)
+			if amount > 0 then
+				check("NEO filled length matches resource fraction", overlay.fill:GetWidth(), amount * 0.4)
+				check("NEO fill begins at the left edge", overlay.fill.anchors[1].point, TOPLEFT)
+			end
+		end
+		check("NEO health has no duplicate right-half overlay", addon.plain.overlays.ZO_PlayerAttributeHealthBarRight.control:IsHidden(), true)
+	end
+	local left = addon.plain.overlays.ZO_PlayerAttributeHealthBarLeft
+	check("NEO health remains centered on native midpoint", left.control.anchors[1].point, CENTER)
+	check("NEO midpoint is the native left half's right edge", left.control.anchors[1].relativePoint, RIGHT)
+	addon:SetBarStyle("rounded")
+	addon:Refresh()
+	check("original MURA health returns to two half-width bars", left.control:GetWidth(), 200)
+	check("original MURA health left half fills leftward", left.fill.anchors[1].point, TOPRIGHT)
+	check("original MURA health right half returns", addon.plain.overlays.ZO_PlayerAttributeHealthBarRight.control:IsHidden(), false)
+	check("original MURA magicka fills leftward", addon.plain.overlays.ZO_PlayerAttributeMagickaBar.fill.anchors[1].point, TOPRIGHT)
+	SLASH_COMMANDS["/pbhud"]("style neo")
+	check("NEO is available through slash command", addon:BarStyle(), "neo")
+	addon:SetBarStyle("standard")
+	addon:Refresh()
+	check("standard hides NEO overlays", left.control:IsHidden(), true)
+	check("standard restores native frame", _G.ZO_PlayerAttributeMagickaFrameLeft:IsHidden(), false)
+end
+
+print("\n== resource outline colour choices ==")
+do
+	local row = Row(GetString(SI_PBSCHC_BORDER_COLOUR))
+	check("six outline colour choices", #row.items, 6)
+	addon:Account().plainBorderColour = nil
+	check("existing settings keep the black outline", addon:PlainBorderColour(), "black")
+	for _, item in ipairs(row.items) do
+		row.setFunction(nil, item.name, item)
+		check("colour selection is persisted", addon:Account().plainBorderColour, item.data)
+		check("dropdown reports selected colour", row.getFunction(), item.name)
+	end
+	addon:SetPlainBorderColour("gold")
+	addon:SetPlainBorder(true)
+	addon:SetPlainOpacity(50)
+	for _, style in ipairs({ "plain", "rounded", "neo" }) do
+		addon:SetBarStyle(style)
+		addon:Refresh()
+		for _, name in ipairs({ "ZO_PlayerAttributeHealthBarLeft", "ZO_PlayerAttributeMagickaBar", "ZO_PlayerAttributeStaminaBar" }) do
+			for _, piece in pairs(addon.plain.overlays[name].border) do
+				check("gold is applied to each border edge", table.concat(piece.centerColor, ","), "1,0.84,0,0.41")
+				check("selected outline remains visible", piece:IsHidden(), false)
+			end
+		end
+	end
+	addon:SetPlainBorder(false)
+	addon:SetPlainBorderColour("white")
+	addon:Refresh()
+	local edge = addon.plain.overlays.ZO_PlayerAttributeStaminaBar.border.Top
+	check("colour changes do not enable disabled outlines", edge:IsHidden(), true)
+	addon:SetPlainBorder(true)
+	addon:Refresh()
+	check("reenabling outline uses the selected colour", table.concat(edge.centerColor, ","), "1,1,1,0.41")
+	addon:Account().plainBorderColour = "unknown"
+	check("invalid saved colour falls back safely", addon:PlainBorderColour(), "black")
+	addon:SetPlainBorderColour("gold")
+	check("invalid selection is rejected", addon:SetPlainBorderColour("unknown"), false)
+	check("invalid selection preserves the saved colour", addon:PlainBorderColour(), "gold")
+	addon:SetBarStyle("standard")
+	addon:Refresh()
+	check("standard still hides custom outlines", addon.plain.overlays.ZO_PlayerAttributeStaminaBar.control:IsHidden(), true)
+end
+
+print("\n== MURA gradients are bright at top and dark at bottom ==")
+do
+	addon:SetPlainOpacity(50)
+	for _, style in ipairs({ "rounded", "neo" }) do
+		addon:SetBarStyle(style)
+		addon:Refresh()
+		for _, overlay in pairs(addon.plain.overlays) do
+			local vertices = overlay.fill.vertices
+			local top, bottom = vertices[VERTEX_POINTS_TOPLEFT], vertices[VERTEX_POINTS_BOTTOMLEFT]
+			for channel = 1, 3 do
+				check("top is brighter than bottom", top[channel] > bottom[channel], true)
+			end
+			check("top edge is uniform", table.concat(top, ","), table.concat(vertices[VERTEX_POINTS_TOPRIGHT], ","))
+			check("bottom edge is uniform", table.concat(bottom, ","), table.concat(vertices[VERTEX_POINTS_BOTTOMRIGHT], ","))
+			check("top preserves opacity", top[4], 0.5)
+			check("bottom preserves opacity", bottom[4], 0.5)
+		end
+	end
+	addon:SetBarStyle("plain")
+	addon:Refresh()
+	for _, overlay in pairs(addon.plain.overlays) do
+		check("Square returns to solid fill", table.concat(overlay.fill.vertices[1], ","), table.concat(overlay.fill.vertices[4], ","))
+	end
+end
+
+print("\n== MURA resource text alignment ==")
+do
+	addon:SetBarStyle("standard")
+	addon:Refresh()
+	addon:Account().resourceTextAlignment = nil
+	check("existing settings default to left", addon:ResourceTextAlignment(), "left")
+	local row = Row(GetString(SI_PBSCHC_RESOURCE_ALIGN))
+	check("three text alignment choices", #row.items, 3)
+	check("alignment setting disabled for standard", row.disable(), true)
+	for _, bar in ipairs(addon.plain.bars) do
+		local label = _G[bar.container .. "ResourceNumbers"]
+		label:ClearAnchors()
+		label:SetAnchor(CENTER, _G[bar.container], CENTER, 7, 2)
+		label:SetHorizontalAlignment(TEXT_ALIGN_CENTER)
+		label:SetText("250 / 1000")
+		label:SetHidden(true)
+	end
+	for _, style in ipairs({ "rounded", "neo" }) do
+		addon:SetBarStyle(style)
+		addon:Refresh()
+		check("alignment setting enabled for MURA", row.disable(), false)
+		for _, item in ipairs(row.items) do
+			row.setFunction(nil, item.name, item)
+			local alignment = item.data == "left" and TEXT_ALIGN_LEFT or item.data == "right" and TEXT_ALIGN_RIGHT or TEXT_ALIGN_CENTER
+			check("alignment choice is saved", addon:Account().resourceTextAlignment, item.data)
+			for _, bar in ipairs(addon.plain.bars) do
+				local label = _G[bar.container .. "ResourceNumbers"]
+				local first = addon.plain.overlays[bar.controls[1].name].control
+				local last = style == "neo" and first or addon.plain.overlays[bar.controls[#bar.controls].name].control
+				check("selected alignment applies to every resource", label:GetHorizontalAlignment(), alignment)
+				check("text starts at drawn left edge", label.anchors[1].relativeTo, first)
+				check("text ends at drawn right edge", label.anchors[2].relativeTo, last)
+				check("game's number contents are preserved", label:GetText(), "250 / 1000")
+				check("game's hidden-number preference is preserved", label:IsHidden(), true)
+			end
+		end
+	end
+	addon:SetBarStyle("plain")
+	addon:Refresh()
+	check("alignment setting disabled for Square", row.disable(), true)
+	for _, bar in ipairs(addon.plain.bars) do
+		local label = _G[bar.container .. "ResourceNumbers"]
+		check("original horizontal alignment restored", label:GetHorizontalAlignment(), TEXT_ALIGN_CENTER)
+		check("original anchor restored", label.anchors[1].relativeTo, _G[bar.container])
+		check("original horizontal offset restored", label.anchors[1].offsetX, 7)
+		check("second custom anchor removed", #label.anchors, 1)
+	end
+	addon:SetBarStyle("neo")
+	addon:Refresh()
+	addon:Account().enabled = false
+	addon:Refresh()
+	check("disabling addon restores text anchor", _G.ZO_PlayerAttributeHealthResourceNumbers.anchors[1].offsetX, 7)
+	addon:Account().enabled = true
+	addon:Account().resourceTextAlignment = "invalid"
+	check("invalid saved alignment defaults to left", addon:ResourceTextAlignment(), "left")
+end
 
 print("")
 if failures == 0 then

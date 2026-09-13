@@ -264,6 +264,8 @@ addon.accountDefaults = {
 	style = "standard",
 	plainOpacity = 100,
 	plainBorder = true,
+	plainBorderColour = "black",
+	resourceTextAlignment = "left",
 	-- The shade over a skill icon while its effect runs.
 	shade = {
 		enabled = true,
@@ -1224,7 +1226,7 @@ local function OnSlash(argumentString)
 			style = "rounded"
 		end
 		if not addon:SetBarStyle(style) then
-			Line("usage: %s style standard|plain|rounded", SLASH)
+			Line("usage: %s style standard|plain|rounded|neo", SLASH)
 			return
 		end
 		account.enabled = true

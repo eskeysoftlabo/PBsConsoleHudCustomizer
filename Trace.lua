@@ -157,13 +157,14 @@ function trace:OnPress(_, slotNum)
 	local abilityId = Call(GetSlotBoundId, slot, hotbar) or 0
 	local name = Call(GetSlotName, slot, hotbar) or Call(GetAbilityName, abilityId) or "?"
 	local duration = Call(GetAbilityDuration, abilityId) or 0
+	local timerDuration, channeled = addon.timers:AbilityDuration(slot, hotbar)
 	local watched = self:Watch(abilityId, name)
 	if watched then
 		watched.presses = watched.presses + 1
 	end
-	self:Add("press", string.format("slot %d \"%s\" id=%d  the game says it lasts %.1fs  press #%d  aiming=%s",
+	self:Add("press", string.format("slot %d \"%s\" id=%d  the game says it lasts %.1fs  press #%d  aiming=%s  timer=%.1fs channel=%s",
 		slot, tostring(name), abilityId, duration / 1000, watched and watched.presses or 1,
-		tostring(Call(IsPlayerGroundTargeting))))
+		tostring(Call(IsPlayerGroundTargeting)), timerDuration / 1000, tostring(channeled)))
 end
 
 -- The client's own argument order (the same one Timers.lua reads): changeType, effectSlot,

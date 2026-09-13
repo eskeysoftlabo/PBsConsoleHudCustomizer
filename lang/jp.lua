@@ -16,14 +16,29 @@ local strings = {
 	-- ---- バーの見た目 --------------------------------------------------------------------
 	SI_PBSCHC_SECTION_STYLE = "バーの見た目",
 	SI_PBSCHC_STYLE = "バーのスタイル",
-	SI_PBSCHC_STYLE_TOOLTIP = "「標準」はゲーム本来のバーのままです。「四角」は各バーを平坦な長方形で描きます（暗いトラックと、そのリソース本来の色で塗られた四角）。大きさはゲーム本来のままで、倍率で調整します。「MURA-HIGE Style」は同じ四角を、下で指定した幅と高さで描きます。どちらもゲーム側の矢印型の枠と背景を一時的に非表示にしますが、バー自体はそのまま残して動かしているので、ダメージシールドや防御力変化、瀕死の警告表示は今までどおり上に表示されます。",
+	SI_PBSCHC_STYLE_TOOLTIP = "「標準」はゲーム本来のバーのままです。「四角」は各バーを平坦な長方形で描きます（暗いトラックと、そのリソース本来の色で塗られた四角）。大きさはゲーム本来のままで、倍率で調整します。「MURA-HIGE Style」は同じ四角を、下で指定した幅と高さで描きます。「MURA-HIGE NEO Style」は同じ幅・高さの設定で、体力・マジカ・スタミナすべてが左から右へ満ちます。これらのスタイルはゲーム側の矢印型の枠と背景を一時的に非表示にしますが、バー自体はそのまま残して動かしているので、ダメージシールドや防御力変化、瀕死の警告表示は今までどおり上に表示されます。",
 	SI_PBSCHC_STYLE_STANDARD = "標準",
 	SI_PBSCHC_STYLE_PLAIN = "四角",
 	SI_PBSCHC_STYLE_ROUNDED = "MURA-HIGE Style",
+	SI_PBSCHC_STYLE_NEO = "MURA-HIGE NEO Style",
 	SI_PBSCHC_PLAIN_OPACITY = "不透明度",
 	SI_PBSCHC_PLAIN_OPACITY_TOOLTIP = "四角をどれだけ濃く描くかです。100%でゲーム本来の塗りを完全に隠します。下げると下のバーが透けるため、元の見た目を少し残したい場合に使えます。",
+	SI_PBSCHC_BORDER_COLOUR = "枠線の色",
+	SI_PBSCHC_BORDER_COLOUR_TOOLTIP = "四角・MURA-HIGE Style・MURA-HIGE NEO Styleの枠線の色です。体力・マジカ・スタミナに共通で適用します。「枠線を描く」がオンのときに表示されます。",
+	SI_PBSCHC_BORDER_BLACK = "黒（標準）",
+	SI_PBSCHC_BORDER_WHITE = "白",
+	SI_PBSCHC_BORDER_SILVER = "銀色",
+	SI_PBSCHC_BORDER_GOLD = "金色",
+	SI_PBSCHC_BORDER_RED = "赤",
+	SI_PBSCHC_BORDER_BLUE = "青",
+	SI_PBSCHC_RESOURCE_ALIGN = "バー内の文字の配置",
+	SI_PBSCHC_RESOURCE_ALIGN_TOOLTIP = "MURA-HIGE StyleとMURA-HIGE NEO Styleのバー内の文字を配置します。体力・マジカ・スタミナに共通で適用します。初期値は左寄せです。",
+	SI_PBSCHC_RESOURCE_ALIGN_LEFT = "左寄せ",
+	SI_PBSCHC_RESOURCE_ALIGN_RIGHT = "右寄せ",
+	SI_PBSCHC_RESOURCE_ALIGN_CENTER = "中央揃え",
+
 	SI_PBSCHC_PLAIN_BORDER = "枠線を描く",
-	SI_PBSCHC_PLAIN_BORDER_TOOLTIP = "各バーの周囲に細い暗色の線を描きます。ゲーム本来の矢印型の枠は、これらのスタイルを選んでいる間は常に非表示になるため（平坦な四角を矢印型の枠に入れても中途半端なため）、枠としてはこれだけになります。オフにすると、線のない色の塊だけになります。",
+	SI_PBSCHC_PLAIN_BORDER_TOOLTIP = "各バーの周囲に選択した色の細い線を描きます。ゲーム本来の矢印型の枠は、これらのスタイルを選んでいる間は常に非表示になるため（平坦な四角を矢印型の枠に入れても中途半端なため）、枠としてはこれだけになります。オフにすると、線のない色の塊だけになります。",
 
 	-- ---- スキルの網掛け ------------------------------------------------------------------
 	SI_PBSCHC_SECTION_SHADE = "使用中スキルの網掛け",
@@ -41,9 +56,9 @@ local strings = {
 	SI_PBSCHC_SKILLBAR_ENABLED = "スキルバーをこのアドオンで制御する",
 	SI_PBSCHC_SKILLBAR_ENABLED_TOOLTIP = "オフにすると、スキルバーをゲーム本体（および他のアドオン）に完全に明け渡します。位置・大きさ・間隔・裏バー・アイコン上の残り時間と対象数・使用中スキルの網掛けをすべて元に戻し、以後何も書き込みません（設定内容は残るので、オンに戻せば再び適用されます）。体力・マジカ・スタミナのバーには影響しません。",
 	SI_PBSCHC_BAR_WIDTH = "<<1>>：バーの幅",
-	SI_PBSCHC_BAR_WIDTH_TOOLTIP = "バーを描く幅（ピクセル）です。MURA-HIGE Style専用です。このスタイルはバーそのものを描くためサイズを直接指定できます。他のスタイルはゲーム本来のバーを拡大縮小する方式です（それらのコントロールの幅はゲーム側が書き換えるため）。ゲーム本来は224です。",
+	SI_PBSCHC_BAR_WIDTH_TOOLTIP = "バーを描く幅（ピクセル）です。MURA-HIGE StyleとMURA-HIGE NEO Style専用です。このスタイルはバーそのものを描くためサイズを直接指定できます。他のスタイルはゲーム本来のバーを拡大縮小する方式です（それらのコントロールの幅はゲーム側が書き換えるため）。ゲーム本来は224です。",
 	SI_PBSCHC_BAR_HEIGHT = "<<1>>：バーの高さ",
-	SI_PBSCHC_BAR_HEIGHT_TOOLTIP = "バーを描く高さ（ピクセル）です。MURA-HIGE Style専用です。ゲーム本来は17です。",
+	SI_PBSCHC_BAR_HEIGHT_TOOLTIP = "バーを描く高さ（ピクセル）です。MURA-HIGE StyleとMURA-HIGE NEO Style専用です。ゲーム本来は17です。",
 
 	-- ---- スキルバーの間隔 ----------------------------------------------------------------
 	SI_PBSCHC_SECTION_GAPS = "スキルバーの間隔",

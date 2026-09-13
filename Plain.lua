@@ -19,8 +19,8 @@ local Clamp = addon.Clamp
 --   * it was built out of textures and hung on the client's status bar controls, as children of
 --     a StatusBar. This one hangs on the container -- the same parent the client's own frame,
 --     background and numbers use, so there is no question about whether a child of it draws.
---   * it was drawn with texture files and blend modes. This one is two backdrops: a centre
---     colour, no art at all, nothing to fail to load.
+--   * it was drawn with texture files and blend modes. The track uses a backdrop and the fill uses an untextured
+--     colour rectangle, so there is no image file to load.
 --
 -- The client's own controls are all still there and still doing their work. The frame and the
 -- background are hidden (one flag each, put back the moment the style changes), and the bar's own
@@ -43,7 +43,7 @@ addon.plain = plain
 --
 -- The key is still "rounded" because that is what an install has saved: the style was drawn with
 -- round ends until 1.10.0, and it earned nobody's affection.
-addon.BAR_STYLES = { "standard", "plain", "rounded" }
+addon.BAR_STYLES = { "standard", "plain", "rounded", "neo" }
 
 -- Nothing animates, so this only has to keep up with the numbers changing.
 local UPDATE_INTERVAL_MS = 100
@@ -102,7 +102,27 @@ local TRACK_COLOUR = { 0.06, 0.06, 0.06 }
 
 -- The outline. Dark rather than black so it reads as a line drawn round the bar rather than a
 -- gap in it.
-local BORDER_COLOUR = { 0, 0, 0, 0.82 }
+addon.BORDER_COLOURS = { "black", "white", "silver", "gold", "red", "blue" }
+local BORDER_PALETTE = {
+	black = { 0, 0, 0 },
+	white = { 1, 1, 1 },
+	silver = { 0.75, 0.75, 0.75 },
+	gold = { 1, 0.84, 0 },
+	red = { 0.9, 0.2, 0.2 },
+	blue = { 0.25, 0.55, 1 },
+}
+local BORDER_ALPHA = 0.82
+
+function addon:PlainBorderColour()
+	local key = self:Account().plainBorderColour
+	return BORDER_PALETTE[key] and key or "black"
+end
+
+function addon:SetPlainBorderColour(key)
+	if not BORDER_PALETTE[key] then return false end
+	self:Account().plainBorderColour = key
+	return true
+end
 
 -- ---------------------------------------------------------------------------------------
 -- Settings
@@ -167,12 +187,12 @@ function addon:PlainWanted()
 		return false
 	end
 	local style = self:BarStyle()
-	return style == "plain" or style == "rounded"
+	return style == "plain" or style == "rounded" or style == "neo"
 end
 
 -- MURA-HIGE Style: the one drawn at a size of its own.
 function addon:BarsAreMuraHige()
-	return self:BarStyle() == "rounded"
+	return self:BarStyle() == "rounded" or self:BarStyle() == "neo"
 end
 
 -- ---------------------------------------------------------------------------------------
@@ -312,7 +332,14 @@ function plain:AnchorOverlay(overlay, bar)
 		-- The health bar is two halves that meet in the middle, so each is half of what was
 		-- asked for and the pair is the whole.
 		if #bar.controls > 1 then
-			width = width / 2
+			if addon:BarStyle() == "neo" then
+				-- Health's native halves meet here. NEO draws one continuous bar,
+				-- centered at that same point, rather than two separate fills.
+				control:ClearAnchors()
+				control:SetAnchor(CENTER, Control(bar.controls[1].name), RIGHT, 0, 0)
+			else
+				width = width / 2
+			end
 		end
 		control:SetDimensions(width, height)
 		overlay.sizedWidth = width
@@ -334,17 +361,28 @@ function plain:ColourOverlay(bar, overlay)
 		end
 		overlay.track:SetHidden(false)
 	end
-	if overlay.fill and type(overlay.fill.SetCenterColor) == "function" then
-		overlay.fill:SetCenterColor(r, g, b, alpha)
-		if type(overlay.fill.SetEdgeColor) == "function" then
-			overlay.fill:SetEdgeColor(0, 0, 0, 0)
+	if overlay.fill and type(overlay.fill.SetColor) == "function" then
+		local fill = overlay.fill
+		-- Reset all vertices first so switching back to Square restores a solid fill.
+		fill:SetColor(r, g, b, alpha)
+		if addon:BarsAreMuraHige() and type(fill.SetVertexColors) == "function"
+			and VERTEX_POINTS_TOPLEFT and VERTEX_POINTS_TOPRIGHT
+			and VERTEX_POINTS_BOTTOMLEFT and VERTEX_POINTS_BOTTOMRIGHT then
+			-- Keep each resource's hue: a small white blend at the top, a darker
+			-- version at the bottom. Alpha is constant over the whole fill.
+			local topR, topG, topB = r + (1 - r) * 0.2, g + (1 - g) * 0.2, b + (1 - b) * 0.2
+			fill:SetVertexColors(VERTEX_POINTS_TOPLEFT, topR, topG, topB, alpha)
+			fill:SetVertexColors(VERTEX_POINTS_TOPRIGHT, topR, topG, topB, alpha)
+			fill:SetVertexColors(VERTEX_POINTS_BOTTOMLEFT, r * 0.55, g * 0.55, b * 0.55, alpha)
+			fill:SetVertexColors(VERTEX_POINTS_BOTTOMRIGHT, r * 0.55, g * 0.55, b * 0.55, alpha)
 		end
 	end
 
 	local border = addon:PlainBorder()
+	local colour = BORDER_PALETTE[addon:PlainBorderColour()]
 	for _, piece in pairs(overlay.border or {}) do
 		if type(piece.SetCenterColor) == "function" then
-			piece:SetCenterColor(BORDER_COLOUR[1], BORDER_COLOUR[2], BORDER_COLOUR[3], BORDER_COLOUR[4] * alpha)
+			piece:SetCenterColor(colour[1], colour[2], colour[3], BORDER_ALPHA * alpha)
 			if type(piece.SetEdgeColor) == "function" then
 				piece:SetEdgeColor(0, 0, 0, 0)
 			end
@@ -401,7 +439,70 @@ end
 -- The numbers, lifted over the rectangle while this style is on and put back where the client
 -- had them when it is not. Re-asserted on every update rather than remembered as done: the
 -- client re-applies its own templates to these controls, and a template carries a draw tier.
+addon.RESOURCE_TEXT_ALIGNMENTS = { "left", "right", "center" }
+
+function addon:ResourceTextAlignment()
+	local key = self:Account().resourceTextAlignment
+	if key == "right" or key == "center" then return key end
+	return "left"
+end
+
+function addon:SetResourceTextAlignment(key)
+	for _, known in ipairs(self.RESOURCE_TEXT_ALIGNMENTS) do
+		if key == known then
+			self:Account().resourceTextAlignment = key
+			return true
+		end
+	end
+	return false
+end
+
+-- Anchor the label across the drawn bar, not the client's original 224px bar.
+-- Save its alignment and anchors before the first write, and restore on style exit.
+function plain:AlignNumbers(bar, enabled)
+	local label = Control(bar.container .. NUMBERS)
+	if not label then return end
+	self.numberLayouts = self.numberLayouts or {}
+	local saved = self.numberLayouts[label]
+	if not enabled then
+		if saved then
+			addon:Write("number layout", label.ClearAnchors, label)
+			for _, anchor in ipairs(saved.anchors) do
+				addon:Write("number layout", label.SetAnchor, label, unpack(anchor))
+			end
+			addon:Write("number layout", label.SetHorizontalAlignment, label, saved.alignment)
+			self.numberLayouts[label] = nil
+		end
+		return
+	end
+	local first = self.overlays[bar.controls[1].name]
+	local last = self.overlays[bar.controls[#bar.controls].name]
+	if addon:BarStyle() == "neo" then last = first end
+	if not first or not last then return end
+	if not saved then
+		if type(label.GetHorizontalAlignment) ~= "function" then return end
+		local ok, alignment = pcall(label.GetHorizontalAlignment, label)
+		if not ok then return end
+		saved = { alignment = alignment, anchors = {} }
+		for index = 0, 1 do
+			local read, valid, point, target, relative, x, y, constrains = pcall(label.GetAnchor, label, index)
+			if not read then return end
+			if valid then
+				saved.anchors[#saved.anchors + 1] = { point, target, relative, x, y, constrains }
+			end
+		end
+		self.numberLayouts[label] = saved
+	end
+	local key = addon:ResourceTextAlignment()
+	local alignment = key == "right" and TEXT_ALIGN_RIGHT or key == "center" and TEXT_ALIGN_CENTER or TEXT_ALIGN_LEFT
+	addon:Write("number layout", label.ClearAnchors, label)
+	addon:Write("number layout", label.SetAnchor, label, LEFT, first.control, LEFT, 4, 0)
+	addon:Write("number layout", label.SetAnchor, label, RIGHT, last.control, RIGHT, -4, 0)
+	addon:Write("number layout", label.SetHorizontalAlignment, label, alignment)
+end
+
 function plain:RaiseNumbers(bar, raise)
+	if not raise then self:AlignNumbers(bar, false) end
 	local control = Control(bar.container .. NUMBERS)
 	if not control or type(control.SetDrawTier) ~= "function" or type(control.SetDrawLevel) ~= "function" then
 		return false
@@ -558,7 +659,7 @@ function plain:UpdateOverlay(overlay, fraction)
 		return
 	end
 	fill:ClearAnchors()
-	if overlay.reverse then
+	if overlay.reverse and addon:BarStyle() ~= "neo" then
 		fill:SetAnchor(TOPRIGHT, control, TOPRIGHT, 0, 0)
 		fill:SetAnchor(BOTTOMRIGHT, control, BOTTOMRIGHT, 0, 0)
 	else
@@ -581,13 +682,18 @@ function plain:Update()
 				self:AnchorOverlay(overlay, bar)
 				self:ColourOverlay(bar, overlay)
 				self:BlankClientBar(bar, overlay, sized)
-				if fraction then
+				if addon:BarStyle() == "neo" and bar.key == "health" and not entry.reverse then
+					-- The left overlay now covers the full health bar. Keep the other
+					-- native half blanked, without drawing a duplicate track or border.
+					overlay.control:SetHidden(true)
+				elseif fraction then
 					self:UpdateOverlay(overlay, fraction)
 				else
 					overlay.control:SetHidden(true)
 				end
 			end
 		end
+		self:AlignNumbers(bar, addon:BarsAreMuraHige())
 	end
 end
 
