@@ -688,10 +688,18 @@ end
 --   bubbles   small beads with a point of light, rising and popping at the top
 --   glass     a reflection along the top of the whole tube, and a glint that crosses it now and
 --             then
+--   frame     a square frame and a see-through track in place of the game's arrow-ended frame
+--             and background, which a straight tube of liquid does not fit (1.26.0). It takes
+--             the same outline switch and colour as Square and MURA-HIGE
 --
 -- Parented to the attribute container (not the StatusBar) for console visibility.
 -- ---------------------------------------------------------------------------------------
-local LIQUID_BODY_ALPHA = 0.92
+-- See-through, so the liquid reads as liquid over what is behind it rather than as paint: the body
+-- at 62%, and every effect over it scaled to 80% of what it was drawn at in 1.25.0.
+local LIQUID_BODY_ALPHA = 0.62
+local LIQUID_EFFECT_ALPHA = 0.8
+-- The track the liquid sits in, dark and see-through.
+local LIQUID_TRACK_COLOUR = { 0.02, 0.02, 0.03, 0.45 }
 local LIQUID_CURRENTS = 6
 local LIQUID_SURFACE_SEGMENTS = 5
 local LIQUID_BUBBLES = 4
@@ -717,10 +725,11 @@ local LIQUID_DRAIN_RATE = 0.0009
 -- passed. They are built 64 high now.
 --
 -- So: the band is 17/23 of the container, centred on the status bar, and never more than the
--- status bar itself. The ends are kept clear only where the art has a point -- the outer end of
--- each bar -- by half the band, which is how far the arrow's slope reaches in. Health's two
--- halves meet flat in the middle, so nothing is kept clear there and the effect runs straight
--- across. The moving end of the fill keeps two pixels clear of the leading edge.
+-- status bar itself. The moving end of the fill keeps two pixels clear of the leading edge.
+--
+-- Until 1.26.0 the outer ends were also kept clear by half the band, because the game's frame
+-- comes to a point there. Liquid draws a square frame of its own now, so there is no point to keep
+-- clear of and the liquid runs to both ends. Health's halves always met flat in the middle.
 local LIQUID_BAND_OF_CONTAINER = 17 / 23
 local LIQUID_BAND_MARGIN = 0.12
 local LIQUID_LEADING_EDGE = 2
@@ -739,30 +748,22 @@ function plain:LiquidBounds(bar, entry, native, fraction)
 	local bandTop = (height - band) / 2
 	local margin = math.max(1, band * LIQUID_BAND_MARGIN)
 
-	-- Which ends of this control are the pointed outer ends of the bar.
 	local halves = #bar.controls > 1
 	local isRightHalf = halves and bar.controls[2].name == entry.name
-	local pointedLeft = not halves or not isRightHalf
-	local pointedRight = not halves or isRightHalf
-	local taper = band / 2
-	local barFrom = pointedLeft and taper or 0
-	local barTo = pointedRight and width - taper or width
+	local barFrom, barTo = 0, width
 
 	local filled = width * Clamp(fraction or 0, 0, 1)
+	-- A full bar has no moving edge to keep clear of: the liquid meets the end of the tube.
+	local edgeClear = (fraction or 0) < 0.99 and LIQUID_LEADING_EDGE or 0
 	local from, to
 	if entry.reverse then
-		from, to = width - filled + LIQUID_LEADING_EDGE, width
+		from, to = width - filled + edgeClear, width
 	else
-		from, to = 0, filled - LIQUID_LEADING_EDGE
+		from, to = 0, filled - edgeClear
 	end
-	-- The surface is only drawn where the leading edge is really inside the tube, not pressed
-	-- into a pointed end.
-	local edgeOpen
-	if entry.reverse then
-		edgeOpen = from > barFrom
-	else
-		edgeOpen = to < barTo
-	end
+	-- The surface is only drawn where there is a surface: not on a full bar, where the liquid
+	-- meets the end of the tube.
+	local edgeOpen = (fraction or 0) < 0.99
 	from = math.max(from, barFrom)
 	to = math.min(to, barTo)
 
@@ -955,7 +956,7 @@ function plain:LiquidRibbons(bar, entry, native, fraction, now)
 		-- Depth: the lower part of the liquid sinks into shadow.
 		local shadeTop = top + depth * 0.35
 		Place(group.shade, root, from, shadeTop, to - from, bottom - shadeTop)
-		Corners(group.shade, 0, 0, 0, 0, 0, 0.5, 0.5)
+		Corners(group.shade, 0, 0, 0, 0, 0, 0.5 * LIQUID_EFFECT_ALPHA, 0.5 * LIQUID_EFFECT_ALPHA)
 
 		-- Currents, placed along the whole bar and cut to what is filled.
 		for index, pieces in ipairs(group.currents) do
@@ -969,9 +970,9 @@ function plain:LiquidRibbons(bar, entry, native, fraction, now)
 			local cy = top + depth * (0.5 + 0.3 * math.sin(seconds * (0.5 + 0.11 * index) + index * 1.7))
 			local breathe = 0.8 + 0.2 * math.sin(seconds * 1.3 + index)
 			if light then
-				SoftMass(pieces, root, centre, cy, hw, hh, lr, lg, lb, 0.42 * breathe, from, top, to, bottom)
+				SoftMass(pieces, root, centre, cy, hw, hh, lr, lg, lb, 0.42 * breathe * LIQUID_EFFECT_ALPHA, from, top, to, bottom)
 			else
-				SoftMass(pieces, root, centre, cy, hw, hh, r * 0.25, g * 0.25, b * 0.25, 0.4 * breathe, from, top, to, bottom)
+				SoftMass(pieces, root, centre, cy, hw, hh, r * 0.25, g * 0.25, b * 0.25, 0.4 * breathe * LIQUID_EFFECT_ALPHA, from, top, to, bottom)
 			end
 		end
 
@@ -984,7 +985,7 @@ function plain:LiquidRibbons(bar, entry, native, fraction, now)
 				local x = from + (to - from) * ((index * 0.29 + 0.11) % 1) + math.sin(seconds * 1.3 + index) * 2
 				x = Clamp(x, from, to - size)
 				local y = bottom - size - (depth - size) * progress
-				local alpha = math.sin(math.pi * progress)
+				local alpha = math.sin(math.pi * progress) * LIQUID_EFFECT_ALPHA
 				Place(bubble.body, root, x, y, size, size)
 				bubble.body:SetColor(lr, lg, lb, 0.55 * alpha)
 				Place(bubble.shine, root, x, y, math.min(1, size), math.min(1, size))
@@ -1003,10 +1004,10 @@ function plain:LiquidRibbons(bar, entry, native, fraction, now)
 				local wobble = (math.sin(seconds * (7 + slosh * 6) + index * 1.1) * 0.5 + 0.5) * amplitude
 				local x = bounds.reverse and from + wobble or to - lineWidth - wobble
 				Place(piece, root, x, top + (index - 1) * segment, lineWidth, segment)
-				piece:SetColor(sr, sg, sb, 0.85)
+				piece:SetColor(sr, sg, sb, 0.85 * LIQUID_EFFECT_ALPHA)
 			end
 			local glowWidth = math.min(8 + slosh * 6, to - from)
-			local glowAlpha = 0.35 + slosh * 0.3
+			local glowAlpha = (0.35 + slosh * 0.3) * LIQUID_EFFECT_ALPHA
 			if bounds.reverse then
 				Place(group.glow, root, from, top, glowWidth, depth)
 				Corners(group.glow, lr, lg, lb, glowAlpha, 0, glowAlpha, 0)
@@ -1028,7 +1029,7 @@ function plain:LiquidRibbons(bar, entry, native, fraction, now)
 		end
 		local cx0, cy0, cx1, cy1 = Clip(x0, top, x1, bottom, bounds.barFrom, top, bounds.barTo, bottom)
 		if cx0 then
-			local alpha = 0.5 * Clamp(draining * 10, 0, 1)
+			local alpha = 0.5 * Clamp(draining * 10, 0, 1) * LIQUID_EFFECT_ALPHA
 			Place(group.drain, root, cx0, cy0, cx1 - cx0, cy1 - cy0)
 			-- Strongest against the liquid, thinning out towards where the level was.
 			if bounds.reverse then
@@ -1046,14 +1047,14 @@ function plain:LiquidRibbons(bar, entry, native, fraction, now)
 		bounds.barFrom, bounds.bandTop, bounds.barTo, bounds.bandBottom)
 	if gx0 then
 		Place(group.glass, root, gx0, gy0, gx1 - gx0, gy1 - gy0)
-		group.glass:SetColor(1, 1, 1, 0.16)
+		group.glass:SetColor(1, 1, 1, 0.16 * LIQUID_EFFECT_ALPHA)
 	end
 	local sweep = bounds.length + 240
 	local glintCentre = ((seconds * 70) % sweep) - 120 - bounds.offset
 	local glintHalf = 16
 	local halvesOfGlint = {
-		{ glintCentre - glintHalf, glintCentre, 0, 0.5 },
-		{ glintCentre, glintCentre + glintHalf, 0.5, 0 },
+		{ glintCentre - glintHalf, glintCentre, 0, 0.5 * LIQUID_EFFECT_ALPHA },
+		{ glintCentre, glintCentre + glintHalf, 0.5 * LIQUID_EFFECT_ALPHA, 0 },
 	}
 	for index, part in ipairs(halvesOfGlint) do
 		local piece = group.glint[index]
@@ -1069,8 +1070,85 @@ function plain:LiquidRibbons(bar, entry, native, fraction, now)
 	end
 end
 
+-- The square frame round one whole bar -- both of health's halves together -- in the band the
+-- player sees: a see-through track under the game's fill, and an outline over it.
+function plain:LiquidFrame(bar)
+	self.liquidFrames = self.liquidFrames or {}
+	local first = Control(bar.controls[1].name)
+	local last = Control(bar.controls[#bar.controls].name)
+	local container = Control(bar.container)
+	if not first or not last or not container or not WINDOW_MANAGER or not CT_TEXTURE then
+		return nil
+	end
+	local frame = self.liquidFrames[bar.key]
+	if not frame then
+		local prefix = "PBsLiquidFrame" .. bar.key
+		frame = { border = {} }
+		-- Under the game's own fill, which is drawn at its default tier.
+		frame.track = WINDOW_MANAGER:CreateControl(prefix .. "Track", container, CT_TEXTURE)
+		frame.track:SetDrawTier(DT_LOW)
+		frame.track:SetDrawLevel(0)
+		-- Over the fill and the liquid, under the numbers (level 10).
+		for _, side in ipairs({ "Top", "Bottom", "Left", "Right" }) do
+			local piece = WINDOW_MANAGER:CreateControl(prefix .. side, container, CT_TEXTURE)
+			piece:SetDrawTier(DT_HIGH)
+			piece:SetDrawLevel(8)
+			frame.border[side] = piece
+		end
+		self.liquidFrames[bar.key] = frame
+	end
+
+	local _, height = first:GetDimensions()
+	local _, containerHeight = container:GetDimensions()
+	if type(containerHeight) ~= "number" or containerHeight <= 0 then
+		containerHeight = height
+	end
+	local half = math.min(height, containerHeight * LIQUID_BAND_OF_CONTAINER) / 2
+	if frame.half ~= half or frame.first ~= first or frame.last ~= last then
+		local track = frame.track
+		track:ClearAnchors()
+		track:SetAnchor(TOPLEFT, first, LEFT, 0, -half)
+		track:SetAnchor(BOTTOMRIGHT, last, RIGHT, 0, half)
+		local border = frame.border
+		border.Top:ClearAnchors()
+		border.Top:SetAnchor(TOPLEFT, first, LEFT, 0, -half)
+		border.Top:SetAnchor(BOTTOMRIGHT, last, RIGHT, 0, -half + 1)
+		border.Bottom:ClearAnchors()
+		border.Bottom:SetAnchor(TOPLEFT, first, LEFT, 0, half - 1)
+		border.Bottom:SetAnchor(BOTTOMRIGHT, last, RIGHT, 0, half)
+		border.Left:ClearAnchors()
+		border.Left:SetAnchor(TOPLEFT, first, LEFT, 0, -half)
+		border.Left:SetAnchor(BOTTOMRIGHT, first, LEFT, 1, half)
+		border.Right:ClearAnchors()
+		border.Right:SetAnchor(TOPLEFT, last, RIGHT, -1, -half)
+		border.Right:SetAnchor(BOTTOMRIGHT, last, RIGHT, 0, half)
+		frame.half, frame.first, frame.last = half, first, last
+	end
+
+	local t = LIQUID_TRACK_COLOUR
+	frame.track:SetColor(t[1], t[2], t[3], t[4])
+	frame.track:SetHidden(false)
+	local outline = addon:PlainBorder()
+	local colour = BORDER_PALETTE[addon:PlainBorderColour()]
+	for _, piece in pairs(frame.border) do
+		piece:SetColor(colour[1], colour[2], colour[3], BORDER_ALPHA)
+		piece:SetHidden(not outline)
+	end
+	return frame
+end
+
+function plain:HideLiquidFrames()
+	for _, frame in pairs(self.liquidFrames or {}) do
+		frame.track:SetHidden(true)
+		for _, piece in pairs(frame.border) do
+			piece:SetHidden(true)
+		end
+	end
+end
+
 function plain:RestoreLiquid()
 	for _, group in pairs(self.liquidRibbons or {}) do group.control:SetHidden(true) end
+	self:HideLiquidFrames()
 	for control, colours in pairs(self.liquidColours or {}) do
 		addon:Write("liquid colour", control.SetGradientColors, control, unpack(colours))
 	end
@@ -1080,7 +1158,6 @@ end
 function plain:UpdateLiquid()
 	if not self.liquidColours then
 		self:HideAll()
-		self:DressAll(false)
 		self:RaiseAllNumbers(false)
 		self:BlankAll(false)
 		self.liquidColours = {}
@@ -1091,6 +1168,9 @@ function plain:UpdateLiquid()
 	for _, bar in ipairs(self.bars) do
 		local fraction = self:Fraction(bar)
 		self:RaiseNumbers(bar, true)
+		-- The game's arrow-ended frame and background go; the square frame takes their place.
+		self:Dress(bar, true)
+		self:LiquidFrame(bar)
 		local powerType = _G["COMBAT_MECHANIC_FLAGS_" .. bar.power:upper()]
 		local gradient = powerType and ZO_POWER_BAR_GRADIENT_COLORS and ZO_POWER_BAR_GRADIENT_COLORS[powerType]
 		if gradient and gradient[1] and gradient[2] then

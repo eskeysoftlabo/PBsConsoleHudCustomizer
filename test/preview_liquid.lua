@@ -94,7 +94,14 @@ for frame = 1, FRAMES do
 				table.concat(rects, ","))
 		end
 	end
-	frames[#frames + 1] = "[" .. table.concat(bars, ",") .. "]"
+	local frameInfo = {}
+	for key, frame in pairs(addon.plain.liquidFrames or {}) do
+		local t, b = frame.track.color or { 0, 0, 0, 0 }, frame.border.Top.color or { 0, 0, 0, 0 }
+		frameInfo[#frameInfo + 1] = string.format('"%s":{"track":[%s,%s,%s,%s],"line":[%s,%s,%s,%s],"outline":%s}', key,
+			Num(t[1]), Num(t[2]), Num(t[3]), Num(frame.track.hidden and 0 or t[4]),
+			Num(b[1]), Num(b[2]), Num(b[3]), Num(b[4]), tostring(not frame.border.Top.hidden))
+	end
+	frames[#frames + 1] = '{"bars":[' .. table.concat(bars, ",") .. '],"frames":{' .. table.concat(frameInfo, ",") .. '}}'
 end
 
 local html = [[
@@ -104,21 +111,27 @@ body{background:#1b1d22;color:#ddd;font:13px system-ui;margin:0;padding:16px}
 canvas{display:block;background:#2a2d33;border-radius:6px;max-width:100%}
 p{margin:6px 0 12px}
 </style>
-<p>PB's ConsoleHudCustomizer - Liquid, rendered from the add-on's own writes (x4). Health is hit at 1.5s, magicka refills at 3.0s, stamina drops at 3.75s. <span id="t"></span></p>
+<p>PB's ConsoleHudCustomizer - Liquid, rendered from the add-on's own writes (x4). Drawn over a stand-in scene so see-through shows. Health is hit at 1.5s, magicka refills at 3.0s, stamina drops at 3.75s. <span id="t"></span></p>
 <canvas id="c" width="1000" height="330"></canvas>
 <script>
 const FRAMES=]] .. "[" .. table.concat(frames, ",") .. "]" .. [[;
 const S=4, STEP=]] .. STEP .. [[;
 const ctx=document.getElementById('c').getContext('2d');
 const rgba=(r,g,b,a)=>`rgba(${r*255|0},${g*255|0},${b*255|0},${a})`;
-function drawBar(entries, ox, oy){
+function backdrop(){
+  const g=ctx.createLinearGradient(0,0,1000,330);
+  g.addColorStop(0,'#5d6b4a'); g.addColorStop(.35,'#8a7a5c'); g.addColorStop(.7,'#3f5566'); g.addColorStop(1,'#6b5a48');
+  ctx.fillStyle=g; ctx.fillRect(0,0,1000,330);
+  ctx.fillStyle='rgba(255,255,255,.08)'; for(let i=0;i<14;i++){ ctx.fillRect(i*80,0,30,330); }
+}
+function drawBar(entries, ox, oy, fr){
   // The band the art occupies: 17 of 64, centred.
   const h=entries[0].h, bandTop=(h-17)/2;
   let x=ox;
   for(const e of entries){
     const w=e.w;
-    // track
-    ctx.fillStyle='#0c0d10'; ctx.fillRect(x*S, (oy+bandTop)*S, w*S, 17*S);
+    // track: the add-on's own, see-through
+    ctx.fillStyle=rgba(...fr.track); ctx.fillRect(x*S, (oy+bandTop)*S, w*S, 17*S);
     // native fill, its gradient along the bar
     const filled=w*e.fraction, fx=e.reverse? x+w-filled : x;
     const gr=ctx.createLinearGradient(fx*S,0,(fx+filled)*S,0);
@@ -139,17 +152,16 @@ function drawBar(entries, ox, oy){
     }
     x+=w;
   }
-  // frame: the band outline with pointed ends
-  const total=x-ox, t=(oy+bandTop)*S, b=(oy+bandTop+17)*S, m=(t+b)/2, p=8.5*S;
-  ctx.strokeStyle='rgba(220,210,180,.55)'; ctx.lineWidth=2; ctx.beginPath();
-  ctx.moveTo(ox*S-p/2,m); ctx.lineTo(ox*S+p/2,t); ctx.lineTo((ox+total)*S-p/2,t); ctx.lineTo((ox+total)*S+p/2,m);
-  ctx.lineTo((ox+total)*S-p/2,b); ctx.lineTo(ox*S+p/2,b); ctx.closePath(); ctx.stroke();
+  // the add-on's square outline, one pixel inside the band
+  if(fr.outline){ const total=x-ox; ctx.fillStyle=rgba(...fr.line);
+    ctx.fillRect(ox*S,(oy+bandTop)*S,total*S,S); ctx.fillRect(ox*S,(oy+bandTop+16)*S,total*S,S);
+    ctx.fillRect(ox*S,(oy+bandTop)*S,S,17*S); ctx.fillRect((ox+total-1)*S,(oy+bandTop)*S,S,17*S); }
 }
 let f=0;
 function tick(){
-  const frame=FRAMES[f]; ctx.clearRect(0,0,1000,360);
-  const by={}; for(const e of frame){(by[e.key]=by[e.key]||[]).push(e);}
-  drawBar(by.magicka, 12, -20); drawBar(by.health, 12, 10); drawBar(by.stamina, 12, 40);
+  const frame=FRAMES[f]; backdrop();
+  const by={}; for(const e of frame.bars){(by[e.key]=by[e.key]||[]).push(e);}
+  drawBar(by.magicka, 12, -20, frame.frames.magicka); drawBar(by.health, 12, 10, frame.frames.health); drawBar(by.stamina, 12, 40, frame.frames.stamina);
   document.getElementById('t').textContent=`t=${(f*STEP/1000).toFixed(2)}s`;
   f=(f+1)%FRAMES.length;
 }

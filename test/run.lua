@@ -28,7 +28,7 @@ print("\n== 1. load ==")
 Fire(EVENT_ADD_ON_LOADED, "PBsConsoleHudCustomizer")
 local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 local health, magicka, stamina = addon.barByKey.health, addon.barByKey.magicka, addon.barByKey.stamina
-check("version read from manifest", addon.version, "1.25.0")
+check("version read from manifest", addon.version, "1.26.0")
 check("slash command registered", type(SLASH_COMMANDS["/pbhud"]), "function")
 check("short slash command registered", type(SLASH_COMMANDS["/pbhc"]), "function")
 check("HUD fragment callback registered", addon.hudRegistered, true)
@@ -2201,8 +2201,10 @@ do
 	check("Liquid style is selectable and persists", addon:BarStyle(), "liquidflow")
 	check("Liquid uses standard scaling", addon:BarsAreMuraHige(), false)
 	for _, bar in ipairs(addon.plain.bars) do
-		check("Liquid retains the native frame", _G[bar.container .. "FrameLeft"]:IsHidden(), false)
-		check("Liquid retains the native background", _G[bar.container .. "BgContainer"]:IsHidden(), false)
+		-- A straight tube of liquid does not fit the game's arrow-ended frame: Liquid puts it
+		-- away and draws a square one.
+		check("Liquid puts away the arrow frame", _G[bar.container .. "FrameLeft"]:IsHidden(), true)
+		check("Liquid puts away the game's background", _G[bar.container .. "BgContainer"]:IsHidden(), true)
 		for _, entry in ipairs(bar.controls) do
 			local control = _G[entry.name]
 			check("Liquid leaves native width unchanged", control:GetWidth(), originals[control].width)
@@ -2240,7 +2242,8 @@ do
 	addon:Refresh()
 	addon:SetBarStyle("liquidflow")
 	addon:Refresh()
-	check("entering Liquid from NEO restores the frame", _G.ZO_PlayerAttributeHealthFrameLeft:IsHidden(), false)
+	check("entering Liquid from NEO keeps the arrow frame away", _G.ZO_PlayerAttributeHealthFrameLeft:IsHidden(), true)
+	check("and NEO's rectangles go", addon.plain.overlays.ZO_PlayerAttributeHealthBarLeft.control:IsHidden(), true)
 	check("entering Liquid restores text layout", _G.ZO_PlayerAttributeHealthResourceNumbers.anchors[1].offsetX, 7)
 	addon:Account().enabled = false
 	addon:Refresh()
@@ -2260,7 +2263,8 @@ do
 	FireHud(SCENE_FRAGMENT_SHOWN)
 	addon:Refresh()
 
-	local TAPER = 17 / 2
+	-- Liquid has a square frame, so nothing is kept clear at the ends any more.
+	local TAPER = 0
 	local function Entry(barIndex, controlIndex)
 		local bar = plain.bars[barIndex]
 		local entry = bar.controls[controlIndex]
@@ -2342,6 +2346,12 @@ do
 	check("health's right half starts at the middle", math.abs(rightHalfLeft) < E, true)
 	check("health still draws at half", Covered(entries[1], 0.5, 200000) ~= math.huge and Covered(entries[2], 0.5, 200000) ~= math.huge, true)
 
+	-- With a square frame the liquid runs right to both ends.
+	for _, which in ipairs(entries) do
+		local left, right, width = Covered(which, 1, 205000)
+		check("the liquid runs to both ends of " .. which.name, left < 0.001 and right > width - 2.001, true)
+	end
+
 	-- Soft, not lines: the currents fade from their middle to nothing at the rim.
 	local group = Draw(entries[4], 1, 210000)
 	local soft = false
@@ -2400,7 +2410,7 @@ do
 	-- The glass runs along the tube, full or not.
 	group = Draw(stamina, 0.3, 500000)
 	local gx0, _, gx1 = Box(group.glass)
-	check("the glass runs along the whole tube", group.glass:IsHidden() == false and (gx1 - gx0) > 224 - 17 - 1, true)
+	check("the glass runs along the whole tube", group.glass:IsHidden() == false and (gx1 - gx0) > 224 - 1, true)
 
 	-- Bubbles rise.
 	group = Draw(stamina, 1, 600000)
@@ -2433,7 +2443,32 @@ do
 	RunUpdates()
 	local gradient = ZO_POWER_BAR_GRADIENT_COLORS[COMBAT_MECHANIC_FLAGS_STAMINA]
 	local _, _, _, alpha = gradient[1]:UnpackRGBA()
-	check("the liquid body is nearly solid", math.abs(_G[stamina.name].gradient[4] - alpha * 0.92) < E, true)
+	check("the liquid body is see-through", math.abs(_G[stamina.name].gradient[4] - alpha * 0.62) < E, true)
+
+	-- The square frame: one per bar, round both of health's halves, in the 17-pixel band.
+	RunUpdates()
+	for _, bar in ipairs(plain.bars) do
+		local frame = plain.liquidFrames[bar.key]
+		local first, last = _G[bar.controls[1].name], _G[bar.controls[#bar.controls].name]
+		local a1, a2 = frame.track.anchors[1], frame.track.anchors[2]
+		check("the frame starts at the left end of " .. bar.key,
+			a1.point == TOPLEFT and a1.relativeTo == first and a1.relativePoint == LEFT and a1.offsetY == -8.5, true)
+		check("and ends at the right end", a2.point == BOTTOMRIGHT and a2.relativeTo == last and a2.relativePoint == RIGHT and a2.offsetY == 8.5, true)
+		check("the track is under the game's fill", frame.track.drawTier, DT_LOW)
+		check("the track is see-through", frame.track.color[4] < 0.6, true)
+		check("the outline is over it", frame.border.Top.drawTier, DT_HIGH)
+		check("the outline is drawn", frame.border.Left:IsHidden(), false)
+	end
+	addon:SetPlainBorderColour("gold")
+	RunUpdates()
+	check("the outline takes the chosen colour", plain.liquidFrames.magicka.border.Top.color[1], 1)
+	addon:SetPlainBorder(false)
+	RunUpdates()
+	check("and goes when the outline is switched off", plain.liquidFrames.magicka.border.Top:IsHidden(), true)
+	check("leaving the track", plain.liquidFrames.magicka.track:IsHidden(), false)
+	addon:SetPlainBorder(true)
+	addon:SetPlainBorderColour("black")
+	RunUpdates()
 
 	-- It goes with the HUD and with the style.
 	group = plain.liquidRibbons[stamina.name]
@@ -2445,6 +2480,8 @@ do
 	addon:SetBarStyle("standard")
 	addon:Refresh()
 	check("choosing another style removes it", group.control:IsHidden(), true)
+	check("and its square frame", plain.liquidFrames.stamina.track:IsHidden(), true)
+	check("and brings the game's arrow frame back", _G.ZO_PlayerAttributeStaminaFrameLeft:IsHidden(), false)
 	check("and the body's own opacity comes back", _G[stamina.name].gradient[4], alpha)
 end
 

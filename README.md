@@ -52,18 +52,21 @@ gives it the same size so the pair still lines up.
 - **Standard** — the game's own bars, untouched. Nothing is built and nothing runs.
 - **Square** — each bar as a flat rectangle: a dark track, and a solid block in that power's own
   colour, with the game's own resource numbers lifted over it.
-- **Liquid** — keeps the standard shapes, frames and gloss, and makes the fill read as a liquid
-  in a glass tube, the way Diablo's orbs do: the lower part sinks into shadow, soft light and dark
-  currents drift through it, the end of the fill is a bright surface that sloshes when the amount
-  changes and settles again, what was just lost stays a moment as a pale trace and drains away,
-  bubbles rise and pop, and a reflection runs along the top of the glass with a glint crossing it.
-  All of it is untextured rectangles with per-corner colours -- no art -- about forty per bar
-  section, updated every 50ms while Liquid is active and the HUD is shown. It stays inside the
-  coloured band the player sees (17 of the console status bar's 64 pixels), inside what is filled,
-  and clear of the pointed outer ends; health's two halves are one continuous liquid. Select it in
-  the style dropdown or with `/pbhud style liquid`; `/pbhud plain` prints the band and span.
-  `lua test/preview_liquid.lua out.html` renders five seconds of it from the add-on's own writes,
-  to judge the look without a console.
+- **Liquid** — the fill as a see-through liquid in a square glass tube, the way Diablo's orbs do
+  it. The game's arrow-ended frame and background are put away -- a straight tube does not fit
+  pointed ends -- and a square frame takes their place: a dark see-through track under the game's
+  fill, and the same outline as Square and MURA-HIGE (the **Draw an outline** switch and **Outline
+  colour** apply). The body is drawn at 62%, so the scene shows through it. Over it the lower
+  part sinks into shadow, soft light and dark currents drift through it, the end of the fill is a
+  bright surface that sloshes when the amount changes and settles again, what was just lost stays a
+  moment as a pale trace and drains away, bubbles rise and pop, and a reflection runs along the
+  top of the glass with a glint crossing it. All of it is untextured rectangles with per-corner
+  colours -- no art -- about forty per bar section, updated every 50ms while Liquid is active and
+  the HUD is shown. It stays inside the coloured band the player sees (17 of the console status
+  bar's 64 pixels) and inside what is filled; health's two halves are one continuous liquid.
+  Select it in the style dropdown or with `/pbhud style liquid`; `/pbhud plain` prints the band
+  and span. `lua test/preview_liquid.lua out.html` renders five seconds of it from the add-on's own
+  writes, over a stand-in scene, to judge the look without a console.
 - **MURA-HIGE NEO Style** — uses the same width and height settings as MURA-HIGE Style,
   with health, magicka and stamina all filling from left to right. Health is one continuous bar.
 - **MURA-HIGE Style** — the same rectangle, drawn at a **width and a height in pixels**: the two
