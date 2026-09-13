@@ -1220,13 +1220,13 @@ local function OnSlash(argumentString)
 	elseif command == "style" then
 		local style = (args[2] or ""):lower()
 		if style == "liquid" then
-			style = "plain"
+			style = "liquidflow"
 		end
 		if style == "round" or style == "mura" or style == "murahige" or style == "mura-hige" then
 			style = "rounded"
 		end
 		if not addon:SetBarStyle(style) then
-			Line("usage: %s style standard|plain|rounded|neo", SLASH)
+			Line("usage: %s style standard|plain|rounded|neo|liquid", SLASH)
 			return
 		end
 		account.enabled = true

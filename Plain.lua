@@ -43,7 +43,7 @@ addon.plain = plain
 --
 -- The key is still "rounded" because that is what an install has saved: the style was drawn with
 -- round ends until 1.10.0, and it earned nobody's affection.
-addon.BAR_STYLES = { "standard", "plain", "rounded", "neo" }
+addon.BAR_STYLES = { "standard", "plain", "rounded", "neo", "liquidflow" }
 
 -- Nothing animates, so this only has to keep up with the numbers changing.
 local UPDATE_INTERVAL_MS = 100
@@ -187,7 +187,7 @@ function addon:PlainWanted()
 		return false
 	end
 	local style = self:BarStyle()
-	return style == "plain" or style == "rounded" or style == "neo"
+	return style == "plain" or style == "rounded" or style == "neo" or style == "liquidflow"
 end
 
 -- MURA-HIGE Style: the one drawn at a size of its own.
@@ -670,7 +670,247 @@ function plain:UpdateOverlay(overlay, fraction)
 	fill:SetHidden(false)
 end
 
+-- Liquid keeps the native status bars, fill textures, gloss, clipping and frames.
+-- Animate their colours and inset highlights: the engine still owns the fill amount and
+-- silhouette, including the reversed bars and the two native health halves.
+-- Two travelling ribbons, sampled into small untextured strips. Their vertical
+-- position moves independently of the colour pulse, so the fill has visible flow.
+-- Parent to the attribute container (not StatusBar) for console visibility.
+local LIQUID_SAMPLES = 24
+local LIQUID_BUBBLES, BUBBLE_POINTS = 3, 12
+local LIQUID_BODY_ALPHA = 0.70
+
+-- Reusable hollow bubbles made from small untextured highlights. Each rises,
+-- drifts sideways and fades as it reaches the surface; no image assets needed.
+local function UpdateBubbles(group, from, to, top, bottom, seconds, r, g, b)
+	local span, depth = to - from, bottom - top
+	local radiusMax = math.min(3, depth / 4, span / 8)
+	if radiusMax < 1 then
+		for _, bubble in ipairs(group.bubbles) do bubble.control:SetHidden(true) end
+		return
+	end
+	for i, bubble in ipairs(group.bubbles) do
+		local progress = (seconds / (2.1 + i * 0.45) + i * 0.29) % 1
+		local radius = radiusMax * (0.6 + 0.4 * progress)
+		local size = radius * 2
+		local x = from + span * i / (LIQUID_BUBBLES + 1) + math.sin(seconds * 1.7 + i) * 2
+		x = Clamp(x, from + radiusMax, to - radiusMax)
+		local y = bottom - radiusMax - (depth - radiusMax * 2) * progress
+		local alpha = math.sin(math.pi * progress) * 0.85
+		bubble.control:SetHidden(false)
+		bubble.control:ClearAnchors()
+		bubble.control:SetAnchor(TOPLEFT, group.control, TOPLEFT, x - radius, y - radius)
+		bubble.control:SetDimensions(size, size)
+		local dot = math.min(0.9, radius * 0.6)
+		for point, piece in ipairs(bubble.points) do
+			local angle = (point - 1) * math.pi * 2 / BUBBLE_POINTS
+			-- Center each dot on the ring, but keep its entire rectangle inside
+			-- the bubble box, which itself lies strictly inside the fill bounds.
+			local px = radius + math.cos(angle) * (radius - dot / 2) - dot / 2
+			local py = radius + math.sin(angle) * (radius - dot / 2) - dot / 2
+			piece:ClearAnchors()
+			piece:SetAnchor(TOPLEFT, bubble.control, TOPLEFT, px, py)
+			piece:SetDimensions(dot, dot)
+			local shine = math.sin(angle) < 0 and 1 or 0.6
+			piece:SetColor(r + (1-r)*0.9, g + (1-g)*0.9, b + (1-b)*0.9, alpha * shine)
+		end
+	end
+end
+-- Where the effect may draw, inside one native status bar.
+--
+-- The status bar a console draws is ZO_PlayerAttributeStatusBar_Gamepad_Template: 64 high
+-- (playerattributebartemplates.xml), with the coloured band in the middle of that texture and
+-- transparent art above and below it. The bar the player sees is the 23-high container's 17, as
+-- it is on keyboard. Everything used to be worked out from the 64, and on a PS5 that meant:
+--
+--   an end inset of 1.5 x 64 = 96 on each side, which left magicka and stamina 32 pixels of a
+--   224-pixel bar in the middle, and left each 111-pixel half of health less than nothing, so
+--   health was hidden outright; and a band 41 high over a bar 17 high, drawn above and below it.
+--
+-- The offline harness built its bars 17 high, the keyboard size, so every one of those tests
+-- passed. They are built 64 high now.
+--
+-- So: the band is 17/23 of the container, centred on the status bar, and never more than the
+-- status bar itself. The ends are kept clear only where the art has a point -- the outer end of
+-- each bar -- by half the band, which is how far the arrow's slope reaches in. Health's two
+-- halves meet flat in the middle, so nothing is kept clear there and the effect runs straight
+-- across. The moving end of the fill keeps two pixels clear of the leading edge.
+local LIQUID_BAND_OF_CONTAINER = 17 / 23
+local LIQUID_BAND_MARGIN = 0.12
+local LIQUID_LEADING_EDGE = 2
+-- How many strips at an open end fade in, so an end is soft rather than cut.
+local LIQUID_FADE_SAMPLES = 3
+
+function plain:LiquidBounds(bar, entry, native, fraction)
+	local width, height = native:GetDimensions()
+	local container = Control(bar.container)
+	local containerHeight = height
+	if container then
+		local _, measured = container:GetDimensions()
+		if type(measured) == "number" and measured > 0 then
+			containerHeight = measured
+		end
+	end
+	local band = math.min(height, containerHeight * LIQUID_BAND_OF_CONTAINER)
+	local margin = math.max(1, band * LIQUID_BAND_MARGIN)
+	local top = (height - band) / 2 + margin
+	local bottom = top + band - margin * 2
+
+	-- Which ends of this control are the pointed outer ends of the bar.
+	local halves = #bar.controls > 1
+	local isRightHalf = halves and bar.controls[2].name == entry.name
+	local pointedLeft = not halves or not isRightHalf
+	local pointedRight = not halves or isRightHalf
+	local taper = band / 2
+
+	local filled = width * Clamp(fraction or 0, 0, 1)
+	local from, to
+	if entry.reverse then
+		from, to = width - filled + LIQUID_LEADING_EDGE, width
+	else
+		from, to = 0, filled - LIQUID_LEADING_EDGE
+	end
+	if pointedLeft then
+		from = math.max(from, taper)
+	end
+	if pointedRight then
+		to = math.min(to, width - taper)
+	end
+
+	return {
+		from = from,
+		to = to,
+		top = top,
+		bottom = bottom,
+		-- Health's right half carries on the wave where the left half stops.
+		offset = isRightHalf and width or 0,
+		-- An end fades unless it is where health's two halves meet.
+		fadeLeft = not isRightHalf,
+		fadeRight = not (halves and not isRightHalf),
+	}
+end
+
+function plain:LiquidRibbons(bar, entry, native, fraction, now)
+	self.liquidRibbons = self.liquidRibbons or {}
+	local group = self.liquidRibbons[entry.name]
+	if not group then
+		if not WINDOW_MANAGER or not CT_TEXTURE then return end
+		local root = WINDOW_MANAGER:CreateControl("PBsLiquid" .. entry.name, Control(bar.container), CT_CONTROL)
+		root:SetAnchor(TOPLEFT, native, TOPLEFT, 0, 0)
+		root:SetAnchor(BOTTOMRIGHT, native, BOTTOMRIGHT, 0, 0)
+		root:SetDrawTier(DT_HIGH)
+		root:SetDrawLevel(1)
+		group = { control = root, strips = {}, bubbles = {}, native = native }
+		for i = 1, LIQUID_SAMPLES * 2 do
+			local strip = WINDOW_MANAGER:CreateControl("PBsLiquid" .. entry.name .. "Strip" .. i, root, CT_TEXTURE)
+			strip:SetDrawLevel(1)
+			group.strips[i] = strip
+		end
+		for i = 1, LIQUID_BUBBLES do
+			local name = "PBsLiquid" .. entry.name .. "Bubble" .. i
+			local bubble = { control = WINDOW_MANAGER:CreateControl(name, root, CT_CONTROL), points = {} }
+			for point = 1, BUBBLE_POINTS do
+				local piece = WINDOW_MANAGER:CreateControl(name .. "Point" .. point, bubble.control, CT_TEXTURE)
+				piece:SetDrawLevel(2)
+				bubble.points[point] = piece
+			end
+			group.bubbles[i] = bubble
+		end
+		self.liquidRibbons[entry.name] = group
+	end
+	if group.native ~= native then
+		group.control:SetParent(Control(bar.container))
+		group.control:ClearAnchors()
+		group.control:SetAnchor(TOPLEFT, native, TOPLEFT, 0, 0)
+		group.control:SetAnchor(BOTTOMRIGHT, native, BOTTOMRIGHT, 0, 0)
+		group.native = native
+	end
+
+	local bounds = self:LiquidBounds(bar, entry, native, fraction)
+	local from, to, top, bottom = bounds.from, bounds.to, bounds.top, bounds.bottom
+	local depth = bottom - top
+	if depth < 3 or to - from < 2 then
+		group.control:SetHidden(true)
+		return
+	end
+	group.control:SetHidden(false)
+	local step = (to - from) / LIQUID_SAMPLES
+	local r, g, b = self:PowerColour(bar)
+	local seconds = now / 1000
+	for layer = 1, 2 do
+		for i = 1, LIQUID_SAMPLES do
+			local x = from + (i - 1) * step
+			-- The phase runs along the whole bar, so health's wave does not restart at the middle.
+			local phase = (bounds.offset + x + step / 2) / 25 + seconds * (layer == 1 and -2.4 or 1.7)
+			local thickness = math.min(depth / 3, math.max(1, depth * (layer == 1 and 0.20 or 0.24)))
+			local y = top + depth * (layer == 1 and 0.25 or 0.62) + math.sin(phase) * depth * 0.16
+			y = Clamp(y, top, bottom - thickness)
+			-- Full strength along the bar; only an open end fades in, over a few strips.
+			local fade = 1
+			if bounds.fadeLeft then
+				fade = math.min(fade, i / LIQUID_FADE_SAMPLES)
+			end
+			if bounds.fadeRight then
+				fade = math.min(fade, (LIQUID_SAMPLES + 1 - i) / LIQUID_FADE_SAMPLES)
+			end
+			local glint = (0.44 + 0.36 * ((math.sin(phase * 0.7) + 1) / 2)) * fade
+			local strip = group.strips[(layer - 1) * LIQUID_SAMPLES + i]
+			strip:ClearAnchors()
+			strip:SetAnchor(TOPLEFT, group.control, TOPLEFT, x, y)
+			strip:SetDimensions(step, thickness)
+			strip:SetColor(r + (1 - r) * 0.8, g + (1 - g) * 0.8, b + (1 - b) * 0.8, glint)
+		end
+	end
+	UpdateBubbles(group, from, to, top, bottom, seconds, r, g, b)
+end
+
+function plain:RestoreLiquid()
+	for _, group in pairs(self.liquidRibbons or {}) do group.control:SetHidden(true) end
+	for control, colours in pairs(self.liquidColours or {}) do
+		addon:Write("liquid colour", control.SetGradientColors, control, unpack(colours))
+	end
+	self.liquidColours = nil
+end
+
+function plain:UpdateLiquid()
+	if not self.liquidColours then
+		self:HideAll()
+		self:DressAll(false)
+		self:RaiseAllNumbers(false)
+		self:BlankAll(false)
+		self.liquidColours = {}
+	end
+	local now = GetFrameTimeMilliseconds and GetFrameTimeMilliseconds() or 0
+	local wave = (math.sin(now / 1300) + 1) / 2
+	local dark, light = 0.60 + wave * 0.18, 0.12 + (1 - wave) * 0.18
+	for _, bar in ipairs(self.bars) do
+		local fraction = self:Fraction(bar)
+		self:RaiseNumbers(bar, true)
+		local powerType = _G["COMBAT_MECHANIC_FLAGS_" .. bar.power:upper()]
+		local gradient = powerType and ZO_POWER_BAR_GRADIENT_COLORS and ZO_POWER_BAR_GRADIENT_COLORS[powerType]
+		if gradient and gradient[1] and gradient[2] then
+			local r, g, b, a = gradient[1]:UnpackRGBA()
+			local r2, g2, b2, a2 = gradient[2]:UnpackRGBA()
+			for _, entry in ipairs(bar.controls) do
+				local control = Control(entry.name)
+				if control and type(control.SetGradientColors) == "function" then
+					self:LiquidRibbons(bar, entry, control, fraction, now)
+					self.liquidColours[control] = self.liquidColours[control] or { r, g, b, a, r2, g2, b2, a2 }
+					addon:Write("liquid colour", control.SetGradientColors, control,
+						r * dark, g * dark, b * dark, a * LIQUID_BODY_ALPHA,
+						r2 + (1 - r2) * light, g2 + (1 - g2) * light, b2 + (1 - b2) * light, a2 * LIQUID_BODY_ALPHA)
+				end
+			end
+		end
+	end
+end
+
 function plain:Update()
+	if addon:BarStyle() == "liquidflow" then
+		self:UpdateLiquid()
+		return
+	end
+	if self.liquidColours then self:RestoreLiquid() end
 	for _, bar in ipairs(self.bars) do
 		local fraction = self:Fraction(bar)
 		self:Dress(bar, true)
@@ -706,7 +946,7 @@ function plain:PrintStatus()
 	Line("|cFF69B4%s|r -- the bars this add-on draws", addon.title)
 	Line("  style=%s opacity=%d%% outline=%s running=%s hud=%s", addon:BarStyle(), addon:PlainOpacity(),
 		tostring(addon:PlainBorder()), tostring(self.running == true), tostring(self.hudShown ~= false))
-	if addon:BarStyle() ~= "plain" then
+	if addon:BarStyle() == "standard" then
 		Line("  the style is Standard, so nothing is drawn. Set it in the settings panel, or")
 		Line("  |cFFFFFF%s style plain|r", addon.slash)
 	end
@@ -724,6 +964,18 @@ function plain:PrintStatus()
 				local overlay = self.overlays[entry.name]
 				Line("    %s: bar %s wide, alpha=%s", entry.name, okWidth and tostring(Round(width)) or "?",
 					okAlpha and string.format("%.2f", alpha) or "?")
+				-- Liquid's geometry, so a PS5 can confirm the band it draws in: the status bar's
+				-- own height (64 on a console), the container's, and where the effect goes.
+				if addon:BarStyle() == "liquidflow" then
+					local okSize, nativeWidth, nativeHeight = pcall(barControl.GetDimensions, barControl)
+					local okBounds, bounds = pcall(self.LiquidBounds, self, bar, entry, barControl, fraction or 0)
+					local group = self.liquidRibbons and self.liquidRibbons[entry.name]
+					if okSize and okBounds then
+						Line("      liquid: control %dx%d, band y %.1f-%.1f, x %.1f-%.1f, shown=%s",
+							Round(nativeWidth), Round(nativeHeight), bounds.top, bounds.bottom, bounds.from, bounds.to,
+							tostring(group ~= nil and not group.control:IsHidden()))
+					end
+				end
 				if overlay then
 					local okFill, fillWidth = pcall(overlay.fill.GetWidth, overlay.fill)
 					Line("      rectangle: hidden=%s, fill %s wide, fills %s", tostring(overlay.control:IsHidden()),
@@ -761,7 +1013,7 @@ function plain:Start()
 	if not EVENT_MANAGER or type(EVENT_MANAGER.RegisterForUpdate) ~= "function" then
 		return false
 	end
-	EVENT_MANAGER:RegisterForUpdate(addon.name .. "Plain", UPDATE_INTERVAL_MS, function()
+	EVENT_MANAGER:RegisterForUpdate(addon.name .. "Plain", addon:BarStyle() == "liquidflow" and 50 or UPDATE_INTERVAL_MS, function()
 		plain:Update()
 	end)
 	self.running = true
@@ -775,6 +1027,7 @@ function plain:Stop()
 	end
 	EVENT_MANAGER:UnregisterForUpdate(addon.name .. "Plain")
 	self.running = false
+	self:RestoreLiquid()
 	self:HideAll()
 	self:DressAll(false)
 	self:RaiseAllNumbers(false)
@@ -783,6 +1036,9 @@ function plain:Stop()
 end
 
 function plain:Refresh()
+	local liquid = addon:BarStyle() == "liquidflow"
+	if self.running and self.wasLiquid ~= liquid then self:Stop() end
+	self.wasLiquid = liquid
 	if addon:PlainWanted() and self.hudShown ~= false then
 		self:Restyle()
 		if self.running then

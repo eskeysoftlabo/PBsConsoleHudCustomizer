@@ -39,7 +39,7 @@ function AdvanceFrame(ms) frameTime = frameTime + (ms or 1000) end
 function GetAddOnManager()
 	return {
 		GetNumAddOns = function() return 1 end,
-		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ConsoleHudCustomizer|r 1.23.0" end,
+		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ConsoleHudCustomizer|r 1.24.1" end,
 	}
 end
 
@@ -122,6 +122,7 @@ end
 function Control:GetName() return self.name end
 function Control:GetNamedChild(suffix) return (self.namedChildren or {})[suffix] or _G[self.name .. suffix] end
 function Control:GetParent() return self.parent end
+function Control:SetParent(parent) self.parent = parent end
 function Control:ClearAnchors() CountWrite(self, "anchor"); self.anchors = {} end
 function Control:SetAnchor(point, relativeTo, relativePoint, offsetX, offsetY, constrains)
 	CountWrite(self, "anchor")
@@ -174,7 +175,7 @@ function Control:SetDrawLevel(v) self.drawLevel = v end
 function Control:GetDrawLevel() return self.drawLevel or 0 end
 function Control:GetDrawTier() return self.drawTier or "medium" end
 function Control:SetCenterColor(r, g, b, a) self.centerColor = { r, g, b, a } end
-function Control:SetGradientColors(r, g, b, a) self.gradient = { r, g, b, a } end
+function Control:SetGradientColors(r, g, b, a, r2, g2, b2, a2) self.gradient = { r, g, b, a, r2, g2, b2, a2 } end
 function Control:SetEdgeColor(r, g, b, a) self.edgeColor = { r, g, b, a } end
 function Control:GetAlpha() return self.alpha or 1 end
 function Control:GetFontHeight() local size = tonumber((self.font or ""):match("|(%d+)|")) or 0; return math.ceil(size * 1.25) end
@@ -282,9 +283,12 @@ function BuildAttributeBars()
 	end
 
 	-- The status bars inside each container: two halves for health, one each for the others.
+	-- 64 high, as on a console: ZO_PlayerAttributeStatusBar_Gamepad_Template. The coloured band
+	-- is only the middle of that; the 17 here until 1.24.1 was the keyboard size, and it let a
+	-- liquid effect pass every test while it drew nothing on a PS5's health bar (FINDINGS 52).
 	local function MakeFill(name, parent, width)
 		local fill = MakeControl(name, parent, "statusbar")
-		fill.width, fill.height = width, 17
+		fill.width, fill.height = width, 64
 		fill:SetAnchor(LEFT, parent, LEFT, 7, 0)
 		fill.gradient = { 1, 1, 1, 1 }
 		local gloss = MakeControl(name .. "Gloss", fill, "statusbar")

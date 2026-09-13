@@ -16,7 +16,8 @@ local strings = {
 	-- ---- The look of the resource bars ---------------------------------------------------
 	SI_PBSCHC_SECTION_STYLE = "The look of the bars",
 	SI_PBSCHC_STYLE = "Bar style",
-	SI_PBSCHC_STYLE_TOOLTIP = "Standard is the game's own bars, untouched. Square draws each bar as a flat rectangle -- a dark track and a solid block of the power's own colour -- with the game's arrow-shaped frame and background put away, at the size the game draws it. MURA-HIGE Style is the same rectangle at a width and a height of your own, set below. MURA-HIGE NEO Style uses the same size settings, with health, magicka and stamina all filling from left to right. In these styles the bars themselves are left in place and still doing their work, so damage shields, armour changes and the low-health warning all still show on top.",
+	SI_PBSCHC_STYLE_TOOLTIP = "Standard is the game's own bars, untouched. Liquid preserves the native shape, frame and gloss with translucent fill, flowing highlights and small rising bubbles. Square draws each bar as a flat rectangle -- a dark track and a solid block of the power's own colour -- with the game's arrow-shaped frame and background put away, at the size the game draws it. MURA-HIGE Style is the same rectangle at a width and a height of your own, set below. MURA-HIGE NEO Style uses the same size settings, with health, magicka and stamina all filling from left to right. In these styles the bars themselves are left in place and still doing their work, so damage shields, armour changes and the low-health warning all still show on top.",
+	SI_PBSCHC_STYLE_LIQUIDFLOW = "Liquid",
 	SI_PBSCHC_STYLE_STANDARD = "Standard",
 	SI_PBSCHC_STYLE_PLAIN = "Square",
 	SI_PBSCHC_STYLE_ROUNDED = "MURA-HIGE Style",

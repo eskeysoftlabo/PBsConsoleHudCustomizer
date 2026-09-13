@@ -52,6 +52,14 @@ gives it the same size so the pair still lines up.
 - **Standard** — the game's own bars, untouched. Nothing is built and nothing runs.
 - **Square** — each bar as a flat rectangle: a dark track, and a solid block in that power's own
   colour, with the game's own resource numbers lifted over it.
+- **Liquid** — keeps the standard shapes, frames and gloss. Two travelling, undulating light ribbons
+  move over a 70%-opacity fill, with up to three small rising bubbles per native bar section,
+  updating every 50ms while Liquid is active and the HUD is shown. The effect runs the full length
+  of what is filled, at even strength, and straight across the middle of the health bar where its
+  two halves meet. It stays inside the coloured band the player sees -- 17 of the console status
+  bar's 64 pixels -- and clear of the bar's pointed outer ends and the moving edge of the fill.
+  Native resource amounts and fill directions remain unchanged. Select it in the style dropdown
+  or with `/pbhud style liquid`; `/pbhud plain` prints the band and span it is drawing in.
 - **MURA-HIGE NEO Style** — uses the same width and height settings as MURA-HIGE Style,
   with health, magicka and stamina all filling from left to right. Health is one continuous bar.
 - **MURA-HIGE Style** — the same rectangle, drawn at a **width and a height in pixels**: the two

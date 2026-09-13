@@ -28,7 +28,7 @@ print("\n== 1. load ==")
 Fire(EVENT_ADD_ON_LOADED, "PBsConsoleHudCustomizer")
 local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 local health, magicka, stamina = addon.barByKey.health, addon.barByKey.magicka, addon.barByKey.stamina
-check("version read from manifest", addon.version, "1.23.0")
+check("version read from manifest", addon.version, "1.24.1")
 check("slash command registered", type(SLASH_COMMANDS["/pbhud"]), "function")
 check("short slash command registered", type(SLASH_COMMANDS["/pbhc"]), "function")
 check("HUD fragment callback registered", addon.hudRegistered, true)
@@ -807,7 +807,7 @@ check("and its strength becomes an opacity in range", addon:PlainOpacity(), 100)
 check("the old key is cleared away", addon.account.liquidStrength, nil)
 -- And the command still answers to the old name.
 SLASH_COMMANDS["/pbhud"]("style liquid")
-check("so does the command", addon:BarStyle(), "plain")
+check("the command selects the new liquid style", addon:BarStyle(), "liquidflow")
 SLASH_COMMANDS["/pbhud"]("style standard")
 
 print("\n== 36. handing the skill bar back to another add-on ==")
@@ -2183,6 +2183,250 @@ do
 	addon:Account().enabled = true
 	addon:Account().resourceTextAlignment = "invalid"
 	check("invalid saved alignment defaults to left", addon:ResourceTextAlignment(), "left")
+end
+
+print("\n== Liquid retains native geometry and restores colours ==")
+do
+	addon:Account().enabled = true
+	addon:SetBarStyle("standard")
+	addon:Refresh()
+	local originals = {}
+	for _, bar in ipairs(addon.plain.bars) do
+		for _, entry in ipairs(bar.controls) do
+			local control = _G[entry.name]
+			originals[control] = { width = control:GetWidth(), height = control:GetHeight(), anchors = WriteCount(entry.name, "anchor") }
+		end
+	end
+	Row(GetString(SI_PBSCHC_STYLE)).setFunction(nil, nil, { data = "liquidflow" })
+	check("Liquid style is selectable and persists", addon:BarStyle(), "liquidflow")
+	check("Liquid uses standard scaling", addon:BarsAreMuraHige(), false)
+	for _, bar in ipairs(addon.plain.bars) do
+		check("Liquid retains the native frame", _G[bar.container .. "FrameLeft"]:IsHidden(), false)
+		check("Liquid retains the native background", _G[bar.container .. "BgContainer"]:IsHidden(), false)
+		for _, entry in ipairs(bar.controls) do
+			local control = _G[entry.name]
+			check("Liquid leaves native width unchanged", control:GetWidth(), originals[control].width)
+			check("Liquid leaves native height unchanged", control:GetHeight(), originals[control].height)
+			check("Liquid does not reanchor native fills", WriteCount(entry.name, "anchor"), originals[control].anchors)
+			check("Liquid leaves native gloss visible", control:GetNamedChild("Gloss"):IsHidden(), false)
+			check("Liquid does not draw rectangular overlays", addon.plain.overlays[entry.name].control:IsHidden(), true)
+			check("Liquid colours the existing fill", #control.gradient, 8)
+		end
+	end
+	local control = _G.ZO_PlayerAttributeMagickaBar
+	local firstColour = table.concat(control.gradient, ",")
+	AdvanceFrame(700)
+	RunUpdates()
+	check("Liquid shading changes over time", table.concat(control.gradient, ",") ~= firstColour, true)
+	local function CheckRestored()
+		for _, bar in ipairs(addon.plain.bars) do
+			local gradient = ZO_POWER_BAR_GRADIENT_COLORS[_G["COMBAT_MECHANIC_FLAGS_" .. bar.power:upper()]]
+			local r,g,b,a = gradient[1]:UnpackRGBA()
+			local r2,g2,b2,a2 = gradient[2]:UnpackRGBA()
+			for _, entry in ipairs(bar.controls) do
+				check("native gradient is restored", table.concat(_G[entry.name].gradient, ","), table.concat({r,g,b,a,r2,g2,b2,a2}, ","))
+			end
+		end
+	end
+	FireHud(SCENE_FRAGMENT_HIDDEN)
+	check("Liquid loop stops behind menus", addon.plain.running, false)
+	CheckRestored()
+	FireHud(SCENE_FRAGMENT_SHOWN)
+	check("Liquid loop resumes on HUD", addon.plain.running, true)
+	addon:SetBarStyle("standard")
+	addon:Refresh()
+	CheckRestored()
+	addon:SetBarStyle("neo")
+	addon:Refresh()
+	addon:SetBarStyle("liquidflow")
+	addon:Refresh()
+	check("entering Liquid from NEO restores the frame", _G.ZO_PlayerAttributeHealthFrameLeft:IsHidden(), false)
+	check("entering Liquid restores text layout", _G.ZO_PlayerAttributeHealthResourceNumbers.anchors[1].offsetX, 7)
+	addon:Account().enabled = false
+	addon:Refresh()
+	CheckRestored()
+	addon:Account().enabled = true
+end
+
+print("\n== Liquid moving ribbons stay within the filled region ==")
+do
+	addon:Account().enabled = true
+	addon:SetBarStyle("liquidflow")
+	for _, power in ipairs({ COMBAT_MECHANIC_FLAGS_HEALTH, COMBAT_MECHANIC_FLAGS_MAGICKA, COMBAT_MECHANIC_FLAGS_STAMINA }) do
+		SetPower(power, 750, 1000)
+	end
+	FireHud(SCENE_FRAGMENT_SHOWN)
+	addon:Refresh()
+	for _, bar in ipairs(addon.plain.bars) do
+		for _, entry in ipairs(bar.controls) do
+			local native = _G[entry.name]
+			local group = addon.plain.liquidRibbons[entry.name]
+			check("ribbons are visible at usable fill width", group.control:IsHidden(), false)
+			check("ribbons inherit the attribute container", group.control:GetParent(), _G[bar.container])
+			check("two ribbons have bounded strip counts", #group.strips, 48)
+			local width, height = native:GetDimensions()
+			local left = entry.reverse and width * 0.25 or 0
+			local right = entry.reverse and width or width * 0.75
+			-- A hidden group never placed its strips; the visibility check above reports that.
+			for _, strip in ipairs(group.control:IsHidden() and {} or group.strips) do
+				local x, y = strip.anchors[1].offsetX, strip.anchors[1].offsetY
+				check("strip stays inside current fill", x >= left and x + strip:GetWidth() <= right, true)
+				check("strip stays inside native height", y >= 0 and y + strip:GetHeight() <= height, true)
+			end
+		end
+	end
+	local group = addon.plain.liquidRibbons.ZO_PlayerAttributeStaminaBar
+	local strip = group.strips[1]
+	local y = strip.anchors[1] and strip.anchors[1].offsetY
+	AdvanceFrame(150)
+	RunUpdates()
+	check("wave geometry moves rather than just changing colour", y ~= nil and strip.anchors[1].offsetY ~= y, true)
+	check("animation reuses its strips", addon.plain.liquidRibbons.ZO_PlayerAttributeStaminaBar.strips[1], strip)
+	SetPower(COMBAT_MECHANIC_FLAGS_STAMINA, 0, 1000)
+	RunUpdates()
+	check("no ribbon on an empty resource", group.control:IsHidden(), true)
+	SetPower(COMBAT_MECHANIC_FLAGS_STAMINA, 10, 1000)
+	RunUpdates()
+	check("tiny fills do not leak into pointed ends", group.control:IsHidden(), true)
+	SetPower(COMBAT_MECHANIC_FLAGS_STAMINA, 1000, 1000)
+	RunUpdates()
+	check("ribbons return when resource fills", group.control:IsHidden(), false)
+	FireHud(SCENE_FRAGMENT_HIDDEN)
+	check("ribbons hide with HUD", group.control:IsHidden(), true)
+	FireHud(SCENE_FRAGMENT_SHOWN)
+	check("ribbons return with HUD", group.control:IsHidden(), false)
+	addon:SetBarStyle("standard")
+	addon:Refresh()
+	check("changing style removes ribbons", group.control:IsHidden(), true)
+end
+
+print("\n== Liquid interior margins, stronger highlights and bubbles ==")
+do
+	addon:SetBarStyle("liquidflow")
+	addon:Refresh()
+	for _, bar in ipairs(addon.plain.bars) do
+		local gradient = ZO_POWER_BAR_GRADIENT_COLORS[_G["COMBAT_MECHANIC_FLAGS_" .. bar.power:upper()]]
+		local _, _, _, alpha = gradient[1]:UnpackRGBA()
+		for _, entry in ipairs(bar.controls) do
+			local native = _G[entry.name]
+			check("liquid body is more translucent", native.gradient[4], alpha * 0.70)
+			-- Every strip and bubble, at every fill and phase, inside the band the player sees
+			-- and inside what is filled -- on the 64-high bar a console really has.
+			local width, height = native:GetDimensions()
+			local bandTop, bandBottom = (height - 17) / 2, (height + 17) / 2
+			local fits = true
+			for _, fraction in ipairs({ 0.05, 0.25, 0.5, 0.75, 1 }) do
+				local filledFrom = entry.reverse and width * (1 - fraction) or 0
+				local filledTo = entry.reverse and width or width * fraction
+				for phase = 0, 8 do
+					addon.plain:LiquidRibbons(bar, entry, native, fraction, phase * 350)
+					local group = addon.plain.liquidRibbons[entry.name]
+					if not group.control:IsHidden() then
+						local function Inside(control, minX, maxX, minY, maxY)
+							local anchor = control.anchors[1]
+							return anchor.offsetX >= minX - 0.00001 and anchor.offsetY >= minY - 0.00001
+								and anchor.offsetX + control:GetWidth() <= maxX + 0.00001
+								and anchor.offsetY + control:GetHeight() <= maxY + 0.00001
+						end
+						for _, strip in ipairs(group.strips) do
+							fits = Inside(strip, filledFrom, filledTo, bandTop, bandBottom) and fits
+						end
+						for _, bubble in ipairs(group.bubbles) do
+							if not bubble.control:IsHidden() then
+								fits = Inside(bubble.control, filledFrom, filledTo, bandTop, bandBottom) and fits
+								for _, point in ipairs(bubble.points) do
+									fits = Inside(point, 0, bubble.control:GetWidth(), 0, bubble.control:GetHeight()) and fits
+								end
+							end
+						end
+					end
+				end
+			end
+			check("nothing leaves the visible band or the fill: " .. entry.name, fits, true)
+		end
+	end
+
+	-- The three things a PS5 showed, on the geometry a PS5 has.
+	local function Span(entry, fraction)
+		local bar = entry.bar
+		local native = _G[entry.name]
+		addon.plain:LiquidRibbons(bar, entry.entry, native, fraction, 0)
+		local group = addon.plain.liquidRibbons[entry.name]
+		if group.control:IsHidden() then
+			return nil
+		end
+		local left, right = math.huge, -math.huge
+		for i = 1, 24 do
+			local strip = group.strips[i]
+			left = math.min(left, strip.anchors[1].offsetX)
+			right = math.max(right, strip.anchors[1].offsetX + strip:GetWidth())
+		end
+		return left, right, native:GetWidth(), group
+	end
+	local function Entry(barIndex, controlIndex)
+		local bar = addon.plain.bars[barIndex]
+		local entry = bar.controls[controlIndex]
+		return { bar = bar, entry = entry, name = entry.name }
+	end
+
+	-- 1. Health showed nothing: each half was narrower than the two insets together.
+	local healthLeft, healthRight = Entry(1, 1), Entry(1, 2)
+	check("health's left half draws at full", Span(healthLeft, 1) ~= nil, true)
+	check("health's right half draws at full", Span(healthRight, 1) ~= nil, true)
+	local l1, r1, w1 = Span(healthLeft, 1)
+	local l2, r2, w2 = Span(healthRight, 1)
+	check("health's left half reaches the middle", l1 ~= nil and w1 - r1 < 0.001, true)
+	check("health's right half starts at the middle", l2 ~= nil and l2 < 0.001, true)
+	check("health's left half covers most of it", l1 ~= nil and (r1 - l1) / w1 > 0.9, true)
+	check("health's right half covers most of it", l2 ~= nil and (r2 - l2) / w2 > 0.9, true)
+	check("health still draws at half", Span(healthLeft, 0.5) ~= nil and Span(healthRight, 0.5) ~= nil, true)
+
+	-- 2. Magicka and stamina only lit their middle 32 pixels.
+	for _, which in ipairs({ Entry(2, 1), Entry(3, 1) }) do
+		local left, right, width = Span(which, 1)
+		check("the effect runs across " .. which.name, left ~= nil and (right - left) / width > 0.9, true)
+	end
+	local stamina = Entry(3, 1)
+	local sLeft, sRight, sWidth = Span(stamina, 0.5)
+	check("and across what is filled at half", sLeft ~= nil and sLeft < 10 and sRight > sWidth * 0.5 - 4, true)
+
+	-- 3. Brightness is even along the bar, not a hump in the middle: the strips a quarter of
+	-- the way along are as strong as the middle ones.
+	local _, _, _, group = Span(stamina, 1)
+	local function Strength(i)
+		-- Undo the travelling glint so only the fade along the bar is compared.
+		return group.strips[i].color[4]
+	end
+	local quarter, middle = 0, 0
+	for phase = 0, 20 do
+		addon.plain:LiquidRibbons(stamina.bar, stamina.entry, _G[stamina.name], 1, phase * 97)
+		quarter = math.max(quarter, Strength(6))
+		middle = math.max(middle, Strength(12))
+	end
+	check("a quarter along is as bright as the middle", math.abs(quarter - middle) < 0.08, true)
+
+	local bar, entry = addon.plain.bars[3], addon.plain.bars[3].controls[1]
+	local native = _G[entry.name]
+	addon.plain:LiquidRibbons(bar, entry, native, 1, 0)
+	local group = addon.plain.liquidRibbons[entry.name]
+	check("three bubbles are pooled per native bar", #group.bubbles, 3)
+	local bubble = group.bubbles[1]
+	local y, x = bubble.control.anchors[1].offsetY, bubble.control.anchors[1].offsetX
+	addon.plain:LiquidRibbons(bar, entry, native, 1, 200)
+	check("bubble rises over time", bubble.control.anchors[1].offsetY < y, true)
+	check("bubble drifts sideways", bubble.control.anchors[1].offsetX ~= x, true)
+	check("bubble controls are reused", group.bubbles[1], bubble)
+	local strongest = 0
+	for _, strip in ipairs(group.strips) do strongest = math.max(strongest, strip.color[4]) end
+	check("ribbons are stronger than the previous 0.42 maximum", strongest > 0.42, true)
+	addon.plain:LiquidRibbons(bar, entry, native, 0, 200)
+	check("empty resource hides waves and bubbles together", group.control:IsHidden(), true)
+	addon:SetBarStyle("standard")
+	addon:Refresh()
+	local gradient = ZO_POWER_BAR_GRADIENT_COLORS[COMBAT_MECHANIC_FLAGS_STAMINA]
+	local _,_,_,alpha = gradient[1]:UnpackRGBA()
+	check("leaving Liquid restores original body opacity", native.gradient[4], alpha)
+	check("leaving Liquid hides all bubbles", group.control:IsHidden(), true)
 end
 
 print("")

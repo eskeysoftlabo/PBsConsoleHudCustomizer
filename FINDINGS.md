@@ -1081,6 +1081,46 @@ fallback for that one press, and the effect path -- which is where almost every 
 from -- is untouched. 1.12.x put a single latched flag in front of *every* press, so one
 unreachable branch silenced the entire add-on (§49).
 
+## 52. Liquid measured its bar in the wrong pixels (1.24.1)
+
+The Liquid style (1.24.0, written in another session) drew nothing on a PS5's health bar, lit only
+the middle of magicka and stamina, and spilled above and below all three. One cause for all of it:
+every distance was a fraction of the **status bar's height**, and a console's status bar is
+**64 high**, not 17.
+
+`ZO_PlayerAttributeStatusBar_Gamepad_Template` (`playerattributebartemplates.xml`) is
+`Dimensions y="64"` with the gamepad fill art, which carries transparent space above and below
+its coloured band; the container stays `237 x 23`, and the band the player sees is its 17, as on
+keyboard. With 64:
+
+| | worked out as | on a PS5 |
+| --- | --- | --- |
+| end inset | `max(height * 1.5, 6)` | **96** on each side |
+| magicka / stamina, full | `224 - 96 * 2` | **32 pixels**, in the middle |
+| each health half, full | `111 - 96 * 2` | **negative** -- hidden outright |
+| band | `height * 0.18` .. `height * 0.82` | **41 high** over a bar 17 high |
+
+A sine fade across every strip also put the brightness in a hump in the middle of whatever
+was left.
+
+**Why the tests passed.** The harness built every status bar 17 high -- the keyboard size -- so
+the insets came to 25 and everything fitted. The harness bars are 64 high now, and the old
+formula fails the new checks one by one: health draws nothing, magicka and stamina are narrow,
+the band leaves the bar.
+
+**What 1.24.1 does** (`plain:LiquidBounds`):
+
+- the band is `17/23` of the container's height, centred on the status bar, never taller than
+  the status bar itself, with a 12% margin inside it;
+- only the **pointed outer ends** are kept clear, by half the band, which is how far an arrow's
+  slope reaches in. Health's halves meet flat in the middle, so nothing is kept clear there, and
+  the right half's wave carries on from where the left half's stops;
+- the moving end of the fill keeps 2 pixels clear of the leading edge;
+- strips are full strength along the bar and fade in over three strips at an open end only.
+
+`/pbhud plain` prints, per status bar, the control's size, the band and the span the effect is
+drawn in, and whether it is shown -- the three numbers to read if a PS5 disagrees.
+
 ---
 
 ## Still to measure on a PS5
@@ -1158,3 +1198,9 @@ unreachable branch silenced the entire add-on (§49).
     be full length, not short by the time spent aiming. Cancel one with ○ -- the icon must stay
     empty, and the ability ○ casts instead must count as it always did. `/pbhud slots` prints
     `circles held / placed / cancelled / given up on`: given-up-on should stay 0.
+21. **Does Liquid cover the whole bar and stay inside it?** Choose Liquid with all three bars
+    part-empty (in a fight). Health must show the effect on both halves and straight across the
+    middle; magicka and stamina along everything that is filled, not just the middle. Nothing may
+    show above or below the coloured band or past the pointed ends. `/pbhud plain` must read
+    `control 224x64` (or `111x64` for a health half); if it reads another height, the band is
+    worked out from the container and should still be right, but that is the number to report.
