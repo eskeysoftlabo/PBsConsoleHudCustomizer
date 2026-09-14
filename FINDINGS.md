@@ -1200,6 +1200,49 @@ at it, and a soft piece at a cut must have nothing at that cut. Making the surfa
 the drain's far end upright and solid, and taking the fade off the cuts each fail them. The
 preview now draws the game's fill inside its pointed shape and regenerates magicka up to full.
 
+## 56. Into the points, no flicker, and Crystal (1.27.0)
+
+Three from the PS5, one screenshot among them:
+
+1. **The effect did not reach the triangular points.** Every upright piece stopped where its
+   farthest row had to stop -- half the band short of each point -- so the triangles at both ends
+   stayed plain.
+2. **A line flickered at the point while a bar regenerated.** The surface line at the moving end
+   was drawn in rows stepped to the point's shape; a few percent short of full those rows were cut
+   against the point, appearing and disappearing frame to frame.
+3. **A Crystal style**, a cut crystal rather than a liquid.
+
+**One painter.** Liquid and Crystal now draw everything through `Painter:Quad`, which takes a
+rectangle, a colour and an alpha that is a number or a bilinear function of position, and cuts the
+rectangle into rows of the band (8) wherever a slope has to be followed. Each row reaches exactly
+as far as its own distance `d` from the middle of the band allows: `d + 1` short of a pointed end,
+and -- for the liquid itself -- `d` short of the moving end. The texture's per-corner colours are
+set from the alpha function at each piece's own corners, and a bilinear function is exact there,
+so a soft mass cut into rows looks the same as one uncut. Pieces come from a pool per bar section,
+built on demand and reused; what a frame does not use is hidden. Vertex colours carry the colour
+(`SetColor(1,1,1,1)` first), so a pooled texture keeps nothing of what it drew last frame.
+
+**No line, and nothing at the point.** Liquid has no surface line any more. The moving end is a
+glow that rises towards it, and the glow fades out between two band-widths and one band-width from
+the full end, so it is gone before the moving end gets anywhere near the point. The soft currents
+fade over 5 pixels before the moving end only; into the points they run to the shape.
+
+**Crystal.** The fill's gradient lifted towards white (22-28% and 45%) at 55% alpha. Over it,
+per 18 pixels along the whole bar (continuous across health's halves): an upper facet lit from a
+corner that alternates facet to facet and brightens and dims in turn, and a darker lower facet
+lit the opposite way; a one-pixel girdle line where they meet; a glare of 8 row pieces offset from
+one another so it leans, sweeping along every 3.6 seconds; five sparkles, each a 3x1 and a 1x3
+cross, placed from a hash of their cycle so they move on without jumping about mid-twinkle; and
+a reflection along the top.
+
+**Tests, mutation-checked.** For both styles, at ten amounts and many moments on every bar section:
+nothing crosses the band, the fill or an end's shape; both points of a full bar are lit; health's
+halves both reach the middle; no controls are created once warmed up. Liquid: a glow at the moving
+end that rises towards it, no surface line, no glow within 14 pixels of the point while
+regenerating to 99%, the slosh, the drain. Crystal: facets alternate, a facet's light changes,
+the glare leans, sparkles appear. Restoring the old upright limit at the points, removing the slope
+there, keeping the glow near full, and making the glare upright each fail them.
+
 ---
 
 ## Still to measure on a PS5
@@ -1289,7 +1332,9 @@ preview now draws the game's fill inside its pointed shape and regenerates magic
     should be see-through without looking washed out. If the masses
     look like flat blocks rather than soft glows, per-corner colours (`SetVertexColors`) are not doing
     what they do on PC, and that is the thing to report.
-23. **Is the full end clean while a bar regenerates?** Spend some magicka and let it come back:
-    near the full end the surface must look like the frame's point -- a `<` on magicka, a `>` on
-    stamina -- never an upright line, and a spend from full must leave a pale trace that fades out
-    into the point rather than stopping at an upright edge.
+23. **Do Liquid and Crystal fill the points, and stay inside them?** With a bar full, the effect
+    must reach into both triangular ends without touching the frame's line. Spend some magicka
+    and let it come back: nothing may flicker at the point as it refills.
+24. **Does Crystal read as crystal?** Alternating lit and shaded facets along the bar, a bright
+    line through it, a slanted glare every few seconds and small twinkling crosses. If the facets
+    look like flat stripes, per-corner colours are the thing to report, as in 22.

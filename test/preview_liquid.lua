@@ -1,6 +1,6 @@
 -- Renders the Liquid style offline, so its look can be judged before a PS5 round.
 --
---   lua test/preview_liquid.lua out.html
+--   lua test/preview_liquid.lua out.html [liquidflow|crystal]
 --
 -- Runs the add-on in the harness with the console's 64-high status bars, plays five seconds
 -- of a fight (a hit on health, a potion on magicka, a dodge roll's worth of stamina), and writes
@@ -13,13 +13,14 @@ local HERE = (debug.getinfo(1, "S").source:match("^@(.*)/") or ".")
 ADDON_DIR = HERE .. "/.."
 dofile(HERE .. "/harness.lua")
 local out = arg[1] or "liquid_preview.html"
+local style = arg[2] or "liquidflow"
 
 BuildAttributeBars()
 Fire(EVENT_ADD_ON_LOADED, "PBsConsoleHudCustomizer")
 Fire(EVENT_PLAYER_ACTIVATED)
 local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 addon:Account().enabled = true
-addon:SetBarStyle("liquidflow")
+addon:SetBarStyle(style)
 SetPower(COMBAT_MECHANIC_FLAGS_HEALTH, 800, 1000)
 SetPower(COMBAT_MECHANIC_FLAGS_MAGICKA, 880, 1000)
 SetPower(COMBAT_MECHANIC_FLAGS_STAMINA, 900, 1000)
@@ -72,7 +73,7 @@ for frame = 1, FRAMES do
 	for _, bar in ipairs(addon.plain.bars) do
 		for index, entry in ipairs(bar.controls) do
 			local native = _G[entry.name]
-			local group = addon.plain.liquidRibbons and addon.plain.liquidRibbons[entry.name]
+			local group = addon.plain.effectGroups and addon.plain.effectGroups[entry.name]
 			local rects = {}
 			if group then
 				local function Walk(control)
@@ -107,13 +108,13 @@ for frame = 1, FRAMES do
 end
 
 local html = [[
-<title>Liquid preview</title>
+<title>Effect preview</title>
 <style>
 body{background:#1b1d22;color:#ddd;font:13px system-ui;margin:0;padding:16px}
 canvas{display:block;background:#2a2d33;border-radius:6px;max-width:100%}
 p{margin:6px 0 12px}
 </style>
-<p>PB's ConsoleHudCustomizer - Liquid, rendered from the add-on's own writes (x4). Magicka regenerates from 88% to full, health is hit at 1.5s, stamina drops at 3.75s. <span id="t"></span></p>
+<p>PB's ConsoleHudCustomizer - ]] .. style .. [[, rendered from the add-on's own writes (x4). Magicka regenerates from 88% to full, health is hit at 1.5s, stamina drops at 3.75s. <span id="t"></span></p>
 <canvas id="c" width="1000" height="330"></canvas>
 <script>
 const FRAMES=]] .. "[" .. table.concat(frames, ",") .. "]" .. [[;

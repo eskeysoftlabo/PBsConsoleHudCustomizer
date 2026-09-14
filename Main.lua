@@ -1226,7 +1226,7 @@ local function OnSlash(argumentString)
 			style = "rounded"
 		end
 		if not addon:SetBarStyle(style) then
-			Line("usage: %s style standard|plain|rounded|neo|liquid", SLASH)
+			Line("usage: %s style standard|plain|rounded|neo|liquid|crystal", SLASH)
 			return
 		end
 		account.enabled = true

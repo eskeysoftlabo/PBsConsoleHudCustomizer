@@ -52,18 +52,26 @@ gives it the same size so the pair still lines up.
 - **Standard** — the game's own bars, untouched. Nothing is built and nothing runs.
 - **Square** — each bar as a flat rectangle: a dark track, and a solid block in that power's own
   colour, with the game's own resource numbers lifted over it.
-- **Liquid** — keeps the standard shapes, frames and gloss, and makes the fill read as a see-through
-  liquid in a glass tube, the way Diablo's orbs do (the body at 62%, the effects over it at 80%): the lower part sinks into shadow, soft light and dark
-  currents drift through it, the end of the fill is a bright surface shaped like the frame's pointed ends that sloshes when the amount
-  changes and settles again, what was just lost stays a moment as a pale trace and drains away,
-  bubbles rise and pop, and a reflection runs along the top of the glass with a glint crossing it.
-  All of it is untextured rectangles with per-corner colours -- no art -- about forty per bar
-  section, updated every 50ms while Liquid is active and the HUD is shown. It stays inside the
-  coloured band the player sees (17 of the console status bar's 64 pixels), inside what is filled,
-  and clear of the pointed outer ends; health's two halves are one continuous liquid. Select it in
-  the style dropdown or with `/pbhud style liquid`; `/pbhud plain` prints the band and span.
-  `lua test/preview_liquid.lua out.html` renders five seconds of it from the add-on's own writes,
-  to judge the look without a console.
+- **Liquid** — keeps the game's own frame, background and gloss, and makes the fill read as a
+  see-through liquid, the way Diablo's orbs do (the body at 62%, the effects over it at 80%): the
+  lower part sinks into shadow, soft light and dark currents drift through it, a glow at the
+  moving end swells when the amount changes and settles again, what was just lost stays a moment
+  as a pale trace and drains away, bubbles rise, and a reflection runs along the top of the glass
+  with a glint crossing it. There is no line at the moving end, and its glow is gone before the
+  moving end reaches the full end, so nothing flickers at the point while a bar regenerates.
+  Select it with `/pbhud style liquid`.
+- **Crystal** — the same, as a clear cut crystal: the fill lifted towards white and see-through
+  (55%), faceted planes along the bar lit from alternating corners and catching the light in turn,
+  darker planes below a bright girdle line, a glare that sweeps across on a slant every few
+  seconds, and small sparkles that twinkle and move on. Select it with `/pbhud style crystal`.
+
+  Both are drawn to the frame's own shape: the effects fill the triangular points at the ends and
+  follow the same point at the fill's moving end, without crossing either. Everything is untextured
+  rectangles with per-corner colours -- no art -- cut into rows where a slope has to be followed,
+  from a pool per bar section that is built once and reused, updated every 50ms while the style is
+  active and the HUD is shown. `/pbhud plain` prints each bar's band, moving end and piece count.
+  `lua test/preview_liquid.lua out.html [liquidflow|crystal]` renders five seconds of either from
+  the add-on's own writes, to judge the look without a console.
 - **MURA-HIGE NEO Style** — uses the same width and height settings as MURA-HIGE Style,
   with health, magicka and stamina all filling from left to right. Health is one continuous bar.
 - **MURA-HIGE Style** — the same rectangle, drawn at a **width and a height in pixels**: the two
