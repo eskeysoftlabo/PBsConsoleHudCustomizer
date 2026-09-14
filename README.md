@@ -53,17 +53,19 @@ gives it the same size so the pair still lines up.
 - **Square** — each bar as a flat rectangle: a dark track, and a solid block in that power's own
   colour, with the game's own resource numbers lifted over it.
 - **Liquid** — keeps the game's own frame, background and gloss, and makes the fill read as a
-  see-through liquid, the way Diablo's orbs do (the body at 62%, the effects over it at 80%): the
+  liquid, the way Diablo's orbs do: the
   lower part sinks into shadow, soft light and dark currents drift through it, a glow at the
   moving end swells when the amount changes and settles again, what was just lost stays a moment
   as a pale trace and drains away, bubbles rise, and a reflection runs along the top of the glass
   with a glint crossing it. There is no line at the moving end, and its glow is gone before the
   moving end reaches the full end, so nothing flickers at the point while a bar regenerates.
   Select it with `/pbhud style liquid`.
-- **Crystal** — the same, as a clear cut crystal: the fill lifted towards white and see-through
-  (55%), faceted planes along the bar lit from alternating corners and catching the light in turn,
-  darker planes below a bright girdle line, a glare that sweeps across on a slant every few
-  seconds, and small sparkles that twinkle and move on. Select it with `/pbhud style crystal`.
+- **Crystal** — the same, as a cut crystal: the fill lifted towards white, faceted planes along
+  the bar lit from alternating corners and catching the light in turn, darker planes below a bright
+  girdle line, and small sparkles that twinkle and move on. Select it with `/pbhud style crystal`.
+
+  Both are as solid as the game's own bars; **How solid** (the opacity slider) makes the body and
+  every effect over it see-through together.
 
   Both are drawn to the frame's own shape: the effects fill the triangular points at the ends and
   follow the same point at the fill's moving end, without crossing either. Everything is untextured
@@ -72,6 +74,11 @@ gives it the same size so the pair still lines up.
   active and the HUD is shown. `/pbhud plain` prints each bar's band, moving end and piece count.
   `lua test/preview_liquid.lua out.html [liquidflow|crystal]` renders five seconds of either from
   the add-on's own writes, to judge the look without a console.
+
+  They make no garbage while they run and build a fixed pool of 110 pieces per bar section when
+  chosen, so memory is flat from then on. `lua test/memory.lua` measures every style's garbage per
+  update, memory kept over a long run, controls built after warm-up, and a long fight on a stream of
+  new targets.
 - **MURA-HIGE NEO Style** — uses the same width and height settings as MURA-HIGE Style,
   with health, magicka and stamina all filling from left to right. Health is one continuous bar.
 - **MURA-HIGE Style** — the same rectangle, drawn at a **width and a height in pixels**: the two

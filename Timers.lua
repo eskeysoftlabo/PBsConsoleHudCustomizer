@@ -869,6 +869,10 @@ function timers:CountFor(key, abilityId, icon, now)
 	return count, matchedBy
 end
 
+-- entry.gained is kept per unit beside entry.units, and has to go with it. Until 1.27.1 only units
+-- were pruned, so an effect kept alive by recasting through a long fight kept a record of every
+-- target it had ever touched: half a megabyte over a long session in a crowd (FINDINGS 57). A gain
+-- is kept a moment past its unit, for as long as Forget still asks about it.
 function timers:Prune(now)
 	for key, entry in pairs(effects) do
 		local any = false
@@ -877,6 +881,13 @@ function timers:Prune(now)
 				entry.units[unitKey] = nil
 			else
 				any = true
+			end
+		end
+		if entry.gained then
+			for unitKey, gainedAt in pairs(entry.gained) do
+				if entry.units[unitKey] == nil and now - gainedAt > FADE_AFTER_GAIN_MS then
+					entry.gained[unitKey] = nil
+				end
 			end
 		end
 		if not any and now - entry.touched > PRUNE_INTERVAL_MS then
@@ -1673,8 +1684,14 @@ function timers:Update()
 					SetText(entry.count, showCount and countText or nil)
 					if entry.shade then
 						local backRemaining, backDuration = self:SlotTimer(slot, backHotbar, now)
-						self:UpdateShade({ control = entry.shade, state = entry.shadeState }, slot,
-							shadeEnabled and backHotbar or nil, icon, backRemaining, backDuration)
+						-- Kept on the entry: built on every update, it was the one table this loop
+						-- threw away ten times a second per slot.
+						local shade = entry.shadeEntry
+						if not shade or shade.control ~= entry.shade or shade.state ~= entry.shadeState then
+							shade = { control = entry.shade, state = entry.shadeState }
+							entry.shadeEntry = shade
+						end
+						self:UpdateShade(shade, slot, shadeEnabled and backHotbar or nil, icon, backRemaining, backDuration)
 					end
 				end
 			end

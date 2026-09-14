@@ -1243,6 +1243,57 @@ regenerating to 99%, the slosh, the drain. Crystal: facets alternate, a facet's 
 the glare leans, sparkles appear. Restoring the old upright limit at the points, removing the slope
 there, keeping the glow near full, and making the glare upright each fail them.
 
+## 57. Solid by default, no glare, and a memory audit (1.27.1)
+
+**From the PS5.** Crystal's sweeping glare is gone. Liquid and Crystal are no longer see-through by
+default: the body is the game's own alpha and the effects are at full strength, both scaled by the
+**How solid** slider (100% unless moved), which now applies to these styles as it does to Square.
+
+**Memory, measured.** `test/memory.lua` replaces the harness's stand-in controls with versions that
+reuse their tables -- on a console a control write is a C call and makes no Lua garbage -- so what it
+reports is the add-on's own. Before:
+
+| loop | runs | garbage per run | per second |
+| --- | --- | --- | --- |
+| Watch | 1 s | 10.9 KB | 11 KB |
+| Timers (skill bar) | 100 ms | 20.9 KB | 209 KB |
+| Plain, Liquid | 50 ms | 80 KB | 1.6 MB |
+| Plain, Crystal | 50 ms | 122 KB | 2.4 MB |
+
+and a long fight on a stream of new targets kept **504 KB** after 133,000 of them. Four causes:
+
+1. **`addon:Account()` built two tables on every call** -- the renamed timer modes and the list of
+   defaulted groups -- and ran its whole repair each time, and it is called many times per update of
+   every loop. The tables are module constants now, and the repair runs once, again only when the
+   saved table or one of the tables it fills is a different table.
+2. **The back row's shade built a wrapper table per slot per update** (`{ control, state }`). Kept on
+   the entry now.
+3. **The effect painter made closures**: two per rectangle for its row and piece helpers, one for
+   every alpha ramp, soft mass or corner gradient, and a new bounds table per bar section per frame.
+   The alpha is now numbers kept on the painter (`Alpha`, `Fade`, `Between`), the helpers are
+   methods, and each group reuses one bounds table.
+4. **A leak: `entry.gained` was never pruned.** `Prune` dropped expired targets from `entry.units`
+   but left their gain times, so an effect kept alive by recasting kept one entry for every target
+   it had ever touched. They go with their unit now, a moment after it (for as long as `Forget`
+   still asks).
+
+After:
+
+| | garbage per update | kept over a long run |
+| --- | --- | --- |
+| every style | 3.2 KB, all of it the 1 s watch | 0.0 KB |
+| a fight | 3.7 KB per cast with six effects | +0.1 KB after 20,000 new targets |
+
+**Controls are never freed**, so the effect pool is built whole when a style is chosen: 110 pieces
+per bar section, with every field the painter keeps set at once. Over 100,000 updates (about 80
+minutes) the most either style used in one frame was 86, and nothing was dropped. Built lazily, the
+pool crept up from 64 to 86 over that time.
+
+**Tests.** 5000 reads of the settings make no garbage; 1200 targets hit by a recast effect leave
+only the live ones held and no record of the rest; the pool is 110 and nothing is dropped; the
+slider thins the body and the effects together; no glare. Building a table in `Account()`, the old
+`Prune`, and ignoring the slider each fail them.
+
 ---
 
 ## Still to measure on a PS5
@@ -1336,5 +1387,8 @@ there, keeping the glow near full, and making the glare upright each fail them.
     must reach into both triangular ends without touching the frame's line. Spend some magicka
     and let it come back: nothing may flicker at the point as it refills.
 24. **Does Crystal read as crystal?** Alternating lit and shaded facets along the bar, a bright
-    line through it, a slanted glare every few seconds and small twinkling crosses. If the facets
+    line through it and small twinkling crosses, with no glare sweeping across. If the facets
     look like flat stripes, per-corner colours are the thing to report, as in 22.
+25. **Does memory stay flat?** Choose Liquid or Crystal and fight for a while with an add-on memory
+    readout open: after the first seconds the add-on's figure must not climb. Moving **How solid**
+    must thin these styles as it does Square.

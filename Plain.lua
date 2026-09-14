@@ -681,8 +681,8 @@ end
 --             currents drifting through it, a glow at the moving end that swells when the amount
 --             changes, what was just lost draining away, rising bubbles, and a reflection with a
 --             glint along the glass
---   Crystal   a cut crystal: faceted planes that catch the light in turn, a bright girdle line, a
---             glare that sweeps across on a slant, and sparkles that twinkle and move on
+--   Crystal   a cut crystal: faceted planes that catch the light in turn, a bright girdle line, and
+--             sparkles that twinkle and move on
 --
 -- Everything is drawn through one painter, which cuts each rectangle into rows so that each row
 -- can reach exactly as far as the shape allows (1.27.0). The shape is the frame's: its pointed
@@ -690,6 +690,13 @@ end
 -- and the fill's moving end has the same point, facing the way the fill moves. A row a distance d
 -- from the middle of the band stops d short of a pointed end, and d short of the moving end -- so
 -- the effects fill the triangles at the ends without crossing them.
+--
+-- Both are as solid as the game's own bars unless the opacity slider says otherwise: the body and
+-- every effect over it are scaled by it (1.27.1).
+--
+-- Nothing here makes garbage while it runs (1.27.1, FINDINGS 57): the painter keeps its alpha as
+-- numbers rather than closures, each group reuses one bounds table, and the pool of pieces has a
+-- ceiling, because the client never frees a control once it is made.
 --
 -- Parented to the attribute container (not the StatusBar) for console visibility.
 -- ---------------------------------------------------------------------------------------
@@ -716,8 +723,6 @@ local EFFECT_ROWS = 8
 -- Kept clear of the very point, so nothing touches the frame's line.
 local EFFECT_TIP_INSET = 1
 
-local LIQUID_BODY_ALPHA = 0.62
-local LIQUID_EFFECT_ALPHA = 0.8
 local LIQUID_CURRENTS = 5
 local LIQUID_BUBBLES = 4
 -- How quickly a slosh settles, and how much a change in the amount stirs it.
@@ -729,13 +734,16 @@ local LIQUID_DRAIN_RATE = 0.0009
 -- How far a current fades out before the moving end.
 local LIQUID_SOFT_EDGE = 5
 
-local CRYSTAL_BODY_ALPHA = 0.55
 local CRYSTAL_FACET = 18
 local CRYSTAL_SPARKLES = 5
-local CRYSTAL_GLARE_PERIOD = 3.6
-local CRYSTAL_GLARE_SPEED = 260
+-- The pieces one bar section has, all built when the group is: the client never frees a control, so
+-- memory is flat from the moment a style is chosen rather than creeping up as a rarer arrangement
+-- needs one more. Measured over 100,000 updates (about 80 minutes) the most either style used was
+-- 86; anything past the pool is dropped for that frame and counted (FINDINGS 57).
+local EFFECT_MAX_PIECES = 110
 
-function plain:LiquidBounds(bar, entry, native, fraction)
+-- into: a table to fill rather than a new one. The loop passes its group's own.
+function plain:LiquidBounds(bar, entry, native, fraction, into)
 	local width, height = native:GetDimensions()
 	local container = Control(bar.container)
 	local containerHeight = height
@@ -758,28 +766,28 @@ function plain:LiquidBounds(bar, entry, native, fraction)
 	-- A full bar has no moving end to keep clear of.
 	local edgeClear = fraction < 0.99 and EFFECT_LEADING_EDGE or 0
 
-	return {
-		width = width,
-		top = bandTop + margin,
-		bottom = bandTop + band - margin,
-		middle = bandTop + band / 2,
-		reach = band / 2,
-		bandTop = bandTop,
-		bandBottom = bandTop + band,
-		rowHeight = band / EFFECT_ROWS,
-		pointedLeft = not halves or not isRightHalf,
-		pointedRight = not halves or isRightHalf,
-		reverse = entry.reverse and true or false,
-		fraction = fraction,
-		filled = filled,
-		-- Where the middle row of the fill ends.
-		edge = entry.reverse and width - filled + edgeClear or filled - edgeClear,
-		edgeOpen = fraction > 0 and fraction < 0.99,
-		-- Health's right half carries on where the left half stops, so what moves along the bar
-		-- is placed in one coordinate that runs the whole length of it.
-		offset = isRightHalf and width or 0,
-		length = halves and width * 2 or width,
-	}
+	local t = into or {}
+	t.width = width
+	t.top = bandTop + margin
+	t.bottom = bandTop + band - margin
+	t.middle = bandTop + band / 2
+	t.reach = band / 2
+	t.bandTop = bandTop
+	t.bandBottom = bandTop + band
+	t.rowHeight = band / EFFECT_ROWS
+	t.pointedLeft = not halves or not isRightHalf
+	t.pointedRight = not halves or isRightHalf
+	t.reverse = entry.reverse and true or false
+	t.fraction = fraction
+	t.filled = filled
+	-- Where the middle row of the fill ends.
+	t.edge = entry.reverse and width - filled + edgeClear or filled - edgeClear
+	t.edgeOpen = fraction > 0 and fraction < 0.99
+	-- Health's right half carries on where the left half stops, so what moves along the bar is
+	-- placed in one coordinate that runs the whole length of it.
+	t.offset = isRightHalf and width or 0
+	t.length = halves and width * 2 or width
+	return t
 end
 
 -- How far a row from y0 to y1 may reach. "tube" is held by the pointed ends; "fill" by the moving
@@ -806,8 +814,18 @@ local function Lighten(r, g, b, k)
 end
 
 -- ---- The painter ----------------------------------------------------------------------------
--- A pool of textures per bar section, handed out in order each frame and the rest hidden. Built
--- on demand, never destroyed, so a fight creates nothing once every piece it needs exists.
+-- A pool of EFFECT_MAX_PIECES textures per bar section, built with the group, handed out in order
+-- each frame and the rest hidden.
+--
+-- What a rectangle is painted with is set on the painter before the call, as numbers, so drawing
+-- makes no garbage:
+--
+--   Alpha(x0, y0, x1, y1, tl, tr, bl, br)   alpha bilinear over that reference rectangle; a
+--                                            constant is the same number four times
+--   Fade(x0, x1, a, b)                       and multiplied by a value running from a at x0 to b
+--                                            at x1 (NoFade() to stop)
+--   Between(near, far)                       for the "between" limit: from the moving end to a
+--                                            level beyond it
 
 local Painter = {}
 Painter.__index = Painter
@@ -815,38 +833,83 @@ Painter.__index = Painter
 function Painter:Begin(bounds)
 	self.bounds = bounds
 	self.used = 0
+	self.fading = false
 end
 
-function Painter:Piece(level, role, tag)
+function Painter:Alpha(x0, y0, x1, y1, tl, tr, bl, br)
+	self.ax0, self.ay0, self.ax1, self.ay1 = x0, y0, x1, y1
+	self.atl, self.atr, self.abl, self.abr = tl, tr, bl, br
+end
+
+function Painter:Constant(alpha)
+	self:Alpha(0, 0, 1, 1, alpha, alpha, alpha, alpha)
+end
+
+function Painter:Fade(x0, x1, a, b)
+	self.fading = true
+	self.fx0, self.fx1, self.fa, self.fb = x0, x1, a, b
+end
+
+function Painter:NoFade()
+	self.fading = false
+end
+
+function Painter:Between(near, far)
+	self.near, self.far = near, far
+end
+
+function Painter:At(x, y)
+	local w, h = self.ax1 - self.ax0, self.ay1 - self.ay0
+	local s = w > 0 and Clamp((x - self.ax0) / w, 0, 1) or 0
+	local t = h > 0 and Clamp((y - self.ay0) / h, 0, 1) or 0
+	local alpha = (self.atl * (1 - s) + self.atr * s) * (1 - t) + (self.abl * (1 - s) + self.abr * s) * t
+	if self.fading then
+		local span = self.fx1 - self.fx0
+		local k = span ~= 0 and Clamp((x - self.fx0) / span, 0, 1) or 0
+		alpha = alpha * (self.fa + (self.fb - self.fa) * k)
+	end
+	return alpha
+end
+
+-- How far a row may reach under a limit: "tube" (the pointed ends), "fill" (and the moving end),
+-- "between" (and from the moving end to self.far).
+function Painter:Limits(limit, y0, y1)
+	local bounds = self.bounds
+	if limit ~= "between" then
+		return Limits(bounds, y0, y1, limit == "fill")
+	end
+	local left, right, d = Limits(bounds, y0, y1, false)
+	if bounds.reverse then
+		return math.max(left, bounds.width - self.far + d), math.min(right, bounds.width - self.near + d)
+	end
+	return math.max(left, self.near - d), math.min(right, self.far - d)
+end
+
+function Painter:Put(x0, y0, x1, y1, r, g, b, level, role, tag)
+	if x1 - x0 < 0.5 or y1 - y0 < 0.25 then
+		return
+	end
+	local tl, tr, bl, br = self:At(x0, y0), self:At(x1, y0), self:At(x0, y1), self:At(x1, y1)
+	if tl <= 0.002 and tr <= 0.002 and bl <= 0.002 and br <= 0.002 then
+		return
+	end
+	if self.used >= EFFECT_MAX_PIECES then
+		self.dropped = (self.dropped or 0) + 1
+		return
+	end
 	self.used = self.used + 1
 	local texture = self.pool[self.used]
-	if not texture then
-		texture = WINDOW_MANAGER:CreateControl(self.prefix .. "Piece" .. self.used, self.root, CT_TEXTURE)
-		self.pool[self.used] = texture
-	end
 	if texture.pbsLevel ~= level then
 		texture:SetDrawLevel(level)
 		texture.pbsLevel = level
 	end
 	texture.pbsLiquidRole = role
 	texture.pbsTag = tag
-	return texture
-end
-
-function Painter:End()
-	for index = self.used + 1, self.shown or 0 do
-		self.pool[index]:SetHidden(true)
-	end
-	self.shown = self.used
-	self.root:SetHidden(self.used == 0)
-end
-
--- One rectangle, its colour and a different alpha at each corner. The colour goes on the vertices
--- rather than the texture, so a texture used for something else last frame keeps none of it.
-local function Paint(texture, root, x0, y0, x1, y1, r, g, b, tl, tr, bl, br)
 	texture:ClearAnchors()
-	texture:SetAnchor(TOPLEFT, root, TOPLEFT, x0, y0)
+	texture:SetAnchor(TOPLEFT, self.root, TOPLEFT, x0, y0)
 	texture:SetDimensions(x1 - x0, y1 - y0)
+	-- The colour goes on the vertices, so a texture used for something else last frame keeps none
+	-- of it. Without per-corner colours, the average.
 	if VERTEX_TL and type(texture.SetVertexColors) == "function" then
 		texture:SetColor(1, 1, 1, 1)
 		texture:SetVertexColors(VERTEX_TL, r, g, b, tl)
@@ -859,44 +922,19 @@ local function Paint(texture, root, x0, y0, x1, y1, r, g, b, tl, tr, bl, br)
 	texture:SetHidden(false)
 end
 
--- Paint (x0, y0)-(x1, y1), cut to the shape. alpha is a number, or a function of (x, y) that is
--- bilinear over the rectangle -- the texture interpolates its corners bilinearly, so it is exact
--- at the corners of every piece the rectangle is cut into. limit is "fill", "tube", or a function
--- (y0, y1) -> left, right of its own.
--- tag names what the piece is, for /pbhud plain and the tests.
-function Painter:Quad(x0, y0, x1, y1, r, g, b, alpha, level, limit, tag)
+-- Paint (x0, y0)-(x1, y1) with the alpha set above, cut to the shape. tag names what the piece is,
+-- for /pbhud plain and the tests.
+function Painter:Quad(x0, y0, x1, y1, r, g, b, level, limit, tag)
 	local bounds = self.bounds
 	y0, y1 = math.max(y0, bounds.bandTop), math.min(y1, bounds.bandBottom)
 	if y1 - y0 < 0.25 or x1 - x0 < 0.25 then
 		return
 	end
-	local role = type(limit) == "string" and limit or "custom"
-	local function Row(ry0, ry1)
-		local left, right
-		if type(limit) == "function" then
-			left, right = limit(ry0, ry1)
-		else
-			left, right = Limits(bounds, ry0, ry1, limit == "fill")
-		end
-		return left, right
-	end
-	local function Put(px0, py0, px1, py1)
-		if px1 - px0 < 0.5 or py1 - py0 < 0.25 then
-			return
-		end
-		local tl, tr, bl, br = alpha, alpha, alpha, alpha
-		if type(alpha) == "function" then
-			tl, tr, bl, br = alpha(px0, py0), alpha(px1, py0), alpha(px0, py1), alpha(px1, py1)
-		end
-		if tl <= 0.002 and tr <= 0.002 and bl <= 0.002 and br <= 0.002 then
-			return
-		end
-		Paint(self:Piece(level, role, tag), self.root, px0, py0, px1, py1, r, g, b, tl, tr, bl, br)
-	end
+	local role = limit == "between" and "custom" or limit
 	-- Clear of every slope: one piece.
-	local left, right = Row(y0, y1)
+	local left, right = self:Limits(limit, y0, y1)
 	if x0 >= left and x1 <= right then
-		Put(x0, y0, x1, y1)
+		self:Put(x0, y0, x1, y1, r, g, b, level, role, tag)
 		return
 	end
 	-- Otherwise a piece per row of the band.
@@ -904,27 +942,18 @@ function Painter:Quad(x0, y0, x1, y1, r, g, b, alpha, level, limit, tag)
 	local y = y0
 	while y < y1 - 0.001 do
 		local rowEnd = math.min(y1, bounds.bandTop + (math.floor((y - bounds.bandTop) / h + 0.0001) + 1) * h)
-		local rowLeft, rowRight = Row(y, rowEnd)
-		Put(math.max(x0, rowLeft), y, math.min(x1, rowRight), rowEnd)
+		local rowLeft, rowRight = self:Limits(limit, y, rowEnd)
+		self:Put(math.max(x0, rowLeft), y, math.min(x1, rowRight), rowEnd, r, g, b, level, role, tag)
 		y = rowEnd
 	end
 end
 
--- A value that runs from a at x0 to b at x1, as an alpha function.
-local function AlongX(x0, x1, a, b)
-	local span = x1 - x0
-	return function(x)
-		return a + (b - a) * Clamp((x - x0) / span, 0, 1)
+function Painter:End()
+	for index = self.used + 1, self.shown or 0 do
+		self.pool[index]:SetHidden(true)
 	end
-end
-
--- Four corner alphas over a rectangle, bilinear inside it.
-local function Bilinear(x0, y0, x1, y1, tl, tr, bl, br)
-	local w, h = x1 - x0, y1 - y0
-	return function(x, y)
-		local s, t = Clamp((x - x0) / w, 0, 1), Clamp((y - y0) / h, 0, 1)
-		return (tl * (1 - s) + tr * s) * (1 - t) + (bl * (1 - s) + br * s) * t
-	end
+	self.shown = self.used
+	self.root:SetHidden(self.used == 0)
 end
 
 -- ---- One group per bar section --------------------------------------------------------------
@@ -954,9 +983,22 @@ function plain:EffectGroup(bar, entry, native)
 	root:SetDrawTier(DT_HIGH)
 	root:SetDrawLevel(1)
 	local painter = setmetatable({ root = root, prefix = prefix, pool = {}, used = 0, shown = 0 }, Painter)
-	group = { control = root, native = native, painter = painter, textures = painter.pool }
+	for index = 1, EFFECT_MAX_PIECES do
+		local texture = WINDOW_MANAGER:CreateControl(prefix .. "Piece" .. index, root, CT_TEXTURE)
+		texture:SetHidden(true)
+		-- Every field the painter keeps on a piece, given now: a field first set mid-fight is a
+		-- little memory taken mid-fight, and a piece first used an hour in is exactly that.
+		texture.pbsLevel, texture.pbsTag, texture.pbsLiquidRole = -1, false, false
+		painter.pool[index] = texture
+	end
+	group = { control = root, native = native, painter = painter, textures = painter.pool, bounds = {} }
 	self.effectGroups[entry.name] = group
 	return group
+end
+
+-- How solid the effect styles are drawn: the opacity slider, 100% unless it is moved.
+local function Opacity()
+	return addon:PlainOpacity() / 100
 end
 
 -- ---- Liquid ---------------------------------------------------------------------------------
@@ -967,7 +1009,7 @@ function plain:LiquidRibbons(bar, entry, native, fraction, now)
 		return
 	end
 	local painter = group.painter
-	local bounds = self:LiquidBounds(bar, entry, native, fraction)
+	local bounds = self:LiquidBounds(bar, entry, native, fraction, group.bounds)
 	local top, bottom, width = bounds.top, bounds.bottom, bounds.width
 	local depth = bottom - top
 	fraction = bounds.fraction
@@ -992,21 +1034,23 @@ function plain:LiquidRibbons(bar, entry, native, fraction, now)
 	local r, g, b = self:PowerColour(bar)
 	local seconds = now / 1000
 	local lr, lg, lb = Lighten(r, g, b, 0.55)
-	local A = LIQUID_EFFECT_ALPHA
+	local A = Opacity()
 
 	if fraction > 0 and depth >= 3 then
 		-- Depth: the lower part of the liquid sinks into shadow.
 		local shadeTop = top + depth * 0.35
-		painter:Quad(0, shadeTop, width, bottom, 0, 0, 0, function(_, y)
-			return 0.5 * A * (y - shadeTop) / (bottom - shadeTop)
-		end, 1, "fill", "shade")
+		painter:Alpha(0, shadeTop, width, bottom, 0, 0, 0.5 * A, 0.5 * A)
+		painter:Quad(0, shadeTop, width, bottom, 0, 0, 0, 1, "fill", "shade")
 
 		-- Currents, placed along the whole bar and cut to the shape. They fade out before the
-		-- moving end, where a hard edge would read as a line; they run right into the points.
-		local soft = function() return 1 end
+		-- moving end, where a hard edge would read as a line; they run right into the points. Each
+		-- quarter of a mass is brightest at its inner corner, which is bilinear over the quarter.
 		if bounds.edgeOpen then
-			soft = bounds.reverse and AlongX(bounds.edge, bounds.edge + LIQUID_SOFT_EDGE, 0, 1)
-				or AlongX(bounds.edge - LIQUID_SOFT_EDGE, bounds.edge, 1, 0)
+			if bounds.reverse then
+				painter:Fade(bounds.edge, bounds.edge + LIQUID_SOFT_EDGE, 0, 1)
+			else
+				painter:Fade(bounds.edge - LIQUID_SOFT_EDGE, bounds.edge, 1, 0)
+			end
 		end
 		for index = 1, LIQUID_CURRENTS do
 			local light = index % 3 ~= 0
@@ -1017,27 +1061,24 @@ function plain:LiquidRibbons(bar, entry, native, fraction, now)
 			local travel = bounds.length + hw * 2
 			local cx = ((index * 53.7 + speed * seconds) % travel) - hw - bounds.offset
 			local cy = top + depth * (0.5 + 0.3 * math.sin(seconds * (0.5 + 0.11 * index) + index * 1.7))
-			local strength = (light and 0.42 or 0.4) * (0.8 + 0.2 * math.sin(seconds * 1.3 + index)) * A
+			local k = (light and 0.42 or 0.4) * (0.8 + 0.2 * math.sin(seconds * 1.3 + index)) * A
 			local cr, cg, cb = lr, lg, lb
 			if not light then
 				cr, cg, cb = r * 0.25, g * 0.25, b * 0.25
 			end
 			if cx + hw > 0 and cx - hw < width then
-				local function Mass(x, y)
-					local fx = 1 - math.abs(x - cx) / hw
-					local fy = 1 - math.abs(y - cy) / hh
-					if fx <= 0 or fy <= 0 then
-						return 0
-					end
-					return strength * fx * fy * soft(x)
-				end
-				local qy0, qy1 = math.max(cy - hh, top), math.min(cy + hh, bottom)
-				painter:Quad(cx - hw, qy0, cx, math.min(cy, qy1), cr, cg, cb, Mass, 2, "fill", "current")
-				painter:Quad(cx, qy0, cx + hw, math.min(cy, qy1), cr, cg, cb, Mass, 2, "fill", "current")
-				painter:Quad(cx - hw, math.max(cy, qy0), cx, qy1, cr, cg, cb, Mass, 2, "fill", "current")
-				painter:Quad(cx, math.max(cy, qy0), cx + hw, qy1, cr, cg, cb, Mass, 2, "fill", "current")
+				local y0, y1 = cy - hh, cy + hh
+				painter:Alpha(cx - hw, y0, cx, cy, 0, 0, 0, k)
+				painter:Quad(cx - hw, y0, cx, cy, cr, cg, cb, 2, "fill", "current")
+				painter:Alpha(cx, y0, cx + hw, cy, 0, 0, k, 0)
+				painter:Quad(cx, y0, cx + hw, cy, cr, cg, cb, 2, "fill", "current")
+				painter:Alpha(cx - hw, cy, cx, y1, 0, k, 0, 0)
+				painter:Quad(cx - hw, cy, cx, y1, cr, cg, cb, 2, "fill", "current")
+				painter:Alpha(cx, cy, cx + hw, y1, k, 0, 0, 0)
+				painter:Quad(cx, cy, cx + hw, y1, cr, cg, cb, 2, "fill", "current")
 			end
 		end
+		painter:NoFade()
 
 		-- Bubbles: beads with a point of light that rise and fade at the top.
 		for index = 1, LIQUID_BUBBLES do
@@ -1050,8 +1091,10 @@ function plain:LiquidRibbons(bar, entry, native, fraction, now)
 				local x = left + (right - left) * ((index * 0.29 + 0.11) % 1) + math.sin(seconds * 1.3 + index) * 2
 				x = Clamp(x, left, right - size)
 				local alpha = math.sin(math.pi * progress) * A
-				painter:Quad(x, y, x + size, y + size, lr, lg, lb, 0.55 * alpha, 3, "fill", "bubble")
-				painter:Quad(x, y, x + math.min(1, size), y + math.min(1, size), 1, 1, 1, 0.9 * alpha, 4, "fill", "bubble")
+				painter:Constant(0.55 * alpha)
+				painter:Quad(x, y, x + size, y + size, lr, lg, lb, 3, "fill", "bubble")
+				painter:Constant(0.9 * alpha)
+				painter:Quad(x, y, x + math.min(1, size), y + math.min(1, size), 1, 1, 1, 4, "fill", "bubble")
 			end
 		end
 
@@ -1067,11 +1110,11 @@ function plain:LiquidRibbons(bar, entry, native, fraction, now)
 			local glowWidth = 8 + group.slosh * 6
 			if glowAlpha > 0.005 then
 				if bounds.reverse then
-					painter:Quad(bounds.edge, top, bounds.edge + glowWidth, bottom, lr, lg, lb,
-						AlongX(bounds.edge, bounds.edge + glowWidth, glowAlpha, 0), 4, "fill", "glow")
+					painter:Alpha(bounds.edge, top, bounds.edge + glowWidth, bottom, glowAlpha, 0, glowAlpha, 0)
+					painter:Quad(bounds.edge, top, bounds.edge + glowWidth, bottom, lr, lg, lb, 4, "fill", "glow")
 				else
-					painter:Quad(bounds.edge - glowWidth, top, bounds.edge, bottom, lr, lg, lb,
-						AlongX(bounds.edge - glowWidth, bounds.edge, 0, glowAlpha), 4, "fill", "glow")
+					painter:Alpha(bounds.edge - glowWidth, top, bounds.edge, bottom, 0, glowAlpha, 0, glowAlpha)
+					painter:Quad(bounds.edge - glowWidth, top, bounds.edge, bottom, lr, lg, lb, 4, "fill", "glow")
 				end
 			end
 		end
@@ -1082,29 +1125,29 @@ function plain:LiquidRibbons(bar, entry, native, fraction, now)
 	-- end.
 	if draining > 0.002 then
 		local alpha = 0.5 * Clamp(draining * 10, 0, 1) * A
-		local old = width * group.drainLevel
-		local near, far = bounds.filled, old
-		local function Between(y0, y1)
-			local left, right, d = Limits(bounds, y0, y1, false)
-			if bounds.reverse then
-				return math.max(left, width - far + d), math.min(right, width - near + d)
-			end
-			return math.max(left, near - d), math.min(right, far - d)
+		local near, far = bounds.filled, width * group.drainLevel
+		painter:Between(near, far)
+		if bounds.reverse then
+			painter:Alpha(width - far, top, width - near, bottom, 0, alpha, 0, alpha)
+			painter:Quad(width - far, top, width - near + bounds.reach, bottom, lr, lg, lb, 2, "between", "drain")
+		else
+			painter:Alpha(near, top, far, bottom, alpha, 0, alpha, 0)
+			painter:Quad(near - bounds.reach, top, far, bottom, lr, lg, lb, 2, "between", "drain")
 		end
-		local x0, x1 = bounds.reverse and width - far or near - bounds.reach, bounds.reverse and width - near + bounds.reach or far
-		local fade = bounds.reverse and AlongX(width - far, width - near, 0, alpha) or AlongX(near, far, alpha, 0)
-		painter:Quad(x0, top, x1, bottom, lr, lg, lb, fade, 2, Between, "drain")
 	end
 
 	-- Glass: a reflection along the top of the whole tube, and a glint that crosses it -- while
 	-- there is anything in it to see through.
 	if fraction > 0 or draining > 0.002 then
 		local glassTop = bounds.bandTop + math.max(1, depth * 0.08)
-		painter:Quad(0, glassTop, width, glassTop + 1.2, 1, 1, 1, 0.16 * A, 6, "tube", "glass")
+		painter:Constant(0.16 * A)
+		painter:Quad(0, glassTop, width, glassTop + 1.2, 1, 1, 1, 6, "tube", "glass")
 		local sweep = bounds.length + 240
-		local glintCentre = ((seconds * 70) % sweep) - 120 - bounds.offset
-		painter:Quad(glintCentre - 16, glassTop, glintCentre, glassTop + 2, 1, 1, 1, AlongX(glintCentre - 16, glintCentre, 0, 0.5 * A), 6, "tube", "glass")
-		painter:Quad(glintCentre, glassTop, glintCentre + 16, glassTop + 2, 1, 1, 1, AlongX(glintCentre, glintCentre + 16, 0.5 * A, 0), 6, "tube", "glass")
+		local glint = ((seconds * 70) % sweep) - 120 - bounds.offset
+		painter:Alpha(glint - 16, 0, glint, 1, 0, 0.5 * A, 0, 0.5 * A)
+		painter:Quad(glint - 16, glassTop, glint, glassTop + 2, 1, 1, 1, 6, "tube", "glass")
+		painter:Alpha(glint, 0, glint + 16, 1, 0.5 * A, 0, 0.5 * A, 0)
+		painter:Quad(glint, glassTop, glint + 16, glassTop + 2, 1, 1, 1, 6, "tube", "glass")
 	end
 
 	painter:End()
@@ -1124,7 +1167,7 @@ function plain:CrystalFacets(bar, entry, native, fraction, now)
 		return
 	end
 	local painter = group.painter
-	local bounds = self:LiquidBounds(bar, entry, native, fraction)
+	local bounds = self:LiquidBounds(bar, entry, native, fraction, group.bounds)
 	local top, bottom, width = bounds.top, bounds.bottom, bounds.width
 	local depth = bottom - top
 	local seconds = now / 1000
@@ -1136,7 +1179,9 @@ function plain:CrystalFacets(bar, entry, native, fraction, now)
 	end
 	local r, g, b = self:PowerColour(bar)
 	local lr, lg, lb = Lighten(r, g, b, 0.7)
+	local dr, dg, db = r * 0.2, g * 0.2, b * 0.2
 	local girdle = top + depth * 0.42
+	local A = Opacity()
 
 	-- Facets: planes along the whole bar, the upper ones catching light and the lower ones in the
 	-- stone's own darker colour, each lit from a corner that alternates, and each brightening in
@@ -1144,58 +1189,50 @@ function plain:CrystalFacets(bar, entry, native, fraction, now)
 	local first = math.floor(bounds.offset / CRYSTAL_FACET)
 	local last = math.ceil((bounds.offset + width) / CRYSTAL_FACET)
 	for k = first, last do
-		local u0 = k * CRYSTAL_FACET - bounds.offset
-		local x0, x1 = u0, u0 + CRYSTAL_FACET
+		local x0 = k * CRYSTAL_FACET - bounds.offset
+		local x1 = x0 + CRYSTAL_FACET
 		if x1 > 0 and x0 < width then
 			local shine = 0.55 + 0.45 * math.sin(seconds * 0.9 - k * 0.8)
-			local bright = 0.16 + 0.32 * shine
+			local bright = (0.16 + 0.32 * shine) * A
 			if k % 2 == 0 then
-				painter:Quad(x0, top, x1, girdle, lr, lg, lb, Bilinear(x0, top, x1, girdle, bright, bright * 0.25, bright * 0.45, 0.02), 2, "fill", "facet")
-				painter:Quad(x0, girdle, x1, bottom, r * 0.2, g * 0.2, b * 0.2, Bilinear(x0, girdle, x1, bottom, 0.08, 0.42, 0.3, 0.6), 2, "fill", "pavilion")
+				painter:Alpha(x0, top, x1, girdle, bright, bright * 0.25, bright * 0.45, 0.02 * A)
+				painter:Quad(x0, top, x1, girdle, lr, lg, lb, 2, "fill", "facet")
+				painter:Alpha(x0, girdle, x1, bottom, 0.08 * A, 0.42 * A, 0.3 * A, 0.6 * A)
+				painter:Quad(x0, girdle, x1, bottom, dr, dg, db, 2, "fill", "pavilion")
 			else
-				painter:Quad(x0, top, x1, girdle, lr, lg, lb, Bilinear(x0, top, x1, girdle, bright * 0.25, bright, 0.02, bright * 0.45), 2, "fill", "facet")
-				painter:Quad(x0, girdle, x1, bottom, r * 0.2, g * 0.2, b * 0.2, Bilinear(x0, girdle, x1, bottom, 0.42, 0.08, 0.6, 0.3), 2, "fill", "pavilion")
+				painter:Alpha(x0, top, x1, girdle, bright * 0.25, bright, 0.02 * A, bright * 0.45)
+				painter:Quad(x0, top, x1, girdle, lr, lg, lb, 2, "fill", "facet")
+				painter:Alpha(x0, girdle, x1, bottom, 0.42 * A, 0.08 * A, 0.6 * A, 0.3 * A)
+				painter:Quad(x0, girdle, x1, bottom, dr, dg, db, 2, "fill", "pavilion")
 			end
 		end
 	end
 
 	-- The girdle: a thin bright line where the upper and lower facets meet.
-	painter:Quad(0, girdle - 0.5, width, girdle + 0.5, 1, 1, 1, 0.28, 3, "fill", "girdle")
-
-	-- Glare: a bright slanted band that sweeps along now and then, drawn row by row so it leans.
-	local cycle = (seconds % CRYSTAL_GLARE_PERIOD) * CRYSTAL_GLARE_SPEED
-	local glareX = cycle - 60 - bounds.offset
-	if glareX > -80 and glareX < width + 80 then
-		local rows = EFFECT_ROWS
-		local h = (bounds.bandBottom - bounds.bandTop) / rows
-		for row = 0, rows - 1 do
-			local y0 = bounds.bandTop + row * h
-			local slant = (rows / 2 - row - 0.5) * h * 0.8
-			local cx = glareX + slant
-			painter:Quad(cx - 7, y0, cx, y0 + h, 1, 1, 1, AlongX(cx - 7, cx, 0, 0.45), 5, "fill", "glare")
-			painter:Quad(cx, y0, cx + 4, y0 + h, 1, 1, 1, AlongX(cx, cx + 4, 0.45, 0), 5, "fill", "glare")
-		end
-	end
+	painter:Constant(0.28 * A)
+	painter:Quad(0, girdle - 0.5, width, girdle + 0.5, 1, 1, 1, 3, "fill", "girdle")
 
 	-- Sparkles: small four-pointed stars that twinkle and then move on.
 	for index = 1, CRYSTAL_SPARKLES do
 		local period = 1.3 + index * 0.23
 		local phase = seconds / period + index * 0.41
-		local cycleIndex = math.floor(phase)
-		local t = phase - cycleIndex
-		local alpha = math.max(0, math.sin(math.pi * t)) ^ 3
-		local y = top + 2 + (depth - 4) * Hash(index * 7 + cycleIndex)
+		local cycle = math.floor(phase)
+		local t = phase - cycle
+		local alpha = math.max(0, math.sin(math.pi * t)) ^ 3 * A
+		local y = top + 2 + (depth - 4) * Hash(index * 7 + cycle)
 		local left, right = Limits(bounds, y - 1.5, y + 1.5, true)
 		if right - left > 5 and alpha > 0.02 then
-			local x = left + 1.5 + (right - left - 3) * Hash(index * 13 + cycleIndex * 3)
-			painter:Quad(x - 1.5, y - 0.5, x + 1.5, y + 0.5, 1, 1, 1, 0.95 * alpha, 6, "fill", "sparkle")
-			painter:Quad(x - 0.5, y - 1.5, x + 0.5, y + 1.5, 1, 1, 1, 0.95 * alpha, 6, "fill", "sparkle")
+			local x = left + 1.5 + (right - left - 3) * Hash(index * 13 + cycle * 3)
+			painter:Constant(0.95 * alpha)
+			painter:Quad(x - 1.5, y - 0.5, x + 1.5, y + 0.5, 1, 1, 1, 6, "fill", "sparkle")
+			painter:Quad(x - 0.5, y - 1.5, x + 0.5, y + 1.5, 1, 1, 1, 6, "fill", "sparkle")
 		end
 	end
 
 	-- A crisp reflection along the top of the stone.
 	local glassTop = bounds.bandTop + math.max(1, depth * 0.08)
-	painter:Quad(0, glassTop, width, glassTop + 1, 1, 1, 1, 0.22, 6, "tube", "glass")
+	painter:Constant(0.22 * A)
+	painter:Quad(0, glassTop, width, glassTop + 1, 1, 1, 1, 6, "tube", "glass")
 
 	painter:End()
 end
@@ -1223,10 +1260,14 @@ function plain:UpdateLiquid(style)
 	end
 	local now = GetFrameTimeMilliseconds and GetFrameTimeMilliseconds() or 0
 	local wave = (math.sin(now / 1300) + 1) / 2
+	local opacity = Opacity()
 	for _, bar in ipairs(self.bars) do
 		local fraction = self:Fraction(bar)
 		self:RaiseNumbers(bar, true)
-		local powerType = _G["COMBAT_MECHANIC_FLAGS_" .. bar.power:upper()]
+		if bar.powerType == nil then
+			bar.powerType = _G["COMBAT_MECHANIC_FLAGS_" .. bar.power:upper()] or false
+		end
+		local powerType = bar.powerType
 		local gradient = powerType and ZO_POWER_BAR_GRADIENT_COLORS and ZO_POWER_BAR_GRADIENT_COLORS[powerType]
 		if gradient and gradient[1] and gradient[2] then
 			local r, g, b, a = gradient[1]:UnpackRGBA()
@@ -1237,17 +1278,17 @@ function plain:UpdateLiquid(style)
 					self.effectColours[control] = self.effectColours[control] or { r, g, b, a, r2, g2, b2, a2 }
 					if style == "crystal" then
 						self:CrystalFacets(bar, entry, control, fraction, now)
-						-- Clear and cool: the power's colour lifted towards white, and see-through.
+						-- Clear and cool: the power's colour lifted towards white.
 						local k1, k2 = 0.22 + wave * 0.06, 0.45
 						addon:Write("effect colour", control.SetGradientColors, control,
-							r + (1 - r) * k1, g + (1 - g) * k1, b + (1 - b) * k1, a * CRYSTAL_BODY_ALPHA,
-							r2 + (1 - r2) * k2, g2 + (1 - g2) * k2, b2 + (1 - b2) * k2, a2 * CRYSTAL_BODY_ALPHA)
+							r + (1 - r) * k1, g + (1 - g) * k1, b + (1 - b) * k1, a * opacity,
+							r2 + (1 - r2) * k2, g2 + (1 - g2) * k2, b2 + (1 - b2) * k2, a2 * opacity)
 					else
 						self:LiquidRibbons(bar, entry, control, fraction, now)
 						local dark, light = 0.60 + wave * 0.18, 0.12 + (1 - wave) * 0.18
 						addon:Write("effect colour", control.SetGradientColors, control,
-							r * dark, g * dark, b * dark, a * LIQUID_BODY_ALPHA,
-							r2 + (1 - r2) * light, g2 + (1 - g2) * light, b2 + (1 - b2) * light, a2 * LIQUID_BODY_ALPHA)
+							r * dark, g * dark, b * dark, a * opacity,
+							r2 + (1 - r2) * light, g2 + (1 - g2) * light, b2 + (1 - b2) * light, a2 * opacity)
 					end
 				end
 			end

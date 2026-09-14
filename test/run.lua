@@ -28,7 +28,7 @@ print("\n== 1. load ==")
 Fire(EVENT_ADD_ON_LOADED, "PBsConsoleHudCustomizer")
 local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 local health, magicka, stamina = addon.barByKey.health, addon.barByKey.magicka, addon.barByKey.stamina
-check("version read from manifest", addon.version, "1.27.0")
+check("version read from manifest", addon.version, "1.27.1")
 check("slash command registered", type(SLASH_COMMANDS["/pbhud"]), "function")
 check("short slash command registered", type(SLASH_COMMANDS["/pbhc"]), "function")
 check("HUD fragment callback registered", addon.hudRegistered, true)
@@ -402,10 +402,31 @@ check("at its own size", _G[SKILLBAR]:GetScale(), 1)
 Row(GetString(SI_PBSCHC_ENABLED)).setFunction(true)
 check("on again", UpdateRegistered("PBsConsoleHudCustomizerTimers"), true)
 
+print("\n== 20b. the settings are read without making garbage ==")
+-- Account() is called many times on every update of every loop. Until 1.27.1 it built two tables
+-- on each call, which was most of the garbage the skill bar and the watch made (FINDINGS 57).
+do
+	addon:Account()
+	collectgarbage("collect")
+	collectgarbage("stop")
+	local before = collectgarbage("count")
+	for _ = 1, 5000 do addon:Account() end
+	local made = collectgarbage("count") - before
+	collectgarbage("restart")
+	check("5000 reads of the settings make no garbage", made < 1, true)
+end
+
 print("\n== 21. a setting saved by 1.1.0 ==")
 -- 1.1.0 called the three modes auto / always / never. A player's choice is carried over rather
 -- than reset to the default.
-addon.account.text.timerMode = "never"
+-- A value like this only ever arrives with the saved settings, so it is handed over the way a
+-- load does: as the table that comes back, not written into the one already repaired.
+do
+	local loaded = {}
+	for key, value in pairs(addon.account.text) do loaded[key] = value end
+	loaded.timerMode = "never"
+	addon.account.text = loaded
+end
 addon:Account()
 check("never became the game", addon:TimerMode(), "game")
 addon.account.text.timerMode = "auto"
@@ -2257,6 +2278,9 @@ print("\n== Liquid and Crystal: drawn to the shape of the bar a console really h
 do
 	local plain = addon.plain
 	addon:Account().enabled = true
+	-- The slider at its default, as a fresh install has it (earlier sections moved it).
+	addon:Account().plainOpacity = nil
+	check("the opacity slider defaults to solid", addon:PlainOpacity(), 100)
 	addon:SetBarStyle("liquidflow")
 	FireHud(SCENE_FRAGMENT_SHOWN)
 	addon:Refresh()
@@ -2398,7 +2422,13 @@ do
 		local after = 0
 		for _ in pairs(CreatedControls) do after = after + 1 end
 		check(style .. ": no controls are created while it runs", after, created)
-		check(style .. ": a bar section stays a modest number of pieces", #plain.effectGroups[stamina.name].textures <= 140, true)
+		check(style .. ": the pool is built once, at a fixed size", #plain.effectGroups[stamina.name].textures, 110)
+		local most, dropped = 0, 0
+		for _, g in pairs(plain.effectGroups) do
+			most = math.max(most, g.painter.shown)
+			dropped = dropped + (g.painter.dropped or 0)
+		end
+		check(style .. ": and nothing was dropped for want of room", dropped, 0)
 	end
 
 	-- ---- Liquid ----
@@ -2449,7 +2479,19 @@ do
 	RunUpdates()
 	local gradient = ZO_POWER_BAR_GRADIENT_COLORS[COMBAT_MECHANIC_FLAGS_STAMINA]
 	local _, _, _, alpha = gradient[1]:UnpackRGBA()
-	check("Liquid: the body is see-through", math.abs(_G[stamina.name].gradient[4] - alpha * 0.62) < E, true)
+	check("Liquid: the body is as solid as the game's by default", math.abs(_G[stamina.name].gradient[4] - alpha) < E, true)
+	-- The opacity slider is what makes it see-through, the body and the effects over it together.
+	local function Strongest(which)
+		local g = Draw("liquidflow", which, 0.6, 900000)
+		return Light(g, 0, 224, true)
+	end
+	local solid = Strongest(stamina)
+	addon:SetPlainOpacity(50)
+	RunUpdates()
+	check("Liquid: the opacity slider thins the body", math.abs(_G[stamina.name].gradient[4] - alpha * 0.5) < E, true)
+	check("Liquid: and the effects with it", math.abs(Strongest(stamina) - solid * 0.5) < 0.02, true)
+	addon:SetPlainOpacity(100)
+	RunUpdates()
 
 	-- ---- Crystal ----
 	addon:SetBarStyle("crystal")
@@ -2458,7 +2500,12 @@ do
 	check("and runs as an effect", addon:EffectStyle(), "crystal")
 	RunUpdates()
 	check("Crystal keeps the game's frame", _G.ZO_PlayerAttributeStaminaFrameLeft:IsHidden(), false)
-	check("Crystal's body is clear", math.abs(_G[stamina.name].gradient[4] - alpha * 0.55) < E, true)
+	check("Crystal's body is as solid as the game's by default", math.abs(_G[stamina.name].gradient[4] - alpha) < E, true)
+	addon:SetPlainOpacity(40)
+	RunUpdates()
+	check("Crystal: the opacity slider thins it", math.abs(_G[stamina.name].gradient[4] - alpha * 0.4) < E, true)
+	addon:SetPlainOpacity(100)
+	RunUpdates()
 	check("and lifted towards white", _G[stamina.name].gradient[1] > gradient[1]:UnpackRGBA(), true)
 
 	-- Facets: the upper planes are lit from alternating corners along the bar.
@@ -2488,21 +2535,15 @@ do
 		return 0
 	end
 	check("Crystal: a facet brightens and dims as the light turns", math.abs(FacetLight(800000) - FacetLight(801700)) > 0.05, true)
-	-- The glare leans: its rows are offset from one another.
-	local glareRows = {}
-	for step = 0, 72 do
+	-- No glare sweeping along the bar: taken out in 1.27.1.
+	local glare = false
+	for step = 0, 90 do
 		local g = Draw("crystal", stamina, 1, 810000 + step * 50)
-		local rows = {}
 		for _, texture in ipairs(Shown(g)) do
-			if texture.pbsTag == "glare" then
-				local x0, y0 = Box(texture)
-				rows[#rows + 1] = { x = x0, y = y0 }
-			end
+			if texture.pbsTag == "glare" or texture.pbsLevel == 5 then glare = true end
 		end
-		if #rows >= 8 then glareRows = rows break end
 	end
-	table.sort(glareRows, function(a, b) return a.y < b.y end)
-	check("Crystal: the glare sweeps across on a slant", #glareRows >= 8 and glareRows[1].x > glareRows[#glareRows].x, true)
+	check("Crystal: no glare sweeps across", glare, false)
 	-- Sparkles: small crosses that come and go.
 	local sparkled, gone = false, false
 	for step = 0, 60 do
@@ -2526,11 +2567,46 @@ do
 	addon:SetBarStyle("liquidflow")
 	addon:Refresh()
 	RunUpdates()
-	check("from Crystal to Liquid, the body is Liquid's", math.abs(_G[stamina.name].gradient[4] - alpha * 0.62) < E, true)
+	check("from Crystal to Liquid, the body is Liquid's", _G[stamina.name].gradient[1] < gradient[1]:UnpackRGBA(), true)
 	addon:SetBarStyle("standard")
 	addon:Refresh()
 	check("choosing another style removes it", group.control:IsHidden(), true)
 	check("and the body's own opacity comes back", _G[stamina.name].gradient[4], alpha)
+end
+
+print("\n== a long fight keeps nothing per target ==")
+-- An effect kept alive by recasting, landing on a stream of new targets as old ones die. What is
+-- kept per target has to go when the target does: until 1.27.1 the time each was hit stayed for
+-- as long as the effect did (FINDINGS 57).
+do
+	local T = addon.timers
+	T:Forget_All()
+	SetSlot(HOTBAR_CATEGORY_PRIMARY, 3, { name = "Endless Dot", icon = "dot.dds", id = 4242, remaining = 0, duration = 0 })
+	SetAbilityDuration(4242, 6000)
+	local unit = 50000
+	for cast = 1, 400 do
+		FireCast(3)
+		local now = GetGameTimeMilliseconds()
+		for _ = 1, 3 do
+			unit = unit + 1
+			FireEffect(EFFECT_RESULT_GAINED, "Endless Dot", "", (now + 6000) / 1000, unit, 4242, "dot.dds")
+		end
+		AdvanceFrame(500)
+		T:Prune(GetGameTimeMilliseconds())
+	end
+	local effects
+	for i = 1, 60 do
+		local name, value = debug.getupvalue(T.Track, i)
+		if name == "effects" then effects = value break end
+		if not name then break end
+	end
+	local held, gained = 0, 0
+	for _, entry in pairs(effects) do
+		for _ in pairs(entry.units) do held = held + 1 end
+		for _ in pairs(entry.gained or {}) do gained = gained + 1 end
+	end
+	check("1200 targets hit, only the live ones are held", held <= 40, true)
+	check("and no record of the ones that are gone", gained <= held + 3, true)
 end
 
 print("")

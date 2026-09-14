@@ -39,7 +39,7 @@ function AdvanceFrame(ms) frameTime = frameTime + (ms or 1000) end
 function GetAddOnManager()
 	return {
 		GetNumAddOns = function() return 1 end,
-		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ConsoleHudCustomizer|r 1.27.0" end,
+		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ConsoleHudCustomizer|r 1.27.1" end,
 	}
 end
 
@@ -463,8 +463,9 @@ SlotData = {}   -- [hotbar][slot] = { name, icon, id, remaining, duration, stack
 
 function GetActiveHotbarCategory() return ActiveHotbar end
 
+local NO_SLOTS = {}
 local function Slot(slot, hotbar)
-	return (SlotData[hotbar] or {})[slot]
+	return (SlotData[hotbar] or NO_SLOTS)[slot]
 end
 
 function SetSlot(hotbar, slot, data)
