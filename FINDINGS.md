@@ -1294,6 +1294,33 @@ only the live ones held and no record of the rest; the pool is 110 and nothing i
 slider thins the body and the effects together; no glare. Building a table in `Account()`, the old
 `Prune`, and ignoring the slider each fail them.
 
+## 58. The slider did not reach the bar (1.27.2)
+
+From the PS5: **How solid** did nothing useful for Liquid or Crystal.
+
+What 1.27.1 scaled by the slider was the alpha in the fill's `SetGradientColors` and the effects
+drawn over it. These styles keep the game's own dressing, and none of that was touched: the
+background (`BgContainer`, a dark solid texture), the three frame pieces, and the gloss on each
+status bar all stayed at full strength. Lowering the slider let the dark background show through the
+fill -- the bar went a little darker, and nothing behind it ever showed. The tests passed because
+they checked the number written into the gradient, not what stands between the player and the
+scene.
+
+1.27.2 applies the slider to the whole bar with `SetAlpha`: `BgContainer`, `FrameLeft`,
+`FrameCenter`, `FrameRight`, and each status bar (which takes its gloss child with it). The fill's
+gradient keeps its own alpha, so the fill is not thinned twice. The alpha is written whenever it
+differs from the slider, because the client sets `bgContainer:SetAlpha(1)` itself in
+`armordamage.lua` and `possession.lua`. Each control's alpha is noted before the first write and put
+back when the style changes or the bars are handed back. The low-health warner is left alone. Square
+and MURA-HIGE are not affected: they hide the game's dressing and thin their own rectangles.
+
+`/pbhud plain` prints, per status bar, `alpha: bar, background, frame (slider)`.
+
+**Tests** now check the alpha of every piece the player sees through, not the gradient: at 50% the
+background, frame and status bars are all 0.5, the fill's gradient alpha is unchanged, a background
+the client sets back to 1 is thinned again on the next update, everything is 1 again after a style
+change, and Square leaves them alone. Taking out the new alpha writes or the restore fails them.
+
 ---
 
 ## Still to measure on a PS5
@@ -1390,5 +1417,8 @@ slider thins the body and the effects together; no glare. Building a table in `A
     line through it and small twinkling crosses, with no glare sweeping across. If the facets
     look like flat stripes, per-corner colours are the thing to report, as in 22.
 25. **Does memory stay flat?** Choose Liquid or Crystal and fight for a while with an add-on memory
-    readout open: after the first seconds the add-on's figure must not climb. Moving **How solid**
-    must thin these styles as it does Square.
+    readout open: after the first seconds the add-on's figure must not climb.
+26. **Does How solid see-through Liquid and Crystal?** At 50% the whole bar -- background, frame and
+    fill -- must let the scene behind show through, and the effects must thin with it. `/pbhud plain`
+    must read `alpha: bar 0.50, background 0.50, frame 0.50`. If it reads 0.50 but the bar still looks
+    solid, the client is not honouring `SetAlpha` on these controls, and that is the thing to report.

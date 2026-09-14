@@ -28,7 +28,7 @@ print("\n== 1. load ==")
 Fire(EVENT_ADD_ON_LOADED, "PBsConsoleHudCustomizer")
 local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 local health, magicka, stamina = addon.barByKey.health, addon.barByKey.magicka, addon.barByKey.stamina
-check("version read from manifest", addon.version, "1.27.1")
+check("version read from manifest", addon.version, "1.27.2")
 check("slash command registered", type(SLASH_COMMANDS["/pbhud"]), "function")
 check("short slash command registered", type(SLASH_COMMANDS["/pbhc"]), "function")
 check("HUD fragment callback registered", addon.hudRegistered, true)
@@ -2486,10 +2486,30 @@ do
 		return Light(g, 0, 224, true)
 	end
 	local solid = Strongest(stamina)
+	-- The whole bar: the game's background and frame thin with the fill. Until 1.27.2 only the
+	-- fill's colour did, so a solid dark background showed through it and nothing behind the bar
+	-- ever did (FINDINGS 58).
+	local function WholeBar(value)
+		for _, bar in ipairs(plain.bars) do
+			for _, suffix in ipairs({ "BgContainer", "FrameLeft", "FrameCenter", "FrameRight" }) do
+				if math.abs(_G[bar.container .. suffix]:GetAlpha() - value) > E then return false end
+			end
+			for _, entry in ipairs(bar.controls) do
+				if math.abs(_G[entry.name]:GetAlpha() - value) > E then return false end
+			end
+		end
+		return true
+	end
+	check("Liquid: at 100% the whole bar is solid", WholeBar(1), true)
 	addon:SetPlainOpacity(50)
 	RunUpdates()
-	check("Liquid: the opacity slider thins the body", math.abs(_G[stamina.name].gradient[4] - alpha * 0.5) < E, true)
+	check("Liquid: the opacity slider thins the whole bar -- background, frame and fill", WholeBar(0.5), true)
+	check("Liquid: the fill's colour keeps its own alpha, so it is not thinned twice", math.abs(_G[stamina.name].gradient[4] - alpha) < E, true)
 	check("Liquid: and the effects with it", math.abs(Strongest(stamina) - solid * 0.5) < 0.02, true)
+	-- The client puts the background back to 1 in its armour and possession modules.
+	_G.ZO_PlayerAttributeStaminaBgContainer:SetAlpha(1)
+	RunUpdates()
+	check("Liquid: a background the client made solid again is thinned again", WholeBar(0.5), true)
 	addon:SetPlainOpacity(100)
 	RunUpdates()
 
@@ -2503,9 +2523,7 @@ do
 	check("Crystal's body is as solid as the game's by default", math.abs(_G[stamina.name].gradient[4] - alpha) < E, true)
 	addon:SetPlainOpacity(40)
 	RunUpdates()
-	check("Crystal: the opacity slider thins it", math.abs(_G[stamina.name].gradient[4] - alpha * 0.4) < E, true)
-	addon:SetPlainOpacity(100)
-	RunUpdates()
+	check("Crystal: the opacity slider thins the whole bar", WholeBar(0.4), true)
 	check("and lifted towards white", _G[stamina.name].gradient[1] > gradient[1]:UnpackRGBA(), true)
 
 	-- Facets: the upper planes are lit from alternating corners along the bar.
@@ -2571,6 +2589,16 @@ do
 	addon:SetBarStyle("standard")
 	addon:Refresh()
 	check("choosing another style removes it", group.control:IsHidden(), true)
+	check("and the whole bar is solid again", WholeBar(1), true)
+	-- Square has its own rectangles for the slider; the game's pieces are not its to thin.
+	addon:SetBarStyle("plain")
+	addon:SetPlainOpacity(50)
+	addon:Refresh()
+	RunUpdates()
+	check("Square leaves the game's bar alphas alone", WholeBar(1), true)
+	addon:SetPlainOpacity(100)
+	addon:SetBarStyle("standard")
+	addon:Refresh()
 	check("and the body's own opacity comes back", _G[stamina.name].gradient[4], alpha)
 end
 

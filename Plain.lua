@@ -1239,6 +1239,39 @@ end
 
 -- ---- Running them ---------------------------------------------------------------------------
 
+-- How solid the whole bar is in these styles. The slider used to reach only the fill's colour and
+-- the effects over it, and the game's own background, frame and gloss stayed solid -- so lowering it
+-- let a dark, solid background show through the fill, and nothing behind the bar ever showed
+-- (1.27.2, FINDINGS 58). Now the background, the three frame pieces and the status bars themselves
+-- (and with them their gloss) take the slider's alpha. Written again whenever it differs: the
+-- client sets the background back to 1 in its armour and possession modules.
+function plain:EffectAlpha(bar, alpha)
+	self.effectAlphas = self.effectAlphas or {}
+	local controls = bar.effectAlphaControls
+	if not controls then
+		controls = {}
+		for _, suffix in ipairs(DRESSING) do
+			controls[#controls + 1] = bar.container .. suffix
+		end
+		for _, entry in ipairs(bar.controls) do
+			controls[#controls + 1] = entry.name
+		end
+		bar.effectAlphaControls = controls
+	end
+	for _, name in ipairs(controls) do
+		local control = Control(name)
+		if control and type(control.SetAlpha) == "function" and type(control.GetAlpha) == "function" then
+			local current = control:GetAlpha()
+			if self.effectAlphas[control] == nil then
+				self.effectAlphas[control] = current
+			end
+			if math.abs(current - alpha) > 0.001 then
+				addon:Write("effect alpha", control.SetAlpha, control, alpha)
+			end
+		end
+	end
+end
+
 function plain:RestoreLiquid()
 	for _, group in pairs(self.effectGroups or {}) do
 		group.control:SetHidden(true)
@@ -1247,6 +1280,10 @@ function plain:RestoreLiquid()
 		addon:Write("effect colour", control.SetGradientColors, control, unpack(colours))
 	end
 	self.effectColours = nil
+	for control, original in pairs(self.effectAlphas or {}) do
+		addon:Write("effect alpha", control.SetAlpha, control, original)
+		self.effectAlphas[control] = nil
+	end
 end
 
 function plain:UpdateLiquid(style)
@@ -1268,6 +1305,7 @@ function plain:UpdateLiquid(style)
 			bar.powerType = _G["COMBAT_MECHANIC_FLAGS_" .. bar.power:upper()] or false
 		end
 		local powerType = bar.powerType
+		self:EffectAlpha(bar, opacity)
 		local gradient = powerType and ZO_POWER_BAR_GRADIENT_COLORS and ZO_POWER_BAR_GRADIENT_COLORS[powerType]
 		if gradient and gradient[1] and gradient[2] then
 			local r, g, b, a = gradient[1]:UnpackRGBA()
@@ -1281,14 +1319,14 @@ function plain:UpdateLiquid(style)
 						-- Clear and cool: the power's colour lifted towards white.
 						local k1, k2 = 0.22 + wave * 0.06, 0.45
 						addon:Write("effect colour", control.SetGradientColors, control,
-							r + (1 - r) * k1, g + (1 - g) * k1, b + (1 - b) * k1, a * opacity,
-							r2 + (1 - r2) * k2, g2 + (1 - g2) * k2, b2 + (1 - b2) * k2, a2 * opacity)
+							r + (1 - r) * k1, g + (1 - g) * k1, b + (1 - b) * k1, a,
+							r2 + (1 - r2) * k2, g2 + (1 - g2) * k2, b2 + (1 - b2) * k2, a2)
 					else
 						self:LiquidRibbons(bar, entry, control, fraction, now)
 						local dark, light = 0.60 + wave * 0.18, 0.12 + (1 - wave) * 0.18
 						addon:Write("effect colour", control.SetGradientColors, control,
-							r * dark, g * dark, b * dark, a * opacity,
-							r2 + (1 - r2) * light, g2 + (1 - g2) * light, b2 + (1 - b2) * light, a2 * opacity)
+							r * dark, g * dark, b * dark, a,
+							r2 + (1 - r2) * light, g2 + (1 - g2) * light, b2 + (1 - b2) * light, a2)
 					end
 				end
 			end
@@ -1366,6 +1404,11 @@ function plain:PrintStatus()
 						Line("      %s: control %dx%d, band y %.1f-%.1f, moving end %.1f, pieces %d, shown=%s",
 							addon:EffectStyle(), Round(nativeWidth), Round(nativeHeight), bounds.top, bounds.bottom, bounds.edge,
 							group and group.painter.used or 0, tostring(group ~= nil and not group.control:IsHidden()))
+						local background = Control(bar.container .. "BgContainer")
+						local frame = Control(bar.container .. "FrameCenter")
+						Line("      alpha: bar %.2f, background %s, frame %s (slider %d%%)", barControl:GetAlpha(),
+							background and string.format("%.2f", background:GetAlpha()) or "?",
+							frame and string.format("%.2f", frame:GetAlpha()) or "?", addon:PlainOpacity())
 					end
 				end
 				if overlay then

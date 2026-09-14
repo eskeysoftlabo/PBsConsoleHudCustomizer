@@ -64,8 +64,8 @@ gives it the same size so the pair still lines up.
   the bar lit from alternating corners and catching the light in turn, darker planes below a bright
   girdle line, and small sparkles that twinkle and move on. Select it with `/pbhud style crystal`.
 
-  Both are as solid as the game's own bars; **How solid** (the opacity slider) makes the body and
-  every effect over it see-through together.
+  Both are as solid as the game's own bars; **How solid** (the opacity slider) makes the whole bar
+  see-through -- the game's background, frame and fill, and every effect over them.
 
   Both are drawn to the frame's own shape: the effects fill the triangular points at the ends and
   follow the same point at the fill's moving end, without crossing either. Everything is untextured
