@@ -1321,6 +1321,41 @@ background, frame and status bars are all 0.5, the fill's gradient alpha is unch
 the client sets back to 1 is thinned again on the next update, everything is 1 again after a style
 change, and Square leaves them alone. Taking out the new alpha writes or the restore fails them.
 
+## 59. A flash every time a menu closed (1.27.3)
+
+From the PS5: closing a menu, Liquid or Crystal bars flickered for a moment.
+
+**Why.** The bars are shown by their own fragment, `PLAYER_ATTRIBUTE_BARS_FRAGMENT`, a
+`ZO_HUDFadeSceneFragment`: `SHOWING` is the first frame of a 250 ms fade-in (`DEFAULT_HUD_DURATION`)
+and `SHOWN` is its end. The add-on did two things wrong around it:
+
+1. On the HUD's `HIDDEN` it **stopped the style and put the game's own look back** -- colours,
+   alphas, frame, and the effect hidden.
+2. It started again only on the **HUD's** `SHOWN`, after its own fade.
+
+So every time a menu closed, the bars faded in as the game draws them, and then changed. And
+whatever the amount did in the menu -- a bar regenerating to full -- arrived all at once on the
+first update as a slosh and a drain.
+
+**What 1.27.3 does.**
+
+- Hiding **pauses**: the update loop stops and the look stays on the bars, which are hidden anyway.
+  Only a change of style or the add-on being switched off takes the look away. A setting changed in
+  the menu is applied straight away to the hidden bars, so they come back showing it.
+- The styles drawn on the bars follow **the bars' own fragment**, and resume on its `SHOWING`, the
+  first frame of the fade. The HUD fragment still drives positions and the skill bar. The same
+  fragment is shown with the siege bar, where the HUD's is not, so the style now runs there too.
+- On resuming, the caches of what was last written are dropped, so anything the client put back
+  while the bars were hidden is written again.
+- Liquid treats a gap of more than 500 ms between updates as the bars having been hidden: no slosh
+  and no drain for what changed out of sight.
+
+**Tests.** Hidden, the loop pauses and the effect, the fill's colour and the whole-bar alpha stay; a
+setting changed while hidden is applied at once; the first frame of the bars' fade has the style
+running; a style changed while hidden still puts the game's look back; no drain for a drop made out
+of sight, while the same drop in view does leave one. Restoring on hide, resuming only on the HUD's
+`SHOWN`, and dropping the gap reset each fail them.
+
 ---
 
 ## Still to measure on a PS5
@@ -1422,3 +1457,6 @@ change, and Square leaves them alone. Taking out the new alpha writes or the res
     fill -- must let the scene behind show through, and the effects must thin with it. `/pbhud plain`
     must read `alpha: bar 0.50, background 0.50, frame 0.50`. If it reads 0.50 but the bar still looks
     solid, the client is not honouring `SetAlpha` on these controls, and that is the thing to report.
+27. **Do Liquid and Crystal come back from a menu without a flash?** Open and close the main menu a
+    few times, with a bar part-empty and with it regenerating: the bars must fade in already in the
+    style, with no glimpse of the game's own look and no sudden glow or drain.

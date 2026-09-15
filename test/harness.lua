@@ -39,7 +39,7 @@ function AdvanceFrame(ms) frameTime = frameTime + (ms or 1000) end
 function GetAddOnManager()
 	return {
 		GetNumAddOns = function() return 1 end,
-		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ConsoleHudCustomizer|r 1.27.2" end,
+		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ConsoleHudCustomizer|r 1.27.3" end,
 	}
 end
 
@@ -577,7 +577,15 @@ end
 -- ---- scenes -------------------------------------------------------------------------
 local hudCallbacks = {}
 HUD_FRAGMENT = { RegisterCallback = function(_, name, fn) table.insert(hudCallbacks, fn) end }
-function FireHud(state) for _, fn in ipairs(hudCallbacks) do fn(nil, state) end end
+-- The bars' own fragment (a 250 ms fade), shown and hidden with the HUD scene. FireHud moves both,
+-- as the scene does; FireBars moves only the bars', for SHOWING -- the first frame of its fade.
+local barsCallbacks = {}
+PLAYER_ATTRIBUTE_BARS_FRAGMENT = { RegisterCallback = function(_, name, fn) table.insert(barsCallbacks, fn) end }
+function FireBars(state) for _, fn in ipairs(barsCallbacks) do fn(nil, state) end end
+function FireHud(state)
+	FireBars(state)
+	for _, fn in ipairs(hudCallbacks) do fn(nil, state) end
+end
 CurrentScene = { name = "gamepad_settings" }
 SCENE_MANAGER = { GetCurrentScene = function() return CurrentScene end }
 

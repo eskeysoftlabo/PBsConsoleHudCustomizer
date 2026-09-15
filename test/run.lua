@@ -28,7 +28,7 @@ print("\n== 1. load ==")
 Fire(EVENT_ADD_ON_LOADED, "PBsConsoleHudCustomizer")
 local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 local health, magicka, stamina = addon.barByKey.health, addon.barByKey.magicka, addon.barByKey.stamina
-check("version read from manifest", addon.version, "1.27.2")
+check("version read from manifest", addon.version, "1.27.3")
 check("slash command registered", type(SLASH_COMMANDS["/pbhud"]), "function")
 check("short slash command registered", type(SLASH_COMMANDS["/pbhc"]), "function")
 check("HUD fragment callback registered", addon.hudRegistered, true)
@@ -633,7 +633,11 @@ RunUpdates()
 
 FireHud(SCENE_FRAGMENT_HIDDEN)
 check("the loop stops with the HUD", UpdateRegistered("PBsConsoleHudCustomizerPlain"), false)
-check("and the game's frame comes back", _G.ZO_PlayerAttributeMagickaFrameCenter:IsHidden(), false)
+-- The look stays on the hidden bars: putting the game's back while they were hidden made them fade
+-- in as the game draws them and change afterwards (1.27.3, FINDINGS 59).
+check("and the look stays on the hidden bars", _G.ZO_PlayerAttributeMagickaFrameCenter:IsHidden(), true)
+FireBars(SCENE_FRAGMENT_SHOWING)
+check("it all comes back on the first frame of the bars' fade-in", UpdateRegistered("PBsConsoleHudCustomizerPlain"), true)
 FireHud(SCENE_FRAGMENT_SHOWN)
 check("and it all comes back", UpdateRegistered("PBsConsoleHudCustomizerPlain"), true)
 Row(GetString(SI_PBSCHC_STYLE)).setFunction(nil, nil, { data = "standard" })
@@ -2251,12 +2255,19 @@ do
 	end
 	FireHud(SCENE_FRAGMENT_HIDDEN)
 	check("Liquid loop stops behind menus", addon.plain.running, false)
-	CheckRestored()
 	FireHud(SCENE_FRAGMENT_SHOWN)
 	check("Liquid loop resumes on HUD", addon.plain.running, true)
 	addon:SetBarStyle("standard")
 	addon:Refresh()
 	CheckRestored()
+	-- A style changed in the menu, while the bars are hidden, still puts the game's look back.
+	addon:SetBarStyle("liquidflow")
+	addon:Refresh()
+	FireHud(SCENE_FRAGMENT_HIDDEN)
+	addon:SetBarStyle("standard")
+	addon:Refresh()
+	CheckRestored()
+	FireHud(SCENE_FRAGMENT_SHOWN)
 	addon:SetBarStyle("neo")
 	addon:Refresh()
 	addon:SetBarStyle("liquidflow")
@@ -2575,13 +2586,52 @@ do
 	end
 	check("Crystal: sparkles twinkle", sparkled, true)
 
-	-- It goes with the HUD and with the style.
+	-- Closing a menu. The bars are hidden with the HUD, and the effect, its colours and alphas stay on
+	-- them -- the game's own look must never be what fades back in. From the first frame of the bars'
+	-- fade the effect is running again, before the HUD itself has finished showing.
+	-- (Liquid, driven by the real loop on the harness clock: the direct draws above used clocks of
+	-- their own, and Crystal has no drain to see.)
+	addon:SetBarStyle("liquidflow")
+	addon:Refresh()
 	group = plain.effectGroups[stamina.name]
+	group.lastNow = nil
+	SetPower(COMBAT_MECHANIC_FLAGS_STAMINA, 600, 1000)
+	for _ = 1, 10 do AdvanceFrame(50); RunUpdates() end
+	check("before the menu: no drain", Light(group, 0, 224, "drain"), 0)
+	addon:SetPlainOpacity(60)
+	RunUpdates()
 	FireHud(SCENE_FRAGMENT_HIDDEN)
-	check("the effect hides with the HUD", group.control:IsHidden(), true)
+	check("hidden: the loop pauses", addon.plain.running, false)
+	check("hidden: the effect stays on the bar", group.control:IsHidden(), false)
+	check("hidden: the fill keeps the style's colour", table.concat(_G[stamina.name].gradient, ",") ~= table.concat({ gradient[1]:UnpackRGBA() }, ","), true)
+	check("hidden: the whole bar keeps the slider's alpha", WholeBar(0.6), true)
+	-- A setting changed in the menu comes back already applied.
+	addon:SetPlainOpacity(80)
+	addon:Refresh()
+	check("hidden: a setting changed in the menu is applied at once", WholeBar(0.8), true)
+	-- Regenerating in the menu is not a slosh or a drain on the way back.
+	SetPower(COMBAT_MECHANIC_FLAGS_STAMINA, 1000, 1000)
+	SetPower(COMBAT_MECHANIC_FLAGS_STAMINA, 200, 1000)
+	AdvanceFrame(8000)
+	FireBars(SCENE_FRAGMENT_SHOWING)
+	check("the first frame of the bars' fade-in: running again", addon.plain.running, true)
+	check("and still the style's look", group.control:IsHidden(), false)
+	check("with no drain trace for what changed out of sight", Light(group, 0, 224, "drain"), 0)
+	-- The same drop while the bars are showing is a drain: the test can tell the two apart.
+	for _ = 1, 10 do AdvanceFrame(50); RunUpdates() end
+	SetPower(COMBAT_MECHANIC_FLAGS_STAMINA, 700, 1000)
+	for _ = 1, 10 do AdvanceFrame(50); RunUpdates() end
+	SetPower(COMBAT_MECHANIC_FLAGS_STAMINA, 200, 1000)
+	AdvanceFrame(50)
+	RunUpdates()
+	check("while showing, the same drop does leave a drain", Light(group, 0, 224, "drain") > 0.1, true)
 	FireHud(SCENE_FRAGMENT_SHOWN)
 	RunUpdates()
-	check("and returns with it", group.control:IsHidden(), false)
+	check("and when the HUD has finished showing, still running", addon.plain.running, true)
+	addon:SetPlainOpacity(100)
+	addon:SetBarStyle("crystal")
+	addon:Refresh()
+	RunUpdates()
 	addon:SetBarStyle("liquidflow")
 	addon:Refresh()
 	RunUpdates()

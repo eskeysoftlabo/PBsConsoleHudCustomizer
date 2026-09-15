@@ -731,6 +731,8 @@ local LIQUID_SLOSH_GAIN = 6
 -- The pale trace of what was lost: how long it waits, and how fast it drains (fraction per ms).
 local LIQUID_DRAIN_HOLD_MS = 150
 local LIQUID_DRAIN_RATE = 0.0009
+-- A gap between updates longer than this is the bars having been hidden, not a change to show.
+local LIQUID_GAP_MS = 500
 -- How far a current fades out before the moving end.
 local LIQUID_SOFT_EDGE = 5
 
@@ -1014,6 +1016,11 @@ function plain:LiquidRibbons(bar, entry, native, fraction, now)
 	local depth = bottom - top
 	fraction = bounds.fraction
 
+	-- Back after the bars were hidden: whatever the amount did meanwhile happened out of sight, and
+	-- showing it now as a slosh and a drain is a flash on the way back (1.27.3).
+	if group.lastNow and now - group.lastNow > LIQUID_GAP_MS then
+		group.lastFraction, group.drainLevel, group.drainSince, group.slosh = fraction, fraction, nil, 0
+	end
 	-- The slosh and the drain both need to know how the amount moved since last time.
 	local dt = group.lastNow and Clamp(now - group.lastNow, 0, 200) or 0
 	group.lastNow = now
@@ -1445,6 +1452,13 @@ function plain:Start()
 	if self.running or not addon:PlainWanted() or self.hudShown == false then
 		return false
 	end
+	-- Coming back from a pause the look is still on the bars; the caches of what was last written
+	-- are dropped so that anything the client put back while they were hidden is written again.
+	if self.paused then
+		self.paused = false
+		self.hidden = {}
+		self.blanked = {}
+	end
 	if not EVENT_MANAGER or type(EVENT_MANAGER.RegisterForUpdate) ~= "function" then
 		return false
 	end
@@ -1456,12 +1470,29 @@ function plain:Start()
 	return true
 end
 
-function plain:Stop()
+-- The bars are hidden: stop drawing, and leave the look on them. Putting the game's own look back
+-- here is what made the bars flash as they came back -- they faded in as the game draws them, and
+-- then changed (1.27.3, FINDINGS 59). Only a change of style, or the add-on being switched off,
+-- takes the look away (Stop).
+function plain:Pause()
 	if not self.running then
 		return false
 	end
 	EVENT_MANAGER:UnregisterForUpdate(addon.name .. "Plain")
 	self.running = false
+	self.paused = true
+	return true
+end
+
+function plain:Stop()
+	if not self.running and not self.paused then
+		return false
+	end
+	if self.running then
+		EVENT_MANAGER:UnregisterForUpdate(addon.name .. "Plain")
+	end
+	self.running = false
+	self.paused = false
 	self:RestoreLiquid()
 	self:HideAll()
 	self:DressAll(false)
@@ -1474,7 +1505,7 @@ function plain:Refresh()
 	-- A change between the drawn styles and the effect styles, or from one effect to the other,
 	-- starts over: the loop runs at another rate, and the other style's pieces must go.
 	local effect = addon:EffectStyle() or false
-	if self.running and self.wasEffect ~= effect then self:Stop() end
+	if (self.running or self.paused) and self.wasEffect ~= effect then self:Stop() end
 	self.wasEffect = effect
 	if addon:PlainWanted() and self.hudShown ~= false then
 		self:Restyle()
@@ -1483,6 +1514,11 @@ function plain:Refresh()
 		else
 			self:Start()
 		end
+	elseif addon:PlainWanted() and self.paused then
+		-- A setting changed in the menu while the bars are hidden: brought up to date now, so they
+		-- come back already showing it.
+		self:Restyle()
+		self:Update()
 	else
 		self:Stop()
 	end
@@ -1493,6 +1529,6 @@ function plain:OnHudStateChange(shown)
 	if shown then
 		self:Refresh()
 	else
-		self:Stop()
+		self:Pause()
 	end
 end
