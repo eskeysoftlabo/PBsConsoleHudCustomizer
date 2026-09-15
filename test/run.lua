@@ -28,7 +28,7 @@ print("\n== 1. load ==")
 Fire(EVENT_ADD_ON_LOADED, "PBsConsoleHudCustomizer")
 local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 local health, magicka, stamina = addon.barByKey.health, addon.barByKey.magicka, addon.barByKey.stamina
-check("version read from manifest", addon.version, "1.27.3")
+check("version read from manifest", addon.version, "1.27.4")
 check("slash command registered", type(SLASH_COMMANDS["/pbhud"]), "function")
 check("short slash command registered", type(SLASH_COMMANDS["/pbhc"]), "function")
 check("HUD fragment callback registered", addon.hudRegistered, true)
@@ -2685,6 +2685,99 @@ do
 	end
 	check("1200 targets hit, only the live ones are held", held <= 40, true)
 	check("and no record of the ones that are gone", gained <= held + 3, true)
+end
+
+print("\n== the bars are held back until the style is on them ==")
+-- Closing a menu: the bars stay hidden from the moment they are hidden until the style has been drawn
+-- on them twice after they start to show again, then they are shown (FINDINGS 60).
+do
+	local plain = addon.plain
+	local containers = { "ZO_PlayerAttributeHealth", "ZO_PlayerAttributeMagicka", "ZO_PlayerAttributeStamina" }
+	local function AllHidden(hidden)
+		for _, name in ipairs(containers) do
+			if _G[name]:IsHidden() ~= hidden then return false end
+		end
+		return true
+	end
+	addon:Account().enabled = true
+	for _, style in ipairs({ "liquidflow", "crystal", "plain" }) do
+		addon:SetBarStyle(style)
+		FireHud(SCENE_FRAGMENT_SHOWN)
+		addon:Refresh()
+		RunUpdates()
+		check(style .. ": showing normally", AllHidden(false), true)
+		FireHud(SCENE_FRAGMENT_HIDDEN)
+		check(style .. ": a menu opens: the bars are held hidden", AllHidden(true), true)
+		FireBars(SCENE_FRAGMENT_SHOWING)
+		check(style .. ": the first frame of the fade: drawn once, still held", AllHidden(true), true)
+		AdvanceFrame(50)
+		RunUpdates()
+		check(style .. ": drawn again: shown", AllHidden(false), true)
+		check(style .. ": and the failsafe is gone", UpdateRegistered("PBsConsoleHudCustomizerPlainReveal"), false)
+		FireHud(SCENE_FRAGMENT_SHOWN)
+		RunUpdates()
+		check(style .. ": the HUD finishing its show changes nothing", AllHidden(false), true)
+	end
+
+	-- A setting changed in the menu draws the hidden bars, but does not bring them back early.
+	FireHud(SCENE_FRAGMENT_HIDDEN)
+	addon:SetPlainOpacity(70)
+	addon:Refresh()
+	addon:Refresh()
+	check("a setting changed in the menu does not show them", AllHidden(true), true)
+	addon:SetPlainOpacity(100)
+
+	-- The failsafe: if the loop never gets its second update, they come back after 600 ms.
+	FireBars(SCENE_FRAGMENT_SHOWING)
+	check("the failsafe is set", UpdateRegistered("PBsConsoleHudCustomizerPlainReveal"), true)
+	plain.resumeUpdates = -100
+	AdvanceFrame(300)
+	check("not before its time", plain:CheckReveal(GetFrameTimeMilliseconds()), false)
+	check("still held", AllHidden(true), true)
+	AdvanceFrame(400)
+	plain:CheckReveal(GetFrameTimeMilliseconds())
+	check("shown by the failsafe", AllHidden(false), true)
+	FireHud(SCENE_FRAGMENT_SHOWN)
+	RunUpdates()
+
+	-- Changing to Standard in the menu, or switching the add-on off, shows them at once.
+	FireHud(SCENE_FRAGMENT_HIDDEN)
+	addon:SetBarStyle("standard")
+	addon:Refresh()
+	check("Standard chosen in the menu: the bars are not held", AllHidden(false), true)
+	FireHud(SCENE_FRAGMENT_SHOWN)
+	addon:SetBarStyle("liquidflow")
+	addon:Refresh()
+	RunUpdates()
+	FireHud(SCENE_FRAGMENT_HIDDEN)
+	Row(GetString(SI_PBSCHC_ENABLED)).setFunction(false)
+	check("switched off in the menu: not held", AllHidden(false), true)
+	Row(GetString(SI_PBSCHC_ENABLED)).setFunction(true)
+	FireHud(SCENE_FRAGMENT_SHOWN)
+	RunUpdates()
+
+	-- Standard holds nothing back.
+	addon:SetBarStyle("standard")
+	addon:Refresh()
+	FireHud(SCENE_FRAGMENT_HIDDEN)
+	check("Standard: the bars are never held", AllHidden(false), true)
+	FireHud(SCENE_FRAGMENT_SHOWN)
+
+	-- A bar the client itself had hidden is not shown by this.
+	addon:SetBarStyle("liquidflow")
+	addon:Refresh()
+	RunUpdates()
+	_G.ZO_PlayerAttributeMagicka:SetHidden(true)
+	FireHud(SCENE_FRAGMENT_HIDDEN)
+	FireBars(SCENE_FRAGMENT_SHOWING)
+	AdvanceFrame(50)
+	RunUpdates()
+	check("a bar hidden by someone else stays hidden", _G.ZO_PlayerAttributeMagicka:IsHidden(), true)
+	check("the others come back", _G.ZO_PlayerAttributeHealth:IsHidden() == false and _G.ZO_PlayerAttributeStamina:IsHidden() == false, true)
+	_G.ZO_PlayerAttributeMagicka:SetHidden(false)
+	FireHud(SCENE_FRAGMENT_SHOWN)
+	addon:SetBarStyle("standard")
+	addon:Refresh()
 end
 
 print("")

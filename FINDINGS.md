@@ -1356,6 +1356,43 @@ running; a style changed while hidden still puts the game's look back; no drain 
 of sight, while the same drop in view does leave one. Restoring on hide, resuming only on the HUD's
 `SHOWN`, and dropping the gap reset each fail them.
 
+## 60. Held back until the style is on them (1.27.4)
+
+From the PS5, after 1.27.3: still a brief flicker coming back from a menu, and a request to keep
+the bars hidden until they are drawn.
+
+What 1.27.3 could not account for is not known -- the client may put something of its own back as
+the bars show, after the add-on's first draw. Rather than guess again, the bars are held back:
+
+- **Held** when they are hidden (the pause, §59): each of the three containers the add-on finds
+  showing is set hidden.
+- **Shown** once the style has been drawn on them twice with the loop running again -- the draw on
+  the first frame of the bars' fade (`SHOWING`) and the next update, about 50 ms later, a fifth of
+  the way through the 250 ms fade. The bars appear already in the style, partway into their own fade.
+- **Failsafe**: a separate 100 ms check shows them 600 ms after the fade began, whatever happens.
+- **Stop** (Standard chosen, or the add-on switched off, even in the menu) shows them at once.
+- A draw made for a setting changed in the menu is not counted: it does not bring them back early.
+- Only a container this add-on hid is shown again.
+
+**Why the containers' hidden flag.** It is the one thing on these bars the client never writes:
+`PLAYER_ATTRIBUTE_BARS_FRAGMENT` shows and fades the group above them (`ZO_PlayerAttribute`,
+`SetHidden(false)` then an alpha animation, and its `SHOWING` callback runs before that `Show`), and
+the contextual fading plays `PlayerAttributeBarAnimation` on each container's alpha. Nothing in
+`playerattributebars` or the attribute visualiser sets or reads the containers' hidden state; the
+modules hide only their own child overlays.
+
+Every drawn style is held, not only Liquid and Crystal: they come back the same way. Standard is
+never held.
+
+`/pbhud plain` prints the last return: how many milliseconds into the fade the bars were shown, after
+how many draws, whether the failsafe did it, and how many returns there have been.
+
+**Tests**, mutation-checked: held on hide for Liquid, Crystal and Square; still held after the first
+draw; shown after the second; the failsafe cleared; a menu-time setting does not show them; the
+failsafe shows them after 600 ms and not at 300; Standard chosen or the add-on switched off in the
+menu shows them; Standard is never held; a bar hidden by someone else stays hidden. No hold, revealing
+on the first draw, counting menu-time draws, no failsafe, and a Stop that does not reveal each fail.
+
 ---
 
 ## Still to measure on a PS5
@@ -1457,6 +1494,9 @@ of sight, while the same drop in view does leave one. Restoring on hide, resumin
     fill -- must let the scene behind show through, and the effects must thin with it. `/pbhud plain`
     must read `alpha: bar 0.50, background 0.50, frame 0.50`. If it reads 0.50 but the bar still looks
     solid, the client is not honouring `SetAlpha` on these controls, and that is the thing to report.
-27. **Do Liquid and Crystal come back from a menu without a flash?** Open and close the main menu a
-    few times, with a bar part-empty and with it regenerating: the bars must fade in already in the
-    style, with no glimpse of the game's own look and no sudden glow or drain.
+27. **Do the bars come back from a menu without a flash?** Open and close the main menu a few times,
+    with a bar part-empty and with it regenerating: the bars must appear already in the style, with
+    no glimpse of the game's own look. `/pbhud plain` then reads `last return from a menu: bars shown
+    ~50 ms into the fade, after 2 draw(s)`. If it still flickers, send that line: "by the failsafe", or
+    a time far from 50, says the loop did not run as expected; a normal line says the flicker comes
+    after the bars are shown, and that is the next thing to look at.

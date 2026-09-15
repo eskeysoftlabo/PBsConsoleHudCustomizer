@@ -1341,7 +1341,22 @@ function plain:UpdateLiquid(style)
 	end
 end
 
+-- The frame clock, for holding the bars back (below).
+local function FrameNow()
+	return GetFrameTimeMilliseconds and GetFrameTimeMilliseconds() or 0
+end
+
 function plain:Update()
+	self:UpdateStyle()
+	-- Counted only while the loop runs: an update made for a setting changed in the menu does not
+	-- bring the bars back early.
+	if self.holding and self.running then
+		self.resumeUpdates = (self.resumeUpdates or 0) + 1
+		self:CheckReveal(FrameNow())
+	end
+end
+
+function plain:UpdateStyle()
 	local effect = addon:EffectStyle()
 	if effect then
 		self:UpdateLiquid(effect)
@@ -1383,6 +1398,12 @@ function plain:PrintStatus()
 	Line("|cFF69B4%s|r -- the bars this add-on draws", addon.title)
 	Line("  style=%s opacity=%d%% outline=%s running=%s hud=%s", addon:BarStyle(), addon:PlainOpacity(),
 		tostring(addon:PlainBorder()), tostring(self.running == true), tostring(self.hudShown ~= false))
+	local log = self.returnLog
+	if log then
+		Line("  last return from a menu: bars shown %d ms into the fade, after %d draw(s)%s  (%d return(s))",
+			Round(log.shownAfter or 0), log.updates or 0, log.byFailsafe and ", by the failsafe" or "", log.count or 0)
+	end
+	Line("  held back now=%s  follows the bars' own fragment=%s", tostring(self.holding == true), tostring(addon.plainFollowsBars == true))
 	if addon:BarStyle() == "standard" then
 		Line("  the style is Standard, so nothing is drawn. Set it in the settings panel, or")
 		Line("  |cFFFFFF%s style plain|r", addon.slash)
@@ -1459,6 +1480,16 @@ function plain:Start()
 		self.hidden = {}
 		self.blanked = {}
 	end
+	if self.holding then
+		self.resumeUpdates = 0
+		self.holdSince = FrameNow()
+		if type(EVENT_MANAGER.RegisterForUpdate) == "function" then
+			EVENT_MANAGER:RegisterForUpdate(addon.name .. "PlainReveal", 100, function()
+				plain:CheckReveal(FrameNow())
+			end)
+			self.revealFailsafe = true
+		end
+	end
 	if not EVENT_MANAGER or type(EVENT_MANAGER.RegisterForUpdate) ~= "function" then
 		return false
 	end
@@ -1468,6 +1499,70 @@ function plain:Start()
 	self.running = true
 	self:Update()
 	return true
+end
+
+-- ---------------------------------------------------------------------------------------
+-- Holding the bars back until the style is on them
+--
+-- 1.27.3 stopped putting the game's look back while a menu was open, and it still flickered on the
+-- way back (FINDINGS 60). So the three bars are kept hidden from the moment they are hidden until
+-- the style has been drawn on them twice after they start to show again -- about 50 ms into the
+-- 250 ms fade-in -- and only then shown. The hidden flag on the three containers is the one thing
+-- here the client never writes: the fragment fades the group above them, and the contextual
+-- fading animates their alpha. Only a container this add-on hid is shown again, and a failsafe
+-- shows them after 600 ms whatever happens.
+-- ---------------------------------------------------------------------------------------
+local REVEAL_AFTER_UPDATES = 2
+local REVEAL_FAILSAFE_MS = 600
+
+function plain:HoldBars()
+	self.heldBars = self.heldBars or {}
+	for _, bar in ipairs(self.bars) do
+		local container = Control(bar.container)
+		if container and type(container.SetHidden) == "function" and type(container.IsHidden) == "function"
+			and not container:IsHidden() then
+			addon:Write("hold bars", container.SetHidden, container, true)
+			self.heldBars[bar.container] = container
+		end
+	end
+	self.holding = next(self.heldBars) ~= nil
+	self.resumeUpdates = 0
+	self.holdSince = nil
+end
+
+function plain:RevealBars()
+	-- What the last return from a menu looked like, for /pbhud plain: the one measurement to ask for
+	-- if the bars still flicker.
+	if self.holding and self.holdSince then
+		local log = self.returnLog or {}
+		self.returnLog = log
+		log.shownAfter = FrameNow() - self.holdSince
+		log.updates = self.resumeUpdates or 0
+		log.byFailsafe = (self.resumeUpdates or 0) < REVEAL_AFTER_UPDATES
+		log.count = (log.count or 0) + 1
+	end
+	for name, container in pairs(self.heldBars or {}) do
+		addon:Write("hold bars", container.SetHidden, container, false)
+		self.heldBars[name] = nil
+	end
+	self.holding = false
+	if EVENT_MANAGER and self.revealFailsafe then
+		EVENT_MANAGER:UnregisterForUpdate(addon.name .. "PlainReveal")
+		self.revealFailsafe = false
+	end
+end
+
+-- Called after every update while the bars are held, and by the failsafe.
+function plain:CheckReveal(now)
+	if not self.holding then
+		return false
+	end
+	if (self.resumeUpdates or 0) >= REVEAL_AFTER_UPDATES
+		or (self.holdSince and now - self.holdSince >= REVEAL_FAILSAFE_MS) then
+		self:RevealBars()
+		return true
+	end
+	return false
 end
 
 -- The bars are hidden: stop drawing, and leave the look on them. Putting the game's own look back
@@ -1481,6 +1576,8 @@ function plain:Pause()
 	EVENT_MANAGER:UnregisterForUpdate(addon.name .. "Plain")
 	self.running = false
 	self.paused = true
+	-- Hidden anyway; kept hidden until the style is back on them.
+	self:HoldBars()
 	return true
 end
 
@@ -1493,6 +1590,7 @@ function plain:Stop()
 	end
 	self.running = false
 	self.paused = false
+	self:RevealBars()
 	self:RestoreLiquid()
 	self:HideAll()
 	self:DressAll(false)
