@@ -54,11 +54,20 @@ local UPDATE_INTERVAL_MS = 100
 --
 -- The two halves of the health bar each hold half the value, so the fraction is the same for
 -- both: the client divides by two in ZO_PlayerAttributeBar:UpdateStatusBar.
+--
+-- pointed says which end of a bar comes to a point, and only the ends facing away from the middle
+-- of the screen do (playerattributebars.xml): health has an arrow at both ends
+-- (ZO_PlayerAttributeFrameLeftArrow and ...RightArrow); magicka has one on its left and a flat
+-- ZO_PlayerAttributeFrameRight on its right; stamina is the mirror of that. Until 1.27.5 every
+-- single bar was taken for pointed at both ends, which cut the effect back into a triangle at
+-- stamina's flat left end and magicka's flat right one (FINDINGS 61).
 plain.bars = {
 	{
 		key = "health",
 		power = "health",
 		container = "ZO_PlayerAttributeHealth",
+		pointedLeft = true,
+		pointedRight = true,
 		controls = {
 			{ name = "ZO_PlayerAttributeHealthBarLeft", reverse = true },
 			{ name = "ZO_PlayerAttributeHealthBarRight", reverse = false },
@@ -68,12 +77,16 @@ plain.bars = {
 		key = "magicka",
 		power = "magicka",
 		container = "ZO_PlayerAttributeMagicka",
+		pointedLeft = true,
+		pointedRight = false,
 		controls = { { name = "ZO_PlayerAttributeMagickaBar", reverse = true } },
 	},
 	{
 		key = "stamina",
 		power = "stamina",
 		container = "ZO_PlayerAttributeStamina",
+		pointedLeft = false,
+		pointedRight = true,
 		controls = { { name = "ZO_PlayerAttributeStaminaBar", reverse = false } },
 	},
 }
@@ -777,8 +790,10 @@ function plain:LiquidBounds(bar, entry, native, fraction, into)
 	t.bandTop = bandTop
 	t.bandBottom = bandTop + band
 	t.rowHeight = band / EFFECT_ROWS
-	t.pointedLeft = not halves or not isRightHalf
-	t.pointedRight = not halves or isRightHalf
+	-- A half of health meets the other in the middle, where nothing is pointed; otherwise the bar's
+	-- own ends, which are pointed only where they face away from the middle of the screen.
+	t.pointedLeft = (bar.pointedLeft ~= false) and not isRightHalf
+	t.pointedRight = (bar.pointedRight ~= false) and (isRightHalf or not halves)
 	t.reverse = entry.reverse and true or false
 	t.fraction = fraction
 	t.filled = filled

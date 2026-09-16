@@ -98,8 +98,10 @@ for frame = 1, FRAMES do
 				Walk(group.control)
 			end
 			local g = native.gradient or {}
-			bars[#bars + 1] = string.format('{"key":"%s","half":%d,"halves":%d,"reverse":%s,"w":%s,"h":%s,"fraction":%s,"grad":[%s],"rects":[%s]}',
-				bar.key, index, #bar.controls, tostring(entry.reverse), Num(native.width), Num(native.height),
+			bars[#bars + 1] = string.format('{"key":"%s","half":%d,"halves":%d,"reverse":%s,"pl":%s,"pr":%s,"w":%s,"h":%s,"fraction":%s,"grad":[%s],"rects":[%s]}',
+				bar.key, index, #bar.controls, tostring(entry.reverse),
+				tostring(bar.pointedLeft ~= false), tostring(bar.pointedRight ~= false),
+				Num(native.width), Num(native.height),
 				Num(addon.plain:Fraction(bar)), table.concat({ Num(g[1]), Num(g[2]), Num(g[3]), Num(g[4]), Num(g[5]), Num(g[6]), Num(g[7]), Num(g[8]) }, ","),
 				table.concat(rects, ","))
 		end
@@ -125,7 +127,13 @@ function drawBar(entries, ox, oy){
   // The band the art occupies: 17 of 64, centred.
   const h=entries[0].h, bandTop=(h-17)/2;
   const total=entries.reduce((a,e)=>a+e.w,0), T=(oy+bandTop)*S, B=(oy+bandTop+17)*S, M=(T+B)/2, P=8.5*S;
-  const shape=()=>{ ctx.beginPath(); ctx.moveTo(ox*S,M); ctx.lineTo(ox*S+P,T); ctx.lineTo((ox+total)*S-P,T); ctx.lineTo((ox+total)*S,M); ctx.lineTo((ox+total)*S-P,B); ctx.lineTo(ox*S+P,B); ctx.closePath(); };
+  // Only the ends facing away from the middle of the screen come to a point.
+  const pl=entries[0].pl, pr=entries[entries.length-1].pr, L=ox*S, R=(ox+total)*S;
+  const shape=()=>{ ctx.beginPath();
+    if(pl){ ctx.moveTo(L,M); ctx.lineTo(L+P,T); } else { ctx.moveTo(L,T); }
+    if(pr){ ctx.lineTo(R-P,T); ctx.lineTo(R,M); ctx.lineTo(R-P,B); } else { ctx.lineTo(R,T); ctx.lineTo(R,B); }
+    if(pl){ ctx.lineTo(L+P,B); } else { ctx.lineTo(L,B); }
+    ctx.closePath(); };
   // The game's own track and fill live inside its pointed shape; the add-on's pieces do not get
   // this clip, so anything of theirs outside the shape would show.
   ctx.save(); shape(); ctx.clip();

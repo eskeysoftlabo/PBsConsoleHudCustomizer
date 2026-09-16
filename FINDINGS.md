@@ -1393,6 +1393,33 @@ failsafe shows them after 600 ms and not at 300; Standard chosen or the add-on s
 menu shows them; Standard is never held; a bar hidden by someone else stays hidden. No hold, revealing
 on the first draw, counting menu-time draws, no failsafe, and a Stop that does not reveal each fail.
 
+## 61. Only the outer ends come to a point (1.27.5)
+
+From the PS5: in Liquid and Crystal, stamina's left end was drawn as a triangle rather than square.
+
+Mine. §52 measured the taper at a pointed end and §56 drew every effect to it, but the shape was
+applied to **both** ends of every single bar. Only the ends facing away from the middle of the
+screen are pointed (`playerattributebars.xml`):
+
+| | left end | right end |
+| --- | --- | --- |
+| health | `ZO_PlayerAttributeFrameLeftArrow` | `ZO_PlayerAttributeFrameRightArrow` |
+| magicka | `ZO_PlayerAttributeFrameLeftArrow` | `ZO_PlayerAttributeFrameRight` (flat, 4 x 23; 6 x 64 on a console) |
+| stamina | `ZO_PlayerAttributeFrameLeft` (flat) | `ZO_PlayerAttributeFrameRightArrow` |
+
+So stamina's left end and magicka's right end were being cut back by half the band -- a triangle of
+bare fill at the end the bar fills from, which is the end that is always full. Health was right,
+because both of its ends are arrows and its halves meet flat in the middle already.
+
+The three bars carry `pointedLeft` and `pointedRight` now, and `LiquidBounds` takes them from
+there; a half of health is still flat where it meets the other half. A flat end gets no taper and
+no tip inset: the effect runs to the very edge of the fill.
+
+**Tests.** The shapes themselves are checked, and at each flat end -- just inside the top, at the
+middle, and just inside the bottom of the band -- the effect must come within half a pixel of the
+edge; a taper leaves the top and bottom short by half the band. Putting both ends back to pointed
+fails it on magicka and stamina in both styles. The preview draws each bar's real shape too.
+
 ---
 
 ## Still to measure on a PS5
@@ -1494,7 +1521,10 @@ on the first draw, counting menu-time draws, no failsafe, and a Stop that does n
     fill -- must let the scene behind show through, and the effects must thin with it. `/pbhud plain`
     must read `alpha: bar 0.50, background 0.50, frame 0.50`. If it reads 0.50 but the bar still looks
     solid, the client is not honouring `SetAlpha` on these controls, and that is the thing to report.
-27. **Do the bars come back from a menu without a flash?** Open and close the main menu a few times,
+27. **Are the flat ends square?** Stamina's left end and magicka's right end are flat, not pointed:
+    the effect must fill them squarely, right to the edge, while the outer ends still follow their
+    arrow.
+28. **Do the bars come back from a menu without a flash?** Open and close the main menu a few times,
     with a bar part-empty and with it regenerating: the bars must appear already in the style, with
     no glimpse of the game's own look. `/pbhud plain` then reads `last return from a menu: bars shown
     ~50 ms into the fade, after 2 draw(s)`. If it still flickers, send that line: "by the failsafe", or

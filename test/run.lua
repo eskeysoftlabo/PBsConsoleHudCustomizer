@@ -28,7 +28,7 @@ print("\n== 1. load ==")
 Fire(EVENT_ADD_ON_LOADED, "PBsConsoleHudCustomizer")
 local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 local health, magicka, stamina = addon.barByKey.health, addon.barByKey.magicka, addon.barByKey.stamina
-check("version read from manifest", addon.version, "1.27.4")
+check("version read from manifest", addon.version, "1.27.5")
 check("slash command registered", type(SLASH_COMMANDS["/pbhud"]), "function")
 check("short slash command registered", type(SLASH_COMMANDS["/pbhc"]), "function")
 check("HUD fragment callback registered", addon.hudRegistered, true)
@@ -2304,11 +2304,18 @@ do
 	end
 	local entries = { Entry(1, 1), Entry(1, 2), Entry(2, 1), Entry(3, 1) }
 	local healthLeft, healthRight, magicka, stamina = entries[1], entries[2], entries[3], entries[4]
+	-- Only the ends facing away from the middle of the screen come to a point: health at both,
+	-- magicka on its left, stamina on its right (playerattributebars.xml). A half of health is flat
+	-- where it meets the other half.
 	local function Pointed(which)
 		local halves = #which.bar.controls > 1
 		local right = halves and which.bar.controls[2].name == which.name
-		return not halves or not right, not halves or right
+		return (which.bar.pointedLeft ~= false) and not right,
+			(which.bar.pointedRight ~= false) and (right or not halves)
 	end
+	check("the game's own shapes: health points both ways", plain.bars[1].pointedLeft and plain.bars[1].pointedRight, true)
+	check("magicka points left only", plain.bars[2].pointedLeft == true and plain.bars[2].pointedRight == false, true)
+	check("stamina points right only", plain.bars[3].pointedLeft == false and plain.bars[3].pointedRight == true, true)
 	local function Draw(style, which, fraction, now)
 		if style == "crystal" then
 			plain:CrystalFacets(which.bar, which.entry, which.native, fraction, now)
@@ -2402,6 +2409,34 @@ do
 			end
 			if pointedLeft then check(style .. ": the left point is covered: " .. which.name, leftTip > 0.05, true) end
 			if pointedRight then check(style .. ": the right point is covered: " .. which.name, rightTip > 0.05, true) end
+		end
+
+		-- A flat end is not cut back into a triangle: at the top, the middle and the bottom of the
+		-- band the effect reaches the very edge (the PS5's "stamina's left end is a triangle" -- a
+		-- taper leaves the top and bottom short by half the band).
+		for _, which in ipairs({ magicka, stamina }) do
+			local pointedLeft = Pointed(which)
+			local width = which.native:GetWidth()
+			local shape = plain:LiquidBounds(which.bar, which.entry, which.native, 1)
+			-- how far the effect stays from the flat end, just inside the top, at the middle, and
+			-- just inside the bottom of what it may draw in
+			local gaps = { [shape.top + 0.5] = 99, [shape.middle] = 99, [shape.bottom - 0.5] = 99 }
+			for step = 0, 40 do
+				local group = Draw(style, which, 1, 330000 + step * 170)
+				for _, texture in ipairs(Shown(group)) do
+					if texture.pbsLiquidRole == "fill" then
+						local x0, y0, x1, y1 = Box(texture)
+						for y, gap in pairs(gaps) do
+							if y0 - 0.001 <= y and y1 + 0.001 >= y then
+								gaps[y] = math.min(gap, pointedLeft and (width - x1) or x0)
+							end
+						end
+					end
+				end
+			end
+			local worst = 0
+			for _, gap in pairs(gaps) do worst = math.max(worst, gap) end
+			check(style .. ": the flat end is square, not tapered: " .. which.name, worst <= 0.5, true)
 		end
 
 		-- Health's halves are one bar: the effect reaches the middle from both sides.
