@@ -1473,6 +1473,13 @@ margin the art carries; once known it can stop being a setting.
 The harness places its bars and frame pieces at those measurements now (it had every fill 7 in from
 the left and no size on the frame pieces).
 
+**How it ended.** The measurement came back from a PS5 -- magicka's container 249 wide (the
+visualiser sizes a bar by its maximum, so wider than the 237 of the templates), its fill 7.4 in from
+the left and 235 wide, so ending at 242.4, and its flat frame piece starting at 242.5 -- which says
+the effect was stopping exactly where the fill's control does, as intended. On that build the spill
+was gone: what had caused it was the corner-and-size placement of §62, and the margins were never
+needed. They stay at 0, unset, as the instrument for the next time an end looks wrong.
+
 **Tests**: each margin pulls its end in by its own number of pixels and neither pulls by default;
 the command sets, mirrors one number onto both ends, and clamps; the report carries the fill and
 frame placements and the margins in use. Ignoring the margins fails them.
