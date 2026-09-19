@@ -28,7 +28,7 @@ print("\n== 1. load ==")
 Fire(EVENT_ADD_ON_LOADED, "PBsConsoleHudCustomizer")
 local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 local health, magicka, stamina = addon.barByKey.health, addon.barByKey.magicka, addon.barByKey.stamina
-check("version read from manifest", addon.version, "1.27.6")
+check("version read from manifest", addon.version, "1.27.7")
 check("slash command registered", type(SLASH_COMMANDS["/pbhud"]), "function")
 check("short slash command registered", type(SLASH_COMMANDS["/pbhc"]), "function")
 check("HUD fragment callback registered", addon.hudRegistered, true)
@@ -2468,6 +2468,32 @@ do
 			check(style .. ": the flat end is square, not tapered: " .. which.name, worst <= 0.5, true)
 		end
 
+		-- The end margin, for measuring a spill on a PS5: it pulls the effect in from each end.
+		do
+			local function Span(fraction, now)
+				local group = Draw(style, stamina, fraction, now)
+				local low, high = math.huge, -math.huge
+				for _, texture in ipairs(Shown(group)) do
+					if texture.pbsLiquidRole == "fill" then
+						local x0, _, x1 = Box(texture)
+						low, high = math.min(low, x0), math.max(high, x1)
+					end
+				end
+				return low, high
+			end
+			addon:SetEndMargins(0, 0)
+			local plainLeft, plainRight = Span(1, 350000)
+			addon:SetEndMargins(0, 3)
+			local _, pulledRight = Span(1, 350000)
+			addon:SetEndMargins(2, 0)
+			local pulledLeft = Span(1, 350000)
+			addon:SetEndMargins(0, 0)
+			local againLeft, againRight = Span(1, 350000)
+			check(style .. ": the right margin pulls the effect in", math.abs((plainRight - pulledRight) - 3) < 0.6, true)
+			check(style .. ": the left margin pulls the effect in", math.abs((pulledLeft - plainLeft) - 2) < 0.6, true)
+			check(style .. ": and nothing is pulled in by default", againLeft == plainLeft and againRight == plainRight, true)
+		end
+
 		-- Health's halves are one bar: the effect reaches the middle from both sides.
 		local leftReach, rightReach = 0, 0
 		for step = 0, 40 do
@@ -2842,6 +2868,29 @@ do
 	FireHud(SCENE_FRAGMENT_SHOWN)
 	addon:SetBarStyle("standard")
 	addon:Refresh()
+end
+
+print("\n== the end margin is set and reported ==")
+do
+	addon:SetEndMargins(0, 0)
+	check("no margin to begin with", select(2, addon:EndMargins()), 0)
+	SLASH_COMMANDS["/pbhud"]("plain margin 1 2")
+	local left, right = addon:EndMargins()
+	check("the command sets the left margin", left, 1)
+	check("and the right", right, 2)
+	SLASH_COMMANDS["/pbhud"]("plain margin 3")
+	left, right = addon:EndMargins()
+	check("one number sets both", left == 3 and right == 3, true)
+	SLASH_COMMANDS["/pbhud"]("plain margin 99")
+	check("and it is held to what the bar can take", select(1, addon:EndMargins()), addon.MAX_END_MARGIN)
+	SLASH_COMMANDS["/pbhud"]("plain margin 0 0")
+	-- The report carries the geometry a spill has to be measured against.
+	local from = #Chat + 1
+	addon.plain:PrintStatus()
+	local report = table.concat(Chat, "\n", from, #Chat)
+	check("the report gives the fill's place in its container", report:find("fill: ", 1, true) ~= nil, true)
+	check("and the frame pieces'", report:find("FrameRight: ", 1, true) ~= nil, true)
+	check("and the margins in use", report:find("end margins: left 0 right 0", 1, true) ~= nil, true)
 end
 
 print("")

@@ -39,7 +39,7 @@ function AdvanceFrame(ms) frameTime = frameTime + (ms or 1000) end
 function GetAddOnManager()
 	return {
 		GetNumAddOns = function() return 1 end,
-		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ConsoleHudCustomizer|r 1.27.6" end,
+		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ConsoleHudCustomizer|r 1.27.7" end,
 	}
 end
 
@@ -286,16 +286,33 @@ function BuildAttributeBars()
 			local piece = MakeControl(container.name .. suffix, container, "texture")
 			_G[container.name .. suffix] = piece
 		end
+		-- The frame end pieces at the sizes and places the gamepad templates give them: an arrow is
+		-- 16 x 64 on the end that faces away from the middle of the screen, a flat piece 6 x 64 on
+		-- the other (playerattributebars.xml, playerattributebartemplates.xml).
+		local arrows = {
+			ZO_PlayerAttributeHealth = { left = 16, right = 16 },
+			ZO_PlayerAttributeMagicka = { left = 16, right = 6 },
+			ZO_PlayerAttributeStamina = { left = 6, right = 16 },
+		}
+		local ends = arrows[container.name]
+		if ends then
+			local frameLeft = _G[container.name .. "FrameLeft"]
+			frameLeft.width, frameLeft.height = ends.left, 64
+			frameLeft:SetAnchor(LEFT, container, LEFT, 0, 0)
+			local frameRight = _G[container.name .. "FrameRight"]
+			frameRight.width, frameRight.height = ends.right, 64
+			frameRight:SetAnchor(RIGHT, container, RIGHT, 0, 0)
+		end
 	end
 
 	-- The status bars inside each container: two halves for health, one each for the others.
 	-- 64 high, as on a console: ZO_PlayerAttributeStatusBar_Gamepad_Template. The coloured band
 	-- is only the middle of that; the 17 here until 1.24.0 was the keyboard size, and it let a
 	-- liquid effect pass every test while it drew nothing on a PS5's health bar (FINDINGS 52).
-	local function MakeFill(name, parent, width)
+	local function MakeFill(name, parent, width, inset)
 		local fill = MakeControl(name, parent, "statusbar")
 		fill.width, fill.height = width, 64
-		fill:SetAnchor(LEFT, parent, LEFT, 7, 0)
+		fill:SetAnchor(LEFT, parent, LEFT, inset or 7, 0)
 		fill.gradient = { 1, 1, 1, 1 }
 		local gloss = MakeControl(name .. "Gloss", fill, "statusbar")
 		fill.namedChildren = { Gloss = gloss }
@@ -303,10 +320,13 @@ function BuildAttributeBars()
 		_G[name] = fill
 		return fill
 	end
-	MakeFill("ZO_PlayerAttributeHealthBarLeft", health, 111)
-	MakeFill("ZO_PlayerAttributeHealthBarRight", health, 111)
-	MakeFill("ZO_PlayerAttributeMagickaBar", magicka, 224)
-	MakeFill("ZO_PlayerAttributeStaminaBar", stamina, 224)
+	-- Where each fill sits in its container, from the gamepad anchor templates: 7 in on the end that
+	-- faces away from the middle of the screen (under a 16-wide arrow), 6 in on the other (against a
+	-- 6-wide flat piece). Health's two halves meet in the middle.
+	MakeFill("ZO_PlayerAttributeHealthBarLeft", health, 111, 7)
+	MakeFill("ZO_PlayerAttributeHealthBarRight", health, 111, 118)
+	MakeFill("ZO_PlayerAttributeMagickaBar", magicka, 224, 7)
+	MakeFill("ZO_PlayerAttributeStaminaBar", stamina, 224, 6)
 
 	-- The small companions, anchored to the bar they belong to.
 	local siege = MakeControl("ZO_PlayerAttributeSiegeHealth", group, "control")

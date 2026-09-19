@@ -1445,6 +1445,38 @@ right edge must stay inside the bar once snapped at several screen scales. Going
 and a size fails the first. (The offline harness takes a control's size from two such anchors now,
 as the client does.)
 
+## 63. Measuring the spill instead of guessing at it again (1.27.7)
+
+After §62, magicka's right end still spills a little. Two guesses have now been spent on it, so
+1.27.7 ships the means to measure it rather than a third.
+
+**What the client's own layout says.** With a container 237 wide (the normal width):
+
+| | fill | flat frame piece | arrow |
+| --- | --- | --- | --- |
+| magicka | 7 in from the left, 6 in from the right | right, 6 wide, from 231 | left, 16 wide, from 0 |
+| stamina | 6 in from the left, 7 in from the right | left, 6 wide | right, 16 wide |
+| health | each half 7 in from its outer end | -- | both ends, 16 wide |
+
+So the status bar's flat end sits exactly on the inner edge of the flat frame piece: there is no
+overlap to draw into, and the effect drawn to the control's edge should stop exactly where the
+fill does. If it still stands past what the player sees, then what the player sees ends before the
+control does -- the fill's own art carrying transparent margin at that end, which no amount of
+reading the client's Lua will reveal.
+
+**So it is a measurement.** `/pbhud plain` now prints, for every bar, where the fill and the two
+frame pieces really are inside their container, as offsets from its edges, and
+`/pbhud plain margin <left> <right>` pulls the effect in from each end by 0-8 pixels, applied in
+`Limits` on top of everything else. The number that makes the spill disappear on a PS5 is the
+margin the art carries; once known it can stop being a setting.
+
+The harness places its bars and frame pieces at those measurements now (it had every fill 7 in from
+the left and no size on the frame pieces).
+
+**Tests**: each margin pulls its end in by its own number of pixels and neither pulls by default;
+the command sets, mirrors one number onto both ends, and clamps; the report carries the fill and
+frame placements and the margins in use. Ignoring the margins fails them.
+
 ---
 
 ## Still to measure on a PS5
