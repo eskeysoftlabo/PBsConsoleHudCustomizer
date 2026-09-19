@@ -39,7 +39,7 @@ function AdvanceFrame(ms) frameTime = frameTime + (ms or 1000) end
 function GetAddOnManager()
 	return {
 		GetNumAddOns = function() return 1 end,
-		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ConsoleHudCustomizer|r 1.27.5" end,
+		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ConsoleHudCustomizer|r 1.27.6" end,
 	}
 end
 
@@ -128,6 +128,12 @@ function Control:SetAnchor(point, relativeTo, relativePoint, offsetX, offsetY, c
 	CountWrite(self, "anchor")
 	assert(#self.anchors < 2, self.name .. " already has two anchors")
 	table.insert(self.anchors, { point = point, relativeTo = relativeTo, relativePoint = relativePoint or point, offsetX = offsetX or 0, offsetY = offsetY or 0, constrains = constrains })
+	-- Two corners on the same point of the same control: the size is theirs, as the client lays it out.
+	local first, second = self.anchors[1], self.anchors[2]
+	if second and first.point == TOPLEFT and second.point == BOTTOMRIGHT and first.relativeTo == second.relativeTo
+		and first.relativePoint == second.relativePoint then
+		self.width, self.height = second.offsetX - first.offsetX, second.offsetY - first.offsetY
+	end
 end
 function Control:SetAnchorFill(target) self:ClearAnchors(); self:SetAnchor(TOPLEFT, target, TOPLEFT); self:SetAnchor(BOTTOMRIGHT, target, BOTTOMRIGHT) end
 function Control:GetAnchor(index)

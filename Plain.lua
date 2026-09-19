@@ -922,9 +922,13 @@ function Painter:Put(x0, y0, x1, y1, r, g, b, level, role, tag)
 	end
 	texture.pbsLiquidRole = role
 	texture.pbsTag = tag
+	-- Placed by both corners, not by one corner and a size. The screen snaps each anchored edge to
+	-- a pixel; with a size, the right and bottom edges were the snapped left edge plus a separately
+	-- snapped width, which can land a pixel beyond where they should -- only ever to the right,
+	-- which is where the PS5 showed the effect spilling past the ends (1.27.6, FINDINGS 62).
 	texture:ClearAnchors()
 	texture:SetAnchor(TOPLEFT, self.root, TOPLEFT, x0, y0)
-	texture:SetDimensions(x1 - x0, y1 - y0)
+	texture:SetAnchor(BOTTOMRIGHT, self.root, TOPLEFT, x1, y1)
 	-- The colour goes on the vertices, so a texture used for something else last frame keeps none
 	-- of it. Without per-corner colours, the average.
 	if VERTEX_TL and type(texture.SetVertexColors) == "function" then

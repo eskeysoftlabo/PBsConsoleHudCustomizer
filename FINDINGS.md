@@ -1420,6 +1420,31 @@ middle, and just inside the bottom of the band -- the effect must come within ha
 edge; a taper leaves the top and bottom short by half the band. Putting both ends back to pointed
 fails it on magicka and stamina in both styles. The preview draws each bar's real shape too.
 
+## 62. A pixel past the right ends (1.27.6)
+
+From the PS5, after §61: the effect spilled slightly past magicka's flat right end and stamina's
+pointed right end. Both right; neither left.
+
+Nothing in the client's layout is asymmetric. Both pointed ends give the fill the same 9 pixels
+inside a 16-wide arrow (the status bar is anchored 7 in from the container on the pointed side:
+`ZO_PlayerAttributeBarAnchorLeft/Right_Gamepad_Template`), and both flat ends put the fill's edge
+against the inner edge of a 6-wide flat frame piece. Nor is `Limits` asymmetric: `d + inset` on the
+left, `width - d - inset` on the right.
+
+What was asymmetric is **how a piece was placed**: one anchored corner and a size. The screen snaps
+each anchored edge to a pixel, so the left edge was `snap(x0)` -- exact -- while the right edge came
+out as `snap(x0) + snap(x1 - x0)`, two roundings that can add up to a pixel more than `snap(x1)`.
+That can only ever overshoot to the right and down, by up to a pixel, which is what a slight spill
+past the right ends looks like.
+
+Every piece is anchored by **both** corners now -- `TOPLEFT` and `BOTTOMRIGHT`, both to the group's
+top left -- so each edge is snapped once, from its own position. No piece sets a size.
+
+**Tests.** Every shown piece, in both styles, must carry those two anchors to the group, and its
+right edge must stay inside the bar once snapped at several screen scales. Going back to a corner
+and a size fails the first. (The offline harness takes a control's size from two such anchors now,
+as the client does.)
+
 ---
 
 ## Still to measure on a PS5
@@ -1521,10 +1546,12 @@ fails it on magicka and stamina in both styles. The preview draws each bar's rea
     fill -- must let the scene behind show through, and the effects must thin with it. `/pbhud plain`
     must read `alpha: bar 0.50, background 0.50, frame 0.50`. If it reads 0.50 but the bar still looks
     solid, the client is not honouring `SetAlpha` on these controls, and that is the thing to report.
-27. **Are the flat ends square?** Stamina's left end and magicka's right end are flat, not pointed:
+27. **Do the ends stop exactly at the bar?** Look closely at magicka's right end and stamina's right
+    end: nothing of the effect may stand outside the frame, at any bar size or screen scale.
+28. **Are the flat ends square?** Stamina's left end and magicka's right end are flat, not pointed:
     the effect must fill them squarely, right to the edge, while the outer ends still follow their
     arrow.
-28. **Do the bars come back from a menu without a flash?** Open and close the main menu a few times,
+29. **Do the bars come back from a menu without a flash?** Open and close the main menu a few times,
     with a bar part-empty and with it regenerating: the bars must appear already in the style, with
     no glimpse of the game's own look. `/pbhud plain` then reads `last return from a menu: bars shown
     ~50 ms into the fade, after 2 draw(s)`. If it still flickers, send that line: "by the failsafe", or

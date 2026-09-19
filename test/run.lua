@@ -28,7 +28,7 @@ print("\n== 1. load ==")
 Fire(EVENT_ADD_ON_LOADED, "PBsConsoleHudCustomizer")
 local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 local health, magicka, stamina = addon.barByKey.health, addon.barByKey.magicka, addon.barByKey.stamina
-check("version read from manifest", addon.version, "1.27.5")
+check("version read from manifest", addon.version, "1.27.6")
 check("slash command registered", type(SLASH_COMMANDS["/pbhud"]), "function")
 check("short slash command registered", type(SLASH_COMMANDS["/pbhc"]), "function")
 check("HUD fragment callback registered", addon.hudRegistered, true)
@@ -2410,6 +2410,35 @@ do
 			if pointedLeft then check(style .. ": the left point is covered: " .. which.name, leftTip > 0.05, true) end
 			if pointedRight then check(style .. ": the right point is covered: " .. which.name, rightTip > 0.05, true) end
 		end
+
+		-- Every piece is placed by both of its corners. Placed by a corner and a size, the right and
+		-- bottom edges are a snapped position plus a separately snapped size, which can land a pixel
+		-- past where they belong -- the PS5's "it spills slightly past the right ends" (FINDINGS 62).
+		local byCorners, snapped = true, true
+		for _, fraction in ipairs({ 1, 0.62 }) do
+			for step = 0, 12 do
+				local group = Draw(style, entries[3], fraction, 340000 + step * 130)
+				for _, texture in ipairs(Shown(group)) do
+					local first, second = texture.anchors[1], texture.anchors[2]
+					if not (second and first.point == TOPLEFT and second.point == BOTTOMRIGHT
+						and first.relativeTo == group.control and second.relativeTo == group.control
+						and first.relativePoint == TOPLEFT and second.relativePoint == TOPLEFT) then
+						byCorners = false
+					end
+					-- and on a screen that snaps every anchored edge to a pixel, the right edge still
+					-- stops inside the bar
+					if second then
+						for _, scale in ipairs({ 1, 1.25, 1.37, 2 }) do
+							local right = math.floor(second.offsetX * scale + 0.5)
+							local limit = math.floor(entries[3].native:GetWidth() * scale + 0.5)
+							if right > limit then snapped = false end
+						end
+					end
+				end
+			end
+		end
+		check(style .. ": every piece is placed by both corners", byCorners, true)
+		check(style .. ": and no right edge lands past the bar once snapped to pixels", snapped, true)
 
 		-- A flat end is not cut back into a triangle: at the top, the middle and the bottom of the
 		-- band the effect reaches the very edge (the PS5's "stamina's left end is a triangle" -- a
