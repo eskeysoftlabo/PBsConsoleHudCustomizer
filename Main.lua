@@ -1200,6 +1200,7 @@ local function Usage()
 	Line("  %s trace [on|off|clear]  -- record what the game sends as an ability is cast", SLASH)
 	Line("  %s plain [margin <l> <r>] -- what the plain look is doing, and the end margins", SLASH)
 	Line("  %s plain trace            -- what the bars did coming back from the last menu", SLASH)
+	Line("  %s plain test <part> off  -- take one part of a style away, to find a flicker", SLASH)
 	Line("  %s backbar [on|off|empty|<scale>] -- the other weapon set's row", SLASH)
 	Line("  %s skillbar on|off        -- whether the skill bar is this add-on's to touch", SLASH)
 	Line("  %s on | off               -- switch every change on or off", SLASH)
@@ -1228,6 +1229,12 @@ local function OnSlash(argumentString)
 			addon.trace:Command(args[2])
 		end
 	elseif command == "plain" then
+		if (args[2] or ""):lower() == "test" then
+			if addon.plain then
+				addon.plain:TestCommand(args[3], args[4])
+			end
+			return
+		end
 		if (args[2] or ""):lower() == "trace" then
 			if addon.returnTrace then
 				addon.returnTrace:Print()

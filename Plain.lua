@@ -880,6 +880,59 @@ local function Lighten(r, g, b, k)
 	return r + (1 - r) * k, g + (1 - g) * k, b + (1 - b) * k
 end
 
+-- ---- Switches for finding a flicker --------------------------------------------------------
+-- The return trace (ReturnTrace.lua) showed nothing that goes or comes back, or changes alpha, once
+-- the bars are showing -- and Liquid still flickered coming back from a menu where Standard did not
+-- (FINDINGS 67). So whatever it is lies in what is drawn, which no trace sees. These take one part
+-- of the style away at a time, for this session only, so the PS5 can say which part it is:
+-- "/pbhud plain test <part> off".
+plain.TEST_PARTS = {
+	"hold", "colour", "alpha", "numbers", "effect",
+	"shade", "current", "bubble", "glow", "drain", "glass", "facet", "pavilion", "girdle", "sparkle",
+}
+plain.testOff = {}
+
+function plain:TestOn(part)
+	return not self.testOff[part]
+end
+
+-- "/pbhud plain test", "... test <part> on|off", "... test reset". Changing one starts the style
+-- over, so what it had written is put back before it runs without that part.
+function plain:TestCommand(part, value)
+	local Line = addon.Line
+	part = part and part:lower() or nil
+	if part == "reset" then
+		for key in pairs(self.testOff) do
+			self.testOff[key] = nil
+		end
+	elseif part then
+		local known = false
+		for _, name in ipairs(self.TEST_PARTS) do
+			if name == part then
+				known = true
+			end
+		end
+		if not known then
+			Line("unknown part %s -- one of: %s", part, table.concat(self.TEST_PARTS, " "))
+			return false
+		end
+		self.testOff[part] = (tostring(value):lower() == "off") or nil
+	end
+	if part then
+		self:Stop()
+		self:Refresh()
+	end
+	local off = {}
+	for _, name in ipairs(self.TEST_PARTS) do
+		if self.testOff[name] then
+			off[#off + 1] = name
+		end
+	end
+	Line("|cFF69B4%s|r test parts off: %s  (%s plain test <part> on|off, %s plain test reset)", addon.title,
+		#off > 0 and table.concat(off, ", ") or "none", addon.slash, addon.slash)
+	return true
+end
+
 -- ---- The painter ----------------------------------------------------------------------------
 -- A pool of EFFECT_MAX_PIECES textures per bar section, built with the group, handed out in order
 -- each frame and the rest hidden.
@@ -954,6 +1007,9 @@ end
 
 function Painter:Put(x0, y0, x1, y1, r, g, b, level, role, tag)
 	if x1 - x0 < 0.5 or y1 - y0 < 0.25 then
+		return
+	end
+	if tag and plain.testOff[tag] then
 		return
 	end
 	local tl, tr, bl, br = self:At(x0, y0), self:At(x1, y0), self:At(x0, y1), self:At(x1, y1)
@@ -1377,12 +1433,16 @@ function plain:UpdateLiquid(style)
 	local opacity = Opacity()
 	for _, bar in ipairs(self.bars) do
 		local fraction = self:DrawnFraction(bar)
-		self:RaiseNumbers(bar, true)
+		if self:TestOn("numbers") then
+			self:RaiseNumbers(bar, true)
+		end
 		if bar.powerType == nil then
 			bar.powerType = _G["COMBAT_MECHANIC_FLAGS_" .. bar.power:upper()] or false
 		end
 		local powerType = bar.powerType
-		self:EffectAlpha(bar, opacity)
+		if self:TestOn("alpha") then
+			self:EffectAlpha(bar, opacity)
+		end
 		local gradient = powerType and ZO_POWER_BAR_GRADIENT_COLORS and ZO_POWER_BAR_GRADIENT_COLORS[powerType]
 		if gradient and gradient[1] and gradient[2] then
 			local r, g, b, a = gradient[1]:UnpackRGBA()
@@ -1391,19 +1451,30 @@ function plain:UpdateLiquid(style)
 				local control = Control(entry.name)
 				if control and type(control.SetGradientColors) == "function" then
 					self.effectColours[control] = self.effectColours[control] or { r, g, b, a, r2, g2, b2, a2 }
+					local drawEffect, writeColour = self:TestOn("effect"), self:TestOn("colour")
+					if not drawEffect then
+						local group = self.effectGroups and self.effectGroups[entry.name]
+						if group then
+							group.control:SetHidden(true)
+						end
+					end
 					if style == "crystal" then
-						self:CrystalFacets(bar, entry, control, fraction, now)
+						if drawEffect then
+							self:CrystalFacets(bar, entry, control, fraction, now)
+						end
 						-- Clear and cool: the power's colour lifted towards white.
 						local k1, k2 = 0.22 + wave * 0.06, 0.45
-						addon:Write("effect colour", control.SetGradientColors, control,
+						if writeColour then addon:Write("effect colour", control.SetGradientColors, control,
 							r + (1 - r) * k1, g + (1 - g) * k1, b + (1 - b) * k1, a,
-							r2 + (1 - r2) * k2, g2 + (1 - g2) * k2, b2 + (1 - b2) * k2, a2)
+							r2 + (1 - r2) * k2, g2 + (1 - g2) * k2, b2 + (1 - b2) * k2, a2) end
 					else
-						self:LiquidRibbons(bar, entry, control, fraction, now)
+						if drawEffect then
+							self:LiquidRibbons(bar, entry, control, fraction, now)
+						end
 						local dark, light = 0.60 + wave * 0.18, 0.12 + (1 - wave) * 0.18
-						addon:Write("effect colour", control.SetGradientColors, control,
+						if writeColour then addon:Write("effect colour", control.SetGradientColors, control,
 							r * dark, g * dark, b * dark, a,
-							r2 + (1 - r2) * light, g2 + (1 - g2) * light, b2 + (1 - b2) * light, a2)
+							r2 + (1 - r2) * light, g2 + (1 - g2) * light, b2 + (1 - b2) * light, a2) end
 					end
 				end
 			end
@@ -1681,7 +1752,9 @@ function plain:Pause()
 	self.running = false
 	self.paused = true
 	-- Hidden anyway; kept hidden until the style is back on them.
-	self:HoldBars()
+	if self:TestOn("hold") then
+		self:HoldBars()
+	end
 	return true
 end
 

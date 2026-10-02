@@ -28,7 +28,7 @@ print("\n== 1. load ==")
 Fire(EVENT_ADD_ON_LOADED, "PBsConsoleHudCustomizer")
 local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 local health, magicka, stamina = addon.barByKey.health, addon.barByKey.magicka, addon.barByKey.stamina
-check("version read from manifest", addon.version, "1.27.10")
+check("version read from manifest", addon.version, "1.27.11")
 check("slash command registered", type(SLASH_COMMANDS["/pbhud"]), "function")
 check("short slash command registered", type(SLASH_COMMANDS["/pbhc"]), "function")
 check("HUD fragment callback registered", addon.hudRegistered, true)
@@ -3072,6 +3072,68 @@ do
 		RunUpdates()
 		check(style .. ": and to the end once it has caught up", Rightmost() > 224 * 0.9, true)
 	end
+	addon:SetBarStyle("standard")
+	addon:Refresh()
+end
+
+print("\n== the test switches take one part away at a time (FINDINGS 67) ==")
+do
+	local plain = addon.plain
+	local group = _G.ZO_PlayerAttribute
+	group:SetHidden(false); group:SetAlpha(1)
+	addon:Account().enabled = true
+	addon:SetPlainOpacity(70)
+	addon:SetBarStyle("liquidflow")
+	FireHud(SCENE_FRAGMENT_SHOWN)
+	addon:Refresh()
+	SetPower(COMBAT_MECHANIC_FLAGS_STAMINA, 600, 1000)
+	AdvanceFrame(50); RunUpdates()
+	local stamina = _G.ZO_PlayerAttributeStaminaBar
+	local entry = plain.bars[3].controls[1]
+	local native = table.concat({ ZO_POWER_BAR_GRADIENT_COLORS[COMBAT_MECHANIC_FLAGS_STAMINA][1]:UnpackRGBA() }, ",")
+	local function Tags()
+		local tags = {}
+		local g = plain.effectGroups[entry.name]
+		for index = 1, g.painter.used do tags[g.painter.pool[index].pbsTag or "?"] = true end
+		return tags
+	end
+	local function Run(command) SLASH_COMMANDS["/pbhud"]("plain test " .. command); AdvanceFrame(50); RunUpdates() end
+
+	check("everything is on to begin with", next(plain.testOff), nil)
+	Run("glass off")
+	check("glass off: no glass drawn", Tags().glass, nil)
+	check("the rest still drawn", Tags().current, true)
+	Run("glass on")
+	check("glass on again", Tags().glass, true)
+	Run("effect off")
+	check("effect off: nothing drawn over the fill", plain.effectGroups[entry.name].control:IsControlHidden(), true)
+	Run("effect on")
+	check("effect back", plain.effectGroups[entry.name].control:IsControlHidden(), false)
+	Run("colour off")
+	check("colour off: the game's own colour is back", table.concat({ stamina.gradient[1], stamina.gradient[2], stamina.gradient[3], stamina.gradient[4] }, ","), native)
+	Run("alpha off")
+	check("alpha off: the bar's own alpha is back to solid", stamina:GetControlAlpha(), 1)
+	Run("numbers off")
+	check("numbers off: the numbers are at their own tier", _G.ZO_PlayerAttributeStaminaResourceNumbers:GetDrawTier() ~= DT_HIGH, true)
+	FireHud(SCENE_FRAGMENT_HIDDEN)
+	Run("hold off")
+	check("hold off: a menu no longer holds the bars back", _G.ZO_PlayerAttributeStamina:IsControlHidden(), false)
+	FireHud(SCENE_FRAGMENT_SHOWN)
+	Run("reset")
+	check("reset puts every part back", next(plain.testOff), nil)
+	check("the colour is the style's again", stamina.gradient[1] ~= ZO_POWER_BAR_GRADIENT_COLORS[COMBAT_MECHANIC_FLAGS_STAMINA][1]:UnpackRGBA(), true)
+	check("an unknown part is refused", plain:TestCommand("wings", "off"), false)
+	-- The trace says which parts were off.
+	SLASH_COMMANDS["/pbhud"]("plain test bubble off")
+	FireHud(SCENE_FRAGMENT_HIDDEN)
+	FireBars(SCENE_FRAGMENT_SHOWING)
+	local from = #Chat + 1
+	SLASH_COMMANDS["/pbhud"]("plain trace")
+	check("the trace names the parts that were off", Chat[from]:find("off: bubble", 1, true) ~= nil, true)
+	FireHud(SCENE_FRAGMENT_SHOWN)
+	for _ = 1, 90 do AdvanceFrame(16); RunUpdates() end
+	SLASH_COMMANDS["/pbhud"]("plain test reset")
+	addon:SetPlainOpacity(100)
 	addon:SetBarStyle("standard")
 	addon:Refresh()
 end

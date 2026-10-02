@@ -1582,6 +1582,34 @@ fill and its amount, so if this was not the flicker, the next trace says so.
 style's liquid stands past the fill, and once the fill catches up it reaches the end. Drawing from
 the amount fails all four.
 
+## 67. Taking Liquid apart to find the flicker (1.27.11)
+
+The third PS5 trace (1.27.10): the bars were full when they came back -- `fill drawn 1.00`,
+`amount 1.00` -- so §66's lag was not this flicker (it is still a real mismatch, and stays fixed).
+And again nothing the trace watches changed once the bars were showing: no control went or came
+back, no alpha moved but the group's fade, the fill did not move. Liquid flickers; Standard does
+not.
+
+So it is in what is drawn -- the colours written into the fill, the effect's pieces, the numbers'
+tier -- which no trace can see, and three fixes reasoned from the source have not found it. Rather
+than a fourth, 1.27.11 can take Liquid and Crystal apart on the PS5, one part at a time, for the
+session only:
+
+| part | what goes |
+| --- | --- |
+| `hold` | holding the bars back until drawn (§60) |
+| `colour` | the colours written into the game's fill |
+| `alpha` | the How solid alpha on the bar's pieces |
+| `numbers` | lifting the resource numbers over the effect |
+| `effect` | every piece drawn over the fill |
+| `shade`, `current`, `bubble`, `glow`, `drain`, `glass` | one kind of Liquid's pieces |
+| `facet`, `pavilion`, `girdle`, `sparkle` | one kind of Crystal's |
+
+`/pbhud plain test <part> off`, `... on`, `... reset`. A change starts the style over, so whatever
+the part had written is put back before it runs without it. The trace's heading names the parts that
+were off. The part whose absence takes the flicker away is the answer; if `effect off` does it, the
+piece kinds then narrow it further.
+
 ---
 
 ## Still to measure on a PS5

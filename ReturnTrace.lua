@@ -196,6 +196,11 @@ function trace:Begin(reason)
 	end
 	self.started = Now()
 	self.style = addon:BarStyle()
+	local off = {}
+	for _, name in ipairs(addon.plain and addon.plain.TEST_PARTS or {}) do
+		if addon.plain.testOff[name] then off[#off + 1] = name end
+	end
+	self.testOff = #off > 0 and table.concat(off, ",") or nil
 	self.returns = (self.returns or 0) + 1
 	self:Add(reason)
 	-- What everything was at the start, on as few lines as will do.
@@ -232,8 +237,8 @@ function trace:Print()
 		Line("|cFF69B4%s|r -- nothing recorded yet. Open a menu, close it, and run this again.", addon.title)
 		return
 	end
-	Line("|cFF69B4%s|r -- the bars coming back from a menu (return %d, style %s), ms from the start:",
-		addon.title, self.returns or 0, tostring(self.style))
+	Line("|cFF69B4%s|r -- the bars coming back from a menu (return %d, style %s%s), ms from the start:",
+		addon.title, self.returns or 0, tostring(self.style), self.testOff and (", off: " .. self.testOff) or "")
 	for index = 1, self.count do
 		Line("  %s", self.lines[index])
 	end
