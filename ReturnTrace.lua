@@ -30,8 +30,10 @@ local trace = {
 }
 addon.returnTrace = trace
 
-local WINDOW_MS = 700
-local MAX_LINES = 48
+-- Long enough for the bars' fade (250 ms), their fragment's SHOWN and the HUD's own SHOWN after it.
+-- The first PS5 trace (1.27.8) ran out of lines at +210 ms, before any of those.
+local WINDOW_MS = 1200
+local MAX_LINES = 64
 
 local Round = addon.Round
 
@@ -87,7 +89,8 @@ function trace:Level(key, value)
 	end
 	local moved = value - old
 	local reversed = direction and moved ~= 0 and (moved > 0) ~= direction
-	if math.abs(moved) >= 0.25 or (reversed and math.abs(moved) >= 0.05) or (value ~= old and (value == 0 or value == 1)) then
+	local step = key == "group alpha" and 0.25 or 0.05
+	if math.abs(moved) >= step or (reversed and math.abs(moved) >= 0.05) or (value ~= old and (value == 0 or value == 1)) then
 		self:Add(string.format("%s %.2f%s", key, value, reversed and " (back)" or ""))
 		self.values[key] = value
 		if moved ~= 0 then
@@ -96,20 +99,20 @@ function trace:Level(key, value)
 	end
 end
 
+-- Each control's own state, not as drawn: as drawn, every bar simply follows the group's fade, and
+-- the first PS5 trace was 40 lines of the same fade told four times (FINDINGS 65).
 local function Shown(control)
 	if not control or type(control.IsHidden) ~= "function" then
 		return nil
 	end
-	local ok, hidden = pcall(control.IsHidden, control)
-	return ok and not hidden or nil
+	return not addon.OwnHidden(control)
 end
 
 local function Alpha(control)
 	if not control or type(control.GetAlpha) ~= "function" then
 		return nil
 	end
-	local ok, alpha = pcall(control.GetAlpha, control)
-	return ok and alpha or nil
+	return addon.OwnAlpha(control)
 end
 
 function trace:Sample()

@@ -1366,7 +1366,9 @@ function timers:DimGameTimer(slot, dim)
 	-- what is in a slot. A cache of "already faded" is wrong within a minute of play, and the
 	-- game's number comes back from behind ours.
 	local wanted = dim and 0 or 1
-	local okRead, current = pcall(label.GetAlpha, label)
+	-- Its own alpha: as drawn it also carries every fade of the bar above it.
+	local current = addon.OwnAlpha(label)
+	local okRead = current ~= nil
 	local faded = self.dimmed[slot]
 	if okRead and type(current) == "number" and math.abs(current - wanted) < 0.01 then
 		self.dimmed[slot] = dim and label or nil

@@ -39,7 +39,7 @@ function AdvanceFrame(ms) frameTime = frameTime + (ms or 1000) end
 function GetAddOnManager()
 	return {
 		GetNumAddOns = function() return 1 end,
-		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ConsoleHudCustomizer|r 1.27.8" end,
+		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ConsoleHudCustomizer|r 1.27.9" end,
 	}
 end
 
@@ -149,7 +149,19 @@ function Control:GetHeight() return self.height end
 function Control:SetScale(s) CountWrite(self, "scale"); self.scale = s end
 function Control:GetScale() return self.scale end
 function Control:SetHidden(h) self.hidden = h end
-function Control:IsHidden() return self.hidden end
+-- As the client has them: IsHidden and GetAlpha answer for the control as drawn, its parents
+-- included; IsControlHidden and GetControlAlpha for the control alone (the client's own fragments
+-- use IsControlHidden, ZO_HUDFadeSceneFragment:Show). Until 1.27.9 these stand-ins answered for the
+-- control alone, which hid that the add-on was reading the drawn state (FINDINGS 65).
+function Control:IsControlHidden() return self.hidden and true or false end
+function Control:IsHidden()
+	local control = self
+	while control and control ~= GuiRoot do
+		if control.hidden then return true end
+		control = control.parent
+	end
+	return false
+end
 function Control:SetMouseEnabled() end
 function Control:SetDrawLayer(v) self.drawLayer = v end
 function Control:SetDrawTier(v) self.drawTier = v end
@@ -183,7 +195,15 @@ function Control:GetDrawTier() return self.drawTier or "medium" end
 function Control:SetCenterColor(r, g, b, a) self.centerColor = { r, g, b, a } end
 function Control:SetGradientColors(r, g, b, a, r2, g2, b2, a2) self.gradient = { r, g, b, a, r2, g2, b2, a2 } end
 function Control:SetEdgeColor(r, g, b, a) self.edgeColor = { r, g, b, a } end
-function Control:GetAlpha() return self.alpha or 1 end
+function Control:GetControlAlpha() return self.alpha or 1 end
+function Control:GetAlpha()
+	local alpha, control = 1, self
+	while control and control ~= GuiRoot do
+		alpha = alpha * (control.alpha or 1)
+		control = control.parent
+	end
+	return alpha
+end
 function Control:GetFontHeight() local size = tonumber((self.font or ""):match("|(%d+)|")) or 0; return math.ceil(size * 1.25) end
 function Control:GetText() return self.text end
 function Control:SetHorizontalAlignment(value) self.horizontalAlignment = value end

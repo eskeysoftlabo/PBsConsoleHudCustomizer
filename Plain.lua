@@ -1318,7 +1318,8 @@ function plain:EffectAlpha(bar, alpha)
 	for _, name in ipairs(controls) do
 		local control = Control(name)
 		if control and type(control.SetAlpha) == "function" and type(control.GetAlpha) == "function" then
-			local current = control:GetAlpha()
+			-- Its own alpha: the drawn one moves with every fade of the group above it.
+			local current = addon.OwnAlpha(control) or 1
 			if self.effectAlphas[control] == nil then
 				self.effectAlphas[control] = current
 			end
@@ -1513,9 +1514,9 @@ function plain:PrintStatus()
 							group and group.painter.used or 0, tostring(group ~= nil and not group.control:IsHidden()))
 						local background = Control(bar.container .. "BgContainer")
 						local frame = Control(bar.container .. "FrameCenter")
-						Line("      alpha: bar %.2f, background %s, frame %s (slider %d%%)", barControl:GetAlpha(),
-							background and string.format("%.2f", background:GetAlpha()) or "?",
-							frame and string.format("%.2f", frame:GetAlpha()) or "?", addon:PlainOpacity())
+						Line("      own alpha: bar %.2f, background %s, frame %s (slider %d%%)", addon.OwnAlpha(barControl) or -1,
+							background and string.format("%.2f", addon.OwnAlpha(background) or -1) or "?",
+							frame and string.format("%.2f", addon.OwnAlpha(frame) or -1) or "?", addon:PlainOpacity())
 					end
 				end
 				if overlay then
@@ -1598,8 +1599,10 @@ function plain:HoldBars()
 	self.heldBars = self.heldBars or {}
 	for _, bar in ipairs(self.bars) do
 		local container = Control(bar.container)
+		-- Its own flag: the group above it is already hidden when this runs, so the drawn state
+		-- always said "hidden" and nothing was ever held back (FINDINGS 65).
 		if container and type(container.SetHidden) == "function" and type(container.IsHidden) == "function"
-			and not container:IsHidden() then
+			and not addon.OwnHidden(container) then
 			addon:Write("hold bars", container.SetHidden, container, true)
 			self.heldBars[bar.container] = container
 		end

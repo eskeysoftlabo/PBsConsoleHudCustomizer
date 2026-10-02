@@ -1515,6 +1515,45 @@ that goes and comes back, or changes after the bars are showing, and will be a l
 
 The trace runs only in that window and stops if the bars hide again; its lines reuse their tables.
 
+## 65. What the first trace showed: the add-on was reading the drawn state (1.27.9)
+
+The PS5's first `/pbhud plain trace` (Liquid, How solid 70%), and: **no flicker in Standard**. So
+it is this add-on's.
+
+The trace itself ran out of lines at +210 ms, before anything flickered, but it showed two things
+the harness never had:
+
+1. `at start: ... held back off` with every bar hidden. The hold of §60 **never engaged on a
+   PS5**: by the time the fragment reports `HIDDEN` it has already hidden the group above the bars,
+   and `IsHidden()` answers as drawn, parents included -- so each bar read as hidden, and `HoldBars`
+   skipped it.
+2. Every bar's alpha moving in step with the group's (0.00, 0.29, 0.56, 0.84), and `wrote effect
+   alpha` on every update of the fade. `GetAlpha()` too answers as drawn. `EffectAlpha` compared that
+   with the slider, found it different all through any fade -- the menu's, or the contextual fade of
+   bars full out of combat -- and rewrote it each time; and the alpha it noted to put back on leaving
+   the style could be a fade's rather than the bar's own.
+
+The client's own code says which is which: it reads `IsControlHidden()` and `GetControlAlpha()`
+where it means the control alone (`ZO_HUDFadeSceneFragment:Show` checks `IsControlHidden`). The
+harness's stand-ins answered for the control alone through both pairs, which is why neither showed.
+
+**1.27.9** reads a control's own state through `addon.OwnHidden` and `addon.OwnAlpha` -- in the hold,
+in `EffectAlpha`, in the game countdown's dimming on the skill bar, and for the companion's ultimate
+(which, with the whole bar hidden behind a menu, read as absent). The harness now answers
+`IsHidden`/`GetAlpha` as drawn and `IsControlHidden`/`GetControlAlpha` for the control alone, as the
+client does; two older tests that meant "this add-on did not hide its own effect" now say so.
+
+The trace records each control's own state too -- as drawn, every bar just retold the group's fade,
+which is what used up the lines -- for 1200 ms and 64 lines, enough for the fade, the fragment's
+`SHOWN` and the HUD's.
+
+**Tests** reproduce the PS5's order -- the group hidden before `HIDDEN`, shown at alpha 0 before
+`SHOWING` -- and check the bars are held, released after the second draw, have no alpha rewritten
+through the fade, and get their own alpha back on leaving a style chosen mid-fade. Reading the drawn
+state in either place fails them.
+
+Whether these were the flicker is for the PS5 to say: they are what the trace showed to be wrong.
+
 ---
 
 ## Still to measure on a PS5
@@ -1627,6 +1666,6 @@ The trace runs only in that window and stops if the bars hide again; its lines r
     ~50 ms into the fade, after 2 draw(s)`. If it still flickers, send that line: "by the failsafe", or
     a time far from 50, says the loop did not run as expected; a normal line says the flicker comes
     after the bars are shown, and that is the next thing to look at.
-30. **What do the bars do coming back from a menu?** Open and close the main menu once, then run
+30. **Is the flicker gone, and if not, what do the bars do coming back from a menu?** Open and close the main menu once, then run
     `/pbhud plain trace` and send the whole of it. Then set the style to Standard, do the same, and
     say whether the flicker is there in Standard too: if it is, it is the game's, not this add-on's.

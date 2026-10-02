@@ -102,6 +102,33 @@ end
 
 addon.Line = Line
 
+-- A control's own hidden flag and own alpha, not as drawn. The client's IsHidden and GetAlpha take
+-- the parents into account (the client itself reads IsControlHidden and GetControlAlpha where it
+-- means the control alone). Reading the drawn state is what kept 1.27.4 from ever holding the bars
+-- back -- their group was already hidden -- and made the effect styles rewrite their alpha on every
+-- update of a fade (FINDINGS 65).
+function addon.OwnHidden(control)
+	if type(control.IsControlHidden) == "function" then
+		local ok, hidden = pcall(control.IsControlHidden, control)
+		if ok then
+			return hidden and true or false
+		end
+	end
+	local ok, hidden = pcall(control.IsHidden, control)
+	return ok and hidden and true or false
+end
+
+function addon.OwnAlpha(control)
+	if type(control.GetControlAlpha) == "function" then
+		local ok, alpha = pcall(control.GetControlAlpha, control)
+		if ok and type(alpha) == "number" then
+			return alpha
+		end
+	end
+	local ok, alpha = pcall(control.GetAlpha, control)
+	return ok and type(alpha) == "number" and alpha or nil
+end
+
 -- Whole numbers everywhere a position is stored or written. Also turns -0 into 0, which a
 -- distance measured leftwards from the middle of the screen otherwise comes back as.
 local function Round(value)

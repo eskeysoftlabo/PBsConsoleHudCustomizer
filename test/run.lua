@@ -28,7 +28,7 @@ print("\n== 1. load ==")
 Fire(EVENT_ADD_ON_LOADED, "PBsConsoleHudCustomizer")
 local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 local health, magicka, stamina = addon.barByKey.health, addon.barByKey.magicka, addon.barByKey.stamina
-check("version read from manifest", addon.version, "1.27.8")
+check("version read from manifest", addon.version, "1.27.9")
 check("slash command registered", type(SLASH_COMMANDS["/pbhud"]), "function")
 check("short slash command registered", type(SLASH_COMMANDS["/pbhc"]), "function")
 check("HUD fragment callback registered", addon.hudRegistered, true)
@@ -2706,7 +2706,7 @@ do
 	RunUpdates()
 	FireHud(SCENE_FRAGMENT_HIDDEN)
 	check("hidden: the loop pauses", addon.plain.running, false)
-	check("hidden: the effect stays on the bar", group.control:IsHidden(), false)
+	check("hidden: the effect stays on the bar", group.control:IsControlHidden(), false)
 	check("hidden: the fill keeps the style's colour", table.concat(_G[stamina.name].gradient, ",") ~= table.concat({ gradient[1]:UnpackRGBA() }, ","), true)
 	check("hidden: the whole bar keeps the slider's alpha", WholeBar(0.6), true)
 	-- A setting changed in the menu comes back already applied.
@@ -2719,7 +2719,7 @@ do
 	AdvanceFrame(8000)
 	FireBars(SCENE_FRAGMENT_SHOWING)
 	check("the first frame of the bars' fade-in: running again", addon.plain.running, true)
-	check("and still the style's look", group.control:IsHidden(), false)
+	check("and still the style's look", group.control:IsControlHidden(), false)
 	check("with no drain trace for what changed out of sight", Light(group, 0, 224, "drain"), 0)
 	-- The same drop while the bars are showing is a drain: the test can tell the two apart.
 	for _ = 1, 10 do AdvanceFrame(50); RunUpdates() end
@@ -2941,7 +2941,7 @@ do
 	check("a bar going away after it was shown is recorded", text:find("stamina shown off", 1, true) ~= nil, true)
 	check("and coming back", select(2, text:gsub("stamina shown on", "")) >= 2, true)
 	check("what the add-on wrote is recorded", text:find("wrote ", 1, true) ~= nil, true)
-	for _ = 1, 50 do
+	for _ = 1, 90 do
 		AdvanceFrame(16)
 		RunUpdates()
 	end
@@ -2961,9 +2961,75 @@ do
 	check("the next return starts afresh", trace.count < before, true)
 	check("in the same tables", trace.lines, lines)
 	FireHud(SCENE_FRAGMENT_SHOWN)
-	for _ = 1, 50 do AdvanceFrame(16); RunUpdates() end
+	for _ = 1, 90 do AdvanceFrame(16); RunUpdates() end
 	addon:SetBarStyle("standard")
 	addon:Refresh()
+end
+
+print("\n== the drawn state is not the control's own (FINDINGS 65) ==")
+-- On a console IsHidden and GetAlpha answer as drawn, parents included. The first PS5 trace showed
+-- what that did: the bars were never held back, because their group is already hidden when the
+-- fragment reports HIDDEN, and the effect styles rewrote their alpha on every update of a fade.
+do
+	local plain = addon.plain
+	local group = _G.ZO_PlayerAttribute
+	local containers = { "ZO_PlayerAttributeHealth", "ZO_PlayerAttributeMagicka", "ZO_PlayerAttributeStamina" }
+	local function OwnHiddenAll(hidden)
+		for _, name in ipairs(containers) do
+			if _G[name]:IsControlHidden() ~= hidden then return false end
+		end
+		return true
+	end
+	addon:Account().enabled = true
+	addon:SetPlainOpacity(70)
+	addon:SetBarStyle("liquidflow")
+	group:SetHidden(false)
+	group:SetAlpha(1)
+	FireHud(SCENE_FRAGMENT_SHOWN)
+	addon:Refresh()
+	RunUpdates()
+
+	-- A menu opens: the fragment hides the group first, then reports HIDDEN.
+	group:SetHidden(true)
+	FireHud(SCENE_FRAGMENT_HIDDEN)
+	check("the bars are held back even though their group was already hidden", OwnHiddenAll(true), true)
+	-- It closes: the group is shown at alpha 0 and fades in.
+	group:SetHidden(false)
+	group:SetAlpha(0)
+	FireBars(SCENE_FRAGMENT_SHOWING)
+	check("still held after the first draw", OwnHiddenAll(true), true)
+	-- Through the fade no alpha is rewritten: the bars' own alpha is the slider's all along.
+	local writes = 0
+	local real = addon.Write
+	addon.Write = function(self, what, ...)
+		if what == "effect alpha" then writes = writes + 1 end
+		return real(self, what, ...)
+	end
+	for frame = 1, 16 do
+		AdvanceFrame(16)
+		group:SetAlpha(math.min(1, frame * 16 / 250))
+		RunUpdates()
+	end
+	addon.Write = real
+	check("shown after the second draw", OwnHiddenAll(false), true)
+	check("no alpha is rewritten while the group fades", writes, 0)
+	check("each bar's own alpha is the slider's", math.abs(_G.ZO_PlayerAttributeStaminaBgContainer:GetControlAlpha() - 0.7) < 0.0001, true)
+	FireHud(SCENE_FRAGMENT_SHOWN)
+
+	-- Chosen while the group is part-way through a fade: what is put back on leaving is the bar's
+	-- own alpha, not the fade's.
+	addon:SetBarStyle("standard")
+	addon:Refresh()
+	plain.effectAlphas = {}
+	group:SetAlpha(0.3)
+	addon:SetBarStyle("liquidflow")
+	addon:Refresh()
+	RunUpdates()
+	addon:SetBarStyle("standard")
+	addon:Refresh()
+	group:SetAlpha(1)
+	check("leaving puts back the bar's own alpha, not a fade's", _G.ZO_PlayerAttributeStaminaBgContainer:GetControlAlpha(), 1)
+	addon:SetPlainOpacity(100)
 end
 
 print("")
