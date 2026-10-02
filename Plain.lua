@@ -633,6 +633,25 @@ end
 -- How full the bar is
 -- ---------------------------------------------------------------------------------------
 
+-- How full the game's own fill is drawn right now. The client does not jump a status bar to a new
+-- value: ZO_StatusBar_SmoothTransition plays an animation that moves it there with SetValue, so the
+-- fill lags the real amount for a moment after every change -- and after a stay in a menu, by all
+-- that was regained there. An effect drawn over the fill has to follow the fill, not the amount, or
+-- it stands out past the fill until the fill catches up, which is the flash Liquid and Crystal
+-- showed coming back from a menu and Standard did not (1.27.10, FINDINGS 66).
+function plain:DrawnFraction(bar)
+	local control = Control(bar.controls[1].name)
+	if control and type(control.GetValue) == "function" and type(control.GetMinMax) == "function" then
+		local okValue, value = pcall(control.GetValue, control)
+		local okRange, low, high = pcall(control.GetMinMax, control)
+		if okValue and okRange and type(value) == "number" and type(low) == "number" and type(high) == "number"
+			and high > low then
+			return Clamp((value - low) / (high - low), 0, 1)
+		end
+	end
+	return self:Fraction(bar)
+end
+
 function plain:Fraction(bar)
 	local powerType = _G["COMBAT_MECHANIC_FLAGS_" .. bar.power:upper()]
 	if not powerType or type(GetUnitPower) ~= "function" then
@@ -1357,7 +1376,7 @@ function plain:UpdateLiquid(style)
 	local wave = (math.sin(now / 1300) + 1) / 2
 	local opacity = Opacity()
 	for _, bar in ipairs(self.bars) do
-		local fraction = self:Fraction(bar)
+		local fraction = self:DrawnFraction(bar)
 		self:RaiseNumbers(bar, true)
 		if bar.powerType == nil then
 			bar.powerType = _G["COMBAT_MECHANIC_FLAGS_" .. bar.power:upper()] or false

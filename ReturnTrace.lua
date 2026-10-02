@@ -89,7 +89,8 @@ function trace:Level(key, value)
 	end
 	local moved = value - old
 	local reversed = direction and moved ~= 0 and (moved > 0) ~= direction
-	local step = key == "group alpha" and 0.25 or 0.05
+	local coarse = key == "group alpha" or key:find(" fill drawn", 1, true) or key:find(" amount", 1, true)
+	local step = coarse and 0.25 or 0.05
 	if math.abs(moved) >= step or (reversed and math.abs(moved) >= 0.05) or (value ~= old and (value == 0 or value == 1)) then
 		self:Add(string.format("%s %.2f%s", key, value, reversed and " (back)" or ""))
 		self.values[key] = value
@@ -132,6 +133,10 @@ function trace:Sample()
 			self:Flag(key .. " background", Shown(Lookup(bar.container .. "BgContainer")))
 			local first = bar.controls[1]
 			self:Level(key .. " fill alpha", Alpha(Lookup(first.name)))
+			-- How full the game's fill is drawn against how full the bar really is: the two part
+			-- for a moment after every change (FINDINGS 66).
+			self:Level(key .. " fill drawn", plain:DrawnFraction(bar))
+			self:Level(key .. " amount", plain:Fraction(bar))
 			local group = plain.effectGroups and plain.effectGroups[first.name]
 			if group then
 				self:Flag(key .. " effect", Shown(group.control))

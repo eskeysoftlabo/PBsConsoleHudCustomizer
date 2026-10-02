@@ -28,7 +28,7 @@ print("\n== 1. load ==")
 Fire(EVENT_ADD_ON_LOADED, "PBsConsoleHudCustomizer")
 local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 local health, magicka, stamina = addon.barByKey.health, addon.barByKey.magicka, addon.barByKey.stamina
-check("version read from manifest", addon.version, "1.27.9")
+check("version read from manifest", addon.version, "1.27.10")
 check("slash command registered", type(SLASH_COMMANDS["/pbhud"]), "function")
 check("short slash command registered", type(SLASH_COMMANDS["/pbhc"]), "function")
 check("HUD fragment callback registered", addon.hudRegistered, true)
@@ -3030,6 +3030,50 @@ do
 	group:SetAlpha(1)
 	check("leaving puts back the bar's own alpha, not a fade's", _G.ZO_PlayerAttributeStaminaBgContainer:GetControlAlpha(), 1)
 	addon:SetPlainOpacity(100)
+end
+
+print("\n== the effect follows the fill as drawn, not the amount (FINDINGS 66) ==")
+-- The client moves its bars to a new amount over a moment (ZO_StatusBar_SmoothTransition); back
+-- from a menu, by everything regained there. Drawn from the amount, Liquid and Crystal stood out
+-- past the fill until it caught up -- the flash Standard does not have.
+do
+	local plain = addon.plain
+	addon:Account().enabled = true
+	FireHud(SCENE_FRAGMENT_SHOWN)
+	for _, style in ipairs({ "liquidflow", "crystal" }) do
+		addon:SetBarStyle(style)
+		addon:Refresh()
+		SetPower(COMBAT_MECHANIC_FLAGS_STAMINA, 400, 1000)
+		RunUpdates()
+		-- Regained to full, while the fill is still on its way: it shows 40%, then 60%.
+		PlayerPower[COMBAT_MECHANIC_FLAGS_STAMINA] = { 1000, 1000, 1000 }
+		local entry = plain.bars[3].controls[1]
+		local function Rightmost()
+			local group = plain.effectGroups[entry.name]
+			local most = -1
+			for index = 1, group.painter.used do
+				local texture = group.painter.pool[index]
+				if texture.pbsLiquidRole == "fill" and not texture:IsControlHidden() then
+					local anchor = texture.anchors[2]
+					most = math.max(most, anchor and anchor.offsetX or -1)
+				end
+			end
+			return most
+		end
+		for _, shown in ipairs({ 0.4, 0.6 }) do
+			SetBarValue(COMBAT_MECHANIC_FLAGS_STAMINA, 1000 * shown, 1000)
+			AdvanceFrame(50)
+			RunUpdates()
+			check(string.format("%s: nothing past the fill while it shows %d%%", style, shown * 100),
+				Rightmost() <= 224 * shown + 0.001, true)
+		end
+		SetBarValue(COMBAT_MECHANIC_FLAGS_STAMINA, 1000, 1000)
+		AdvanceFrame(50)
+		RunUpdates()
+		check(style .. ": and to the end once it has caught up", Rightmost() > 224 * 0.9, true)
+	end
+	addon:SetBarStyle("standard")
+	addon:Refresh()
 end
 
 print("")

@@ -1554,6 +1554,34 @@ state in either place fails them.
 
 Whether these were the flicker is for the PS5 to say: they are what the trace showed to be wrong.
 
+## 66. The effect ran ahead of the fill (1.27.10)
+
+The second PS5 trace (1.27.9) showed the fixes of §65 working -- `held back on` at the start,
+released at +57 ms, and no alpha rewritten through the fade -- and still a flicker. Nothing the trace
+watched changed after the bars appeared: no control went or came back, no alpha moved but the
+group's fade. So what flickered was *what is drawn*, not whether it is.
+
+The one thing that moves on its own on the way back is the game's fill. The client never jumps a
+status bar to a new amount: `ZO_PlayerAttributeBar:UpdateStatusBar` calls
+`ZO_StatusBar_SmoothTransition`, which plays an animation that walks the bar there with `SetValue`.
+Liquid and Crystal drew their effect from `GetUnitPower` -- the amount itself -- so after any change
+the effect stood out past the fill until the fill caught up: after a hit or a regeneration tick, a
+few pixels for a moment; coming back from a menu, by everything regained there. Standard has no
+effect over the fill, which is why it never showed there.
+
+The effect styles now take how full the bar is from the fill itself (`plain:DrawnFraction`: the
+first status bar's `GetValue` over `GetMinMax`; health's halves each hold half of both, so either
+gives the same fraction), falling back to the amount where those cannot be read. Square and
+MURA-HIGE are unchanged: they blank the game's fill and draw their own, so there is nothing to lag.
+
+The harness's status bars now carry a value and a range, set from the amount as the client does,
+and `SetBarValue` lets a test hold the fill behind the amount. The trace records each bar's drawn
+fill and its amount, so if this was not the flicker, the next trace says so.
+
+**Tests**: with the amount regained to full and the fill shown at 40% and then 60%, nothing of either
+style's liquid stands past the fill, and once the fill catches up it reaches the end. Drawing from
+the amount fails all four.
+
 ---
 
 ## Still to measure on a PS5

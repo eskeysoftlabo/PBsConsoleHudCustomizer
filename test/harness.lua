@@ -39,7 +39,7 @@ function AdvanceFrame(ms) frameTime = frameTime + (ms or 1000) end
 function GetAddOnManager()
 	return {
 		GetNumAddOns = function() return 1 end,
-		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ConsoleHudCustomizer|r 1.27.9" end,
+		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ConsoleHudCustomizer|r 1.27.10" end,
 	}
 end
 
@@ -149,6 +149,10 @@ function Control:GetHeight() return self.height end
 function Control:SetScale(s) CountWrite(self, "scale"); self.scale = s end
 function Control:GetScale() return self.scale end
 function Control:SetHidden(h) self.hidden = h end
+function Control:SetMinMax(low, high) self.minValue, self.maxValue = low, high end
+function Control:GetMinMax() return self.minValue or 0, self.maxValue or 1 end
+function Control:SetValue(v) self.value = v end
+function Control:GetValue() return self.value or 0 end
 -- As the client has them: IsHidden and GetAlpha answer for the control as drawn, its parents
 -- included; IsControlHidden and GetControlAlpha for the control alone (the client's own fragments
 -- use IsControlHidden, ZO_HUDFadeSceneFragment:Show). Until 1.27.9 these stand-ins answered for the
@@ -347,6 +351,10 @@ function BuildAttributeBars()
 	MakeFill("ZO_PlayerAttributeHealthBarRight", health, 111, 118)
 	MakeFill("ZO_PlayerAttributeMagickaBar", magicka, 224, 7)
 	MakeFill("ZO_PlayerAttributeStaminaBar", stamina, 224, 6)
+	-- And filled to what the player has, as the client does when the bars are built.
+	for powerType, power in pairs(PlayerPower) do
+		SetBarValue(powerType, power[1], power[2])
+	end
 
 	-- The small companions, anchored to the bar they belong to.
 	local siege = MakeControl("ZO_PlayerAttributeSiegeHealth", group, "control")
@@ -498,6 +506,29 @@ function GetUnitPower(unitTag, powerType)
 end
 function SetPower(powerType, current, max)
 	PlayerPower[powerType] = { current, max, max }
+	-- The client hears of it and moves its own bars there -- smoothly unless told otherwise
+	-- (ZO_PlayerAttributeBar:UpdateStatusBar, ZO_StatusBar_SmoothTransition). Instantly here; a
+	-- test that wants the lag sets the bars itself with SetBarValue.
+	SetBarValue(powerType, current, max)
+end
+
+local BAR_NAMES = {
+	[1] = { "ZO_PlayerAttributeHealthBarLeft", "ZO_PlayerAttributeHealthBarRight" },
+	[2] = { "ZO_PlayerAttributeMagickaBar" },
+	[4] = { "ZO_PlayerAttributeStaminaBar" },
+}
+-- What the game's fill shows: health's halves each hold half (UpdateStatusBar divides by two).
+function SetBarValue(powerType, current, max)
+	local names = BAR_NAMES[powerType]
+	if not names then return end
+	for _, name in ipairs(names) do
+		local bar = _G[name]
+		if bar and bar.SetMinMax then
+			local halves = #names
+			bar:SetMinMax(0, max / halves)
+			bar:SetValue(current / halves)
+		end
+	end
 end
 
 -- ---- the action slot API ------------------------------------------------------------
