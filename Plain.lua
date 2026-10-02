@@ -934,16 +934,8 @@ function plain:TestCommand(part, value)
 end
 
 -- ---- The painter ----------------------------------------------------------------------------
--- A pool of EFFECT_MAX_PIECES textures per bar section, built with the group.
---
--- Each kind of piece has slots of its own in it (EFFECT_SLOTS), so a slot draws the same kind of
--- thing every update -- the shade stays the shade, the glass the glass -- and moves only as far as
--- that thing moves. And a piece is never taken off its anchors to be put back: once placed, only
--- the offsets that changed are written (SetAnchorOffsets), and only colours, levels and visibility
--- that changed are written at all. Until 1.27.12 every piece was cleared and re-anchored and
--- recoloured on every update, and handed out in order, so the glass moved to another slot whenever
--- a current came or went; the wide pieces -- the shade, the currents, the glass -- blinked off and
--- on coming back from a menu, and taking all three away was what stopped it on a PS5 (FINDINGS 68).
+-- A pool of EFFECT_MAX_PIECES textures per bar section, built with the group, handed out in order
+-- each frame and the rest hidden.
 --
 -- What a rectangle is painted with is set on the painter before the call, as numbers, so drawing
 -- makes no garbage:
@@ -958,47 +950,10 @@ end
 local Painter = {}
 Painter.__index = Painter
 
--- Where each kind's slots are, per style: sized from the most each kind used in any update over
--- six amounts and 3,600 updates at a PS5's bar sizes (Liquid: currents 45, bubbles 9, glow 6,
--- drain 6, shade 4, glass 4; Crystal: pavilion 20, facet 18, sparkle 10), with room to spare.
-local EFFECT_SLOTS = {
-	liquidflow = { { "shade", 8 }, { "current", 62 }, { "drain", 10 }, { "bubble", 12 }, { "glow", 10 }, { "glass", 8 } },
-	crystal = { { "facet", 28 }, { "pavilion", 30 }, { "girdle", 4 }, { "sparkle", 16 }, { "glass", 4 } },
-}
-local EFFECT_LAYOUTS = {}
-for style, kinds in pairs(EFFECT_SLOTS) do
-	local layout, first = {}, 1
-	for _, kind in ipairs(kinds) do
-		layout[kind[1]] = { first = first, size = kind[2] }
-		first = first + kind[2]
-	end
-	assert(first - 1 <= EFFECT_MAX_PIECES, "effect slots for " .. style .. " do not fit the pool")
-	EFFECT_LAYOUTS[style] = layout
-end
-
-function Painter:Begin(bounds, style)
+function Painter:Begin(bounds)
 	self.bounds = bounds
 	self.used = 0
 	self.fading = false
-	local layout = EFFECT_LAYOUTS[style] or EFFECT_LAYOUTS.liquidflow
-	-- Another style: every slot of the old one is put away first.
-	if self.layout ~= layout then
-		for index = 1, EFFECT_MAX_PIECES do
-			local texture = self.pool[index]
-			if texture.pbsShown then
-				texture:SetHidden(true)
-				texture.pbsShown = false
-			end
-		end
-		self.layout = layout
-		for kind in pairs(self.counts) do
-			self.counts[kind] = nil
-			self.shownCounts[kind] = nil
-		end
-	end
-	for kind in pairs(layout) do
-		self.counts[kind] = 0
-	end
 end
 
 function Painter:Alpha(x0, y0, x1, y1, tl, tr, bl, br)
@@ -1061,60 +1016,37 @@ function Painter:Put(x0, y0, x1, y1, r, g, b, level, role, tag)
 	if tl <= 0.002 and tr <= 0.002 and bl <= 0.002 and br <= 0.002 then
 		return
 	end
-	local slots = self.layout[tag]
-	local count = slots and self.counts[tag]
-	if not count or count >= slots.size then
+	if self.used >= EFFECT_MAX_PIECES then
 		self.dropped = (self.dropped or 0) + 1
 		return
 	end
-	count = count + 1
-	self.counts[tag] = count
 	self.used = self.used + 1
-	local texture = self.pool[slots.first + count - 1]
+	local texture = self.pool[self.used]
 	if texture.pbsLevel ~= level then
 		texture:SetDrawLevel(level)
 		texture.pbsLevel = level
 	end
 	texture.pbsLiquidRole = role
 	texture.pbsTag = tag
-	-- Placed by both corners, not by one corner and a size: each edge is then snapped to a pixel
-	-- once, from its own position (1.27.6, FINDINGS 62). Anchored once; after that only an offset
-	-- that changed is written, and the piece is never without its anchors (FINDINGS 68).
-	if texture.pbsRoot ~= self.root or type(texture.SetAnchorOffsets) ~= "function" then
-		texture:ClearAnchors()
-		texture:SetAnchor(TOPLEFT, self.root, TOPLEFT, x0, y0)
-		texture:SetAnchor(BOTTOMRIGHT, self.root, TOPLEFT, x1, y1)
-		texture.pbsRoot = self.root
-		texture.pbsX0, texture.pbsY0, texture.pbsX1, texture.pbsY1 = x0, y0, x1, y1
+	-- Placed by both corners, not by one corner and a size. The screen snaps each anchored edge to
+	-- a pixel; with a size, the right and bottom edges were the snapped left edge plus a separately
+	-- snapped width, which can land a pixel beyond where they should -- only ever to the right,
+	-- which is where the PS5 showed the effect spilling past the ends (1.27.6, FINDINGS 62).
+	texture:ClearAnchors()
+	texture:SetAnchor(TOPLEFT, self.root, TOPLEFT, x0, y0)
+	texture:SetAnchor(BOTTOMRIGHT, self.root, TOPLEFT, x1, y1)
+	-- The colour goes on the vertices, so a texture used for something else last frame keeps none
+	-- of it. Without per-corner colours, the average.
+	if VERTEX_TL and type(texture.SetVertexColors) == "function" then
+		texture:SetColor(1, 1, 1, 1)
+		texture:SetVertexColors(VERTEX_TL, r, g, b, tl)
+		texture:SetVertexColors(VERTEX_TR, r, g, b, tr)
+		texture:SetVertexColors(VERTEX_BL, r, g, b, bl)
+		texture:SetVertexColors(VERTEX_BR, r, g, b, br)
 	else
-		if texture.pbsX0 ~= x0 or texture.pbsY0 ~= y0 then
-			texture:SetAnchorOffsets(x0, y0, 1)
-			texture.pbsX0, texture.pbsY0 = x0, y0
-		end
-		if texture.pbsX1 ~= x1 or texture.pbsY1 ~= y1 then
-			texture:SetAnchorOffsets(x1, y1, 2)
-			texture.pbsX1, texture.pbsY1 = x1, y1
-		end
+		texture:SetColor(r, g, b, (tl + tr + bl + br) / 4)
 	end
-	-- The colour on the vertices, written only when it changed. Without per-corner colours, the
-	-- average.
-	if texture.pbsR ~= r or texture.pbsG ~= g or texture.pbsB ~= b or texture.pbsTL ~= tl
-		or texture.pbsTR ~= tr or texture.pbsBL ~= bl or texture.pbsBR ~= br then
-		if VERTEX_TL and type(texture.SetVertexColors) == "function" then
-			texture:SetVertexColors(VERTEX_TL, r, g, b, tl)
-			texture:SetVertexColors(VERTEX_TR, r, g, b, tr)
-			texture:SetVertexColors(VERTEX_BL, r, g, b, bl)
-			texture:SetVertexColors(VERTEX_BR, r, g, b, br)
-		else
-			texture:SetColor(r, g, b, (tl + tr + bl + br) / 4)
-		end
-		texture.pbsR, texture.pbsG, texture.pbsB = r, g, b
-		texture.pbsTL, texture.pbsTR, texture.pbsBL, texture.pbsBR = tl, tr, bl, br
-	end
-	if not texture.pbsShown then
-		texture:SetHidden(false)
-		texture.pbsShown = true
-	end
+	texture:SetHidden(false)
 end
 
 -- Paint (x0, y0)-(x1, y1) with the alpha set above, cut to the shape. tag names what the piece is,
@@ -1144,24 +1076,11 @@ function Painter:Quad(x0, y0, x1, y1, r, g, b, level, limit, tag)
 end
 
 function Painter:End()
-	-- Each kind puts away the slots it used last time and not this time.
-	for kind, slots in pairs(self.layout) do
-		local count = self.counts[kind] or 0
-		for index = count + 1, self.shownCounts[kind] or 0 do
-			local texture = self.pool[slots.first + index - 1]
-			if texture.pbsShown then
-				texture:SetHidden(true)
-				texture.pbsShown = false
-			end
-		end
-		self.shownCounts[kind] = count
+	for index = self.used + 1, self.shown or 0 do
+		self.pool[index]:SetHidden(true)
 	end
 	self.shown = self.used
-	-- Read, not remembered: the style being put away, or a test switch, hides the root directly.
-	local empty = self.used == 0
-	if addon.OwnHidden(self.root) ~= empty then
-		self.root:SetHidden(empty)
-	end
+	self.root:SetHidden(self.used == 0)
 end
 
 -- ---- One group per bar section --------------------------------------------------------------
@@ -1190,22 +1109,13 @@ function plain:EffectGroup(bar, entry, native)
 	root:SetAnchor(BOTTOMRIGHT, native, BOTTOMRIGHT, 0, 0)
 	root:SetDrawTier(DT_HIGH)
 	root:SetDrawLevel(1)
-	local painter = setmetatable({ root = root, prefix = prefix, pool = {}, used = 0, shown = 0,
-		counts = {}, shownCounts = {} }, Painter)
+	local painter = setmetatable({ root = root, prefix = prefix, pool = {}, used = 0, shown = 0 }, Painter)
 	for index = 1, EFFECT_MAX_PIECES do
 		local texture = WINDOW_MANAGER:CreateControl(prefix .. "Piece" .. index, root, CT_TEXTURE)
 		texture:SetHidden(true)
 		-- Every field the painter keeps on a piece, given now: a field first set mid-fight is a
 		-- little memory taken mid-fight, and a piece first used an hour in is exactly that.
 		texture.pbsLevel, texture.pbsTag, texture.pbsLiquidRole = -1, false, false
-		texture.pbsShown, texture.pbsRoot = false, false
-		texture.pbsX0, texture.pbsY0, texture.pbsX1, texture.pbsY1 = false, false, false, false
-		texture.pbsR, texture.pbsG, texture.pbsB = false, false, false
-		texture.pbsTL, texture.pbsTR, texture.pbsBL, texture.pbsBR = false, false, false, false
-		-- With per-corner colours, the texture's own colour stays white and the corners carry it.
-		if VERTEX_TL and type(texture.SetVertexColors) == "function" then
-			texture:SetColor(1, 1, 1, 1)
-		end
 		painter.pool[index] = texture
 	end
 	group = { control = root, native = native, painter = painter, textures = painter.pool, bounds = {} }
@@ -1252,7 +1162,7 @@ function plain:LiquidRibbons(bar, entry, native, fraction, now)
 	end
 	local draining = group.drainLevel - fraction
 
-	painter:Begin(bounds, "liquidflow")
+	painter:Begin(bounds)
 	local r, g, b = self:PowerColour(bar)
 	local seconds = now / 1000
 	local lr, lg, lb = Lighten(r, g, b, 0.55)
@@ -1394,7 +1304,7 @@ function plain:CrystalFacets(bar, entry, native, fraction, now)
 	local depth = bottom - top
 	local seconds = now / 1000
 
-	painter:Begin(bounds, "crystal")
+	painter:Begin(bounds)
 	if bounds.fraction <= 0 or depth < 3 then
 		painter:End()
 		return

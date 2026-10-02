@@ -29,10 +29,6 @@ function Control:SetAnchor(point, relativeTo, relativePoint, offsetX, offsetY, c
 	self.anchors[n] = a
 end
 function Control:SetDimensions(w, h) self.width, self.height = w, h end
-function Control:SetAnchorOffsets(offsetX, offsetY, index)
-	local a = self.anchors[index or 1]
-	a.offsetX, a.offsetY = offsetX or 0, offsetY or 0
-end
 function Control:SetColor(r, g, b, a)
 	local c = self.color or {}; self.color = c
 	c[1], c[2], c[3], c[4] = r, g, b, a

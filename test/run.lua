@@ -28,7 +28,7 @@ print("\n== 1. load ==")
 Fire(EVENT_ADD_ON_LOADED, "PBsConsoleHudCustomizer")
 local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 local health, magicka, stamina = addon.barByKey.health, addon.barByKey.magicka, addon.barByKey.stamina
-check("version read from manifest", addon.version, "1.27.12")
+check("version read from manifest", addon.version, "1.27.13")
 check("slash command registered", type(SLASH_COMMANDS["/pbhud"]), "function")
 check("short slash command registered", type(SLASH_COMMANDS["/pbhc"]), "function")
 check("HUD fragment callback registered", addon.hudRegistered, true)
@@ -3051,7 +3051,7 @@ do
 		local function Rightmost()
 			local group = plain.effectGroups[entry.name]
 			local most = -1
-			for index = 1, #group.painter.pool do
+			for index = 1, group.painter.used do
 				local texture = group.painter.pool[index]
 				if texture.pbsLiquidRole == "fill" and not texture:IsControlHidden() then
 					local anchor = texture.anchors[2]
@@ -3094,10 +3094,7 @@ do
 	local function Tags()
 		local tags = {}
 		local g = plain.effectGroups[entry.name]
-		for index = 1, #g.painter.pool do
-			local texture = g.painter.pool[index]
-			if not texture:IsControlHidden() then tags[texture.pbsTag or "?"] = true end
-		end
+		for index = 1, g.painter.used do tags[g.painter.pool[index].pbsTag or "?"] = true end
 		return tags
 	end
 	local function Run(command) SLASH_COMMANDS["/pbhud"]("plain test " .. command); AdvanceFrame(50); RunUpdates() end
@@ -3137,67 +3134,6 @@ do
 	for _ = 1, 90 do AdvanceFrame(16); RunUpdates() end
 	SLASH_COMMANDS["/pbhud"]("plain test reset")
 	addon:SetPlainOpacity(100)
-	addon:SetBarStyle("standard")
-	addon:Refresh()
-end
-
-print("\n== the effect's pieces stay put: their own slots, never re-anchored (FINDINGS 68) ==")
--- On a PS5 the shade, the currents and the glass blinked off and on coming back from a menu, and
--- only taking all three away stopped it. Every piece used to be cleared and re-anchored and
--- recoloured on every update, and handed out in order so a kind moved between slots.
-do
-	local plain = addon.plain
-	local group = _G.ZO_PlayerAttribute
-	group:SetHidden(false); group:SetAlpha(1)
-	addon:Account().enabled = true
-	FireHud(SCENE_FRAGMENT_SHOWN)
-	for _, style in ipairs({ "liquidflow", "crystal" }) do
-		addon:SetBarStyle(style)
-		addon:Refresh()
-		for pt in pairs(PlayerPower) do SetPower(pt, 600, 1000) end
-		for _ = 1, 40 do AdvanceFrame(50); RunUpdates() end
-		local pool = plain.effectGroups[plain.bars[3].controls[1].name].painter.pool
-		local function Count(what, tag)
-			local total = 0
-			for _, texture in ipairs(pool) do
-				if not tag or texture.pbsTag == tag then total = total + WriteCount(texture.name, what) end
-			end
-			return total
-		end
-		-- Slots keep their kind.
-		local kinds, steady = {}, true
-		local anchorsBefore = Count("anchor")
-		local shadeBefore = Count("anchor offsets", "shade") + Count("anchor", "shade") + Count("vertex", "shade")
-		for _ = 1, 120 do
-			AdvanceFrame(50)
-			RunUpdates()
-			for index, texture in ipairs(pool) do
-				if not texture:IsControlHidden() then
-					if kinds[index] and kinds[index] ~= texture.pbsTag then steady = false end
-					kinds[index] = texture.pbsTag
-				end
-			end
-		end
-		check(style .. ": each slot draws the same kind of piece every update", steady, true)
-		check(style .. ": no piece is taken off its anchors once placed", Count("anchor") - anchorsBefore, 0)
-		if style == "liquidflow" then
-			check("liquidflow: the shade, not moving, is not written at all",
-				Count("anchor offsets", "shade") + Count("anchor", "shade") + Count("vertex", "shade") - shadeBefore, 0)
-		end
-		-- Away to a menu and back: still nothing re-anchored.
-		local before = Count("anchor")
-		group:SetHidden(true)
-		FireHud(SCENE_FRAGMENT_HIDDEN)
-		AdvanceFrame(4000)
-		group:SetHidden(false)
-		group:SetAlpha(0)
-		FireBars(SCENE_FRAGMENT_SHOWING)
-		for frame = 1, 20 do
-			AdvanceFrame(16); group:SetAlpha(math.min(1, frame * 16 / 250)); RunUpdates()
-		end
-		FireHud(SCENE_FRAGMENT_SHOWN)
-		check(style .. ": coming back from a menu re-anchors nothing", Count("anchor") - before, 0)
-	end
 	addon:SetBarStyle("standard")
 	addon:Refresh()
 end

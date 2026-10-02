@@ -1610,49 +1610,29 @@ the part had written is put back before it runs without it. The trace's heading 
 were off. The part whose absence takes the flicker away is the answer; if `effect off` does it, the
 piece kinds then narrow it further.
 
-## 68. The wide pieces blinked because they were rebuilt every update (1.27.12)
+## 68. Stable slots and no re-anchoring: tried in 1.27.12, withdrawn in 1.27.13
 
-The switches of §67 on a PS5: `effect off` stopped the flicker; of the piece kinds, `current`,
-`glass` and `shade` each had to be off -- all three together -- for it to stop, and `bubble` made no
-difference. The flicker: on, off, on, in quick succession.
+The switches of §67 on a PS5: the flicker stopped only with `current`, `glass` and `shade` all off --
+each of the wide piece kinds flickers on its own -- and `bubble` made no difference. The flicker is
+on, off, on in quick succession. It is not the pool running out: at a PS5's bar sizes the most any
+bar section used was 69 of 110, none dropped.
 
-**Not the pool's size.** If the pieces were running out of slots, any one of the three taken away
-would have made room. Measured at a PS5's bar sizes over 2,400 updates, the most any bar section used
-was 69 of 110, and none was dropped.
+1.27.12 took the one thing the three share as the cause -- every update each piece was cleared and
+re-anchored and recoloured, and handed out from the pool in order -- and gave each kind slots of its
+own, anchored each piece once and then moved it with `SetAnchorOffsets` (a luaindex in
+`ESOUIDocumentation.txt`), and wrote colours, levels and visibility only when they changed.
 
-**What the three share.** They are the wide pieces -- the shade and the glass run the length of the
-bar, the currents are masses tens of pixels across -- and every update each was taken off its
-anchors and put back (`ClearAnchors`, two `SetAnchor`), recoloured, and shown, whether or not
-anything about it had changed. They were also handed out from the pool in order, so the glass, drawn
-last, sat in a different slot whenever the number of current pieces before it changed. The shade,
-drawn first, kept its slot and still blinked, so the re-anchoring is the common part. A piece cleared
-and re-anchored is, for whatever span the client takes to settle it, a piece without anchors; on a
-bar that is fading in, that shows as a wide piece going off and on. A bubble does the same, but is two
-pixels across.
+On the PS5 it **still flickered**, and **the look changed**, though the offline preview drew the same.
+So two things are now measured, not reasoned:
 
-The client itself never takes a control off its anchors to move it: it calls `SetAnchor` again over
-the existing one (`unitframes.lua`) or `SetAnchorOffsets` (`synergy.lua`, `endlessdungeonhud.lua`).
-`ESOUIDocumentation.txt` gives `SetAnchorOffsets(offsetX, offsetY, anchorIndex)` with a luaindex, and
-marks `ClearAnchors` as protected-attributes.
+- the flicker does not come from rewriting the pieces: with the shade and glass written once and left
+  alone, they still flickered;
+- something in that painter behaves differently on a console from the documentation and the harness
+  -- `SetAnchorOffsets`, or vertex colours set once and assumed to stay. Which, is not known.
 
-**1.27.12:**
-
-- Each kind of piece has **slots of its own** in the pool (Liquid: shade 8, current 62, drain 10,
-  bubble 12, glow 10, glass 8; Crystal: facet 28, pavilion 30, girdle 4, sparkle 16, glass 4 -- sized
-  from the most each used in 3,600 updates at six amounts at a PS5's sizes, with room to spare), so a
-  slot draws the same kind of thing every update and only moves as far as that thing moves.
-- A piece is **anchored once**; after that only an offset that changed is written, with
-  `SetAnchorOffsets`, and it is never without its anchors.
-- Its vertex colours, draw level and visibility are written **only when they change**. The white
-  base colour is set once, when the pool is built.
-
-In steady play the shade and the glass's line are now not written at all.
-
-**Tests**, mutation-checked: each slot draws the same kind every update; no piece is cleared or
-re-anchored after it is placed, through 120 updates and through a menu and back; the shade, not
-moving, receives no anchor, offset or colour write. Re-anchoring every update, handing slots out in
-order, and rewriting unchanged colours each fail them. The harness has `SetAnchorOffsets` and counts
-vertex-colour writes.
+1.27.13 is 1.27.11's code again, byte for byte (`Plain.lua` and every other add-on file), under a new
+version number. What remains true: the wide pieces of Liquid flicker on the way back from a menu, the
+narrow ones do not, and it is not the add-on writing to them.
 
 ---
 

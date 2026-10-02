@@ -39,7 +39,7 @@ function AdvanceFrame(ms) frameTime = frameTime + (ms or 1000) end
 function GetAddOnManager()
 	return {
 		GetNumAddOns = function() return 1 end,
-		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ConsoleHudCustomizer|r 1.27.12" end,
+		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ConsoleHudCustomizer|r 1.27.13" end,
 	}
 end
 
@@ -135,19 +135,6 @@ function Control:SetAnchor(point, relativeTo, relativePoint, offsetX, offsetY, c
 		self.width, self.height = second.offsetX - first.offsetX, second.offsetY - first.offsetY
 	end
 end
--- Moves an anchor already set, by its place in the list (1 = the first SetAnchor), without taking
--- it off: SetAnchorOffsets(offsetX, offsetY, anchorIndex), anchorIndex a luaindex.
-function Control:SetAnchorOffsets(offsetX, offsetY, index)
-	CountWrite(self, "anchor offsets")
-	local a = self.anchors[index or 1]
-	assert(a, self.name .. " has no anchor " .. tostring(index or 1))
-	a.offsetX, a.offsetY = offsetX or 0, offsetY or 0
-	local first, second = self.anchors[1], self.anchors[2]
-	if second and first.point == TOPLEFT and second.point == BOTTOMRIGHT and first.relativeTo == second.relativeTo
-		and first.relativePoint == second.relativePoint then
-		self.width, self.height = second.offsetX - first.offsetX, second.offsetY - first.offsetY
-	end
-end
 function Control:SetAnchorFill(target) self:ClearAnchors(); self:SetAnchor(TOPLEFT, target, TOPLEFT); self:SetAnchor(BOTTOMRIGHT, target, BOTTOMRIGHT) end
 function Control:GetAnchor(index)
 	local a = self.anchors[index + 1]
@@ -190,7 +177,6 @@ function Control:SetColor(r, g, b, a)
 	self.vertices = { [1] = self.color, [2] = self.color, [4] = self.color, [8] = self.color }
 end
 function Control:SetVertexColors(point, r, g, b, a)
-	CountWrite(self, "vertex")
 	self.vertices[point] = { r, g, b, a }
 end
 function Control:SetText(t) self.text = t end
