@@ -28,7 +28,7 @@ print("\n== 1. load ==")
 Fire(EVENT_ADD_ON_LOADED, "PBsConsoleHudCustomizer")
 local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 local health, magicka, stamina = addon.barByKey.health, addon.barByKey.magicka, addon.barByKey.stamina
-check("version read from manifest", addon.version, "1.27.14")
+check("version read from manifest", addon.version, "1.27.15")
 check("slash command registered", type(SLASH_COMMANDS["/pbhud"]), "function")
 check("short slash command registered", type(SLASH_COMMANDS["/pbhc"]), "function")
 check("HUD fragment callback registered", addon.hudRegistered, true)
@@ -2719,7 +2719,11 @@ do
 	AdvanceFrame(8000)
 	FireBars(SCENE_FRAGMENT_SHOWING)
 	check("the first frame of the bars' fade-in: running again", addon.plain.running, true)
-	check("and still the style's look", group.control:IsControlHidden(), false)
+	-- Through the fade the effect is drawn but kept out of sight; it is shown when the fade ends
+	-- (FINDINGS 69).
+	check("through the fade the effect is kept out of sight", group.control:IsControlHidden(), true)
+	FireBars(SCENE_FRAGMENT_SHOWN)
+	check("when the fade ends, the style's look", group.control:IsControlHidden(), false)
 	check("with no drain trace for what changed out of sight", Light(group, 0, 224, "drain"), 0)
 	-- The same drop while the bars are showing is a drain: the test can tell the two apart.
 	for _ = 1, 10 do AdvanceFrame(50); RunUpdates() end
@@ -3138,7 +3142,9 @@ do
 	addon:Refresh()
 end
 
-print("\n== wait and late: nothing of the style drawn while the bars fade in (FINDINGS 69) ==")
+print("\n== coming back from a menu: the effect is shown when the fade ends (FINDINGS 69) ==")
+-- Liquid's wide pieces flickered while the group above the bars faded in. The bars fade in as the
+-- game does it; the effect over the fill is drawn but kept out of sight until the fade ends.
 do
 	local plain = addon.plain
 	local group = _G.ZO_PlayerAttribute
@@ -3149,68 +3155,44 @@ do
 		end
 		return true
 	end
-	local function EffectShown()
-		return not plain.effectGroups[plain.bars[3].controls[1].name].control:IsControlHidden()
-	end
-	group:SetHidden(false); group:SetAlpha(1)
 	addon:Account().enabled = true
-	addon:SetBarStyle("liquidflow")
+	group:SetHidden(false); group:SetAlpha(1)
 	FireHud(SCENE_FRAGMENT_SHOWN)
-	addon:Refresh()
-	SetPower(COMBAT_MECHANIC_FLAGS_STAMINA, 600, 1000)
-	AdvanceFrame(50); RunUpdates()
-	local function Away()
+	for _, style in ipairs({ "liquidflow", "crystal" }) do
+		addon:SetBarStyle(style)
+		addon:Refresh()
+		SetPower(COMBAT_MECHANIC_FLAGS_STAMINA, 600, 1000)
+		AdvanceFrame(50); RunUpdates()
+		local effect = plain.effectGroups[plain.bars[3].controls[1].name].control
+		check(style .. ": on the HUD the effect is shown", effect:IsControlHidden(), false)
 		group:SetHidden(true)
 		FireHud(SCENE_FRAGMENT_HIDDEN)
 		AdvanceFrame(3000)
 		group:SetHidden(false)
 		group:SetAlpha(0)
 		FireBars(SCENE_FRAGMENT_SHOWING)
-	end
-	local function Fade(frames)
-		for frame = 1, frames do
-			AdvanceFrame(16)
-			group:SetAlpha(math.min(1, frame * 16 / 250))
-			RunUpdates()
+		for frame = 1, 6 do
+			AdvanceFrame(16); group:SetAlpha(frame * 16 / 250); RunUpdates()
 		end
+		check(style .. ": the bars fade in as the game does it", Held(), false)
+		check(style .. ": but the effect is not shown during the fade", effect:IsControlHidden(), true)
+		for frame = 7, 14 do
+			AdvanceFrame(16); group:SetAlpha(math.min(1, frame * 16 / 250)); RunUpdates()
+		end
+		check(style .. ": nor through the rest of it", effect:IsControlHidden(), true)
+		FireBars(SCENE_FRAGMENT_SHOWN)
+		check(style .. ": it is shown the moment the fade ends", effect:IsControlHidden(), false)
+		FireHud(SCENE_FRAGMENT_SHOWN)
+		AdvanceFrame(50); RunUpdates()
+		check(style .. ": and stays", effect:IsControlHidden(), false)
 	end
-
-	-- As it is: shown after two draws, part-way into the fade.
-	Away(); Fade(6)
-	check("as before: the bars are shown part-way into the fade", Held(), false)
-	FireHud(SCENE_FRAGMENT_SHOWN)
-
-	-- wait: hidden through the whole fade, shown -- already drawn -- when it ends.
-	SLASH_COMMANDS["/pbhud"]("plain test wait on")
-	check("wait is on", plain.testModes.wait, true)
-	Away(); Fade(14)
-	check("wait: still held all through the fade", Held(), true)
+	-- The effect switched off stays off whatever the fade does.
+	SLASH_COMMANDS["/pbhud"]("plain test effect off")
 	FireBars(SCENE_FRAGMENT_SHOWN)
-	check("wait: shown the moment the fade ends", Held(), false)
-	check("wait: with the effect already drawn", EffectShown(), true)
-	FireHud(SCENE_FRAGMENT_SHOWN)
-	-- The failsafe still stands if the end of the fade is never heard of.
-	Away(); Fade(14)
-	AdvanceFrame(600)
-	plain:CheckReveal(GetFrameTimeMilliseconds())
-	check("wait: the failsafe still shows them", Held(), false)
-	FireHud(SCENE_FRAGMENT_SHOWN)
-	SLASH_COMMANDS["/pbhud"]("plain test reset")
-
-	-- late: the bars fade in, the effect only when the fade ends.
-	SLASH_COMMANDS["/pbhud"]("plain test late on")
-	Away(); Fade(6)
-	check("late: the bars are shown during the fade", Held(), false)
-	check("late: but not the effect", EffectShown(), false)
-	Fade(8)
-	check("late: not through the rest of the fade either", EffectShown(), false)
-	FireBars(SCENE_FRAGMENT_SHOWN)
-	check("late: the effect is shown when the fade ends", EffectShown(), true)
-	FireHud(SCENE_FRAGMENT_SHOWN)
 	AdvanceFrame(50); RunUpdates()
-	check("late: and stays", EffectShown(), true)
+	check("an effect switched off is not shown at the end of a fade",
+		plain.effectGroups[plain.bars[3].controls[1].name].control:IsControlHidden(), true)
 	SLASH_COMMANDS["/pbhud"]("plain test reset")
-	check("reset turns the modes off", next(plain.testModes), nil)
 	addon:SetBarStyle("standard")
 	addon:Refresh()
 end

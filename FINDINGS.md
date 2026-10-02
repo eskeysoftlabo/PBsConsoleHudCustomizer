@@ -1659,6 +1659,18 @@ shown with the effect drawn the moment it ends, and the failsafe still works; wi
 show during the fade but the effect does not until it ends, and then stays. Ignoring either mode
 fails them.
 
+## 70. Late it is (1.27.15)
+
+On the PS5 both modes of §69 stopped the flicker. **late** looked more natural -- the bars fade in as
+the game does it, and the liquid appears as the fade ends -- and is how it is done from 1.27.15:
+through the fade the effect over the fill is drawn, so it is ready, and kept out of sight
+(`not plain.fadeDone`); at the bars' fragment's `SHOWN` the next draw shows it. **wait** and the two
+mode switches are gone. The per-part switches of §67 stay, as the means to find the next thing.
+
+So, of the flicker, what is measured: Liquid's and Crystal's wide pieces flicker on a PS5 while the
+group above them is fading in, and not once it has finished; nothing the add-on wrote caused it; and
+not showing them during the fade stops it. Why the console draws them so during a fade is not known.
+
 ---
 
 ## Still to measure on a PS5
@@ -1774,6 +1786,5 @@ fails them.
 30. **Is the flicker gone, and if not, what do the bars do coming back from a menu?** Open and close the main menu once, then run
     `/pbhud plain trace` and send the whole of it. Then set the style to Standard, do the same, and
     say whether the flicker is there in Standard too: if it is, it is the game's, not this add-on's.
-31. **wait or late?** With Liquid, `/pbhud plain test wait on`, then open and close the menu a few
-    times; `/pbhud plain test reset`; then the same with `late`. Which one stops the flicker, and
-    which looks better coming back?
+31. **Do the bars come back cleanly?** With Liquid or Crystal, open and close the menu a few times:
+    the bars fade in, and the liquid or crystal appears as the fade ends, with no flicker.

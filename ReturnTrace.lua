@@ -200,9 +200,6 @@ function trace:Begin(reason)
 	for _, name in ipairs(addon.plain and addon.plain.TEST_PARTS or {}) do
 		if addon.plain.testOff[name] then off[#off + 1] = name end
 	end
-	for _, name in ipairs(addon.plain and addon.plain.TEST_MODES or {}) do
-		if addon.plain.testModes[name] then off[#off + 1] = name .. " on" end
-	end
 	self.testOff = #off > 0 and table.concat(off, ",") or nil
 	self.returns = (self.returns or 0) + 1
 	self:Add(reason)
