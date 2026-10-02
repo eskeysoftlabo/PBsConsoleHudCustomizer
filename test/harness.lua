@@ -39,7 +39,7 @@ function AdvanceFrame(ms) frameTime = frameTime + (ms or 1000) end
 function GetAddOnManager()
 	return {
 		GetNumAddOns = function() return 1 end,
-		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ConsoleHudCustomizer|r 1.27.7" end,
+		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ConsoleHudCustomizer|r 1.27.8" end,
 	}
 end
 
@@ -608,8 +608,13 @@ HUD_FRAGMENT = { RegisterCallback = function(_, name, fn) table.insert(hudCallba
 local barsCallbacks = {}
 PLAYER_ATTRIBUTE_BARS_FRAGMENT = { RegisterCallback = function(_, name, fn) table.insert(barsCallbacks, fn) end }
 function FireBars(state) for _, fn in ipairs(barsCallbacks) do fn(nil, state) end end
+-- The skill bar's own fragment, also a 250 ms fade shown and hidden with the HUD scene.
+local actionBarCallbacks = {}
+ACTION_BAR_FRAGMENT = { RegisterCallback = function(_, name, fn) table.insert(actionBarCallbacks, fn) end }
+function FireActionBar(state) for _, fn in ipairs(actionBarCallbacks) do fn(nil, state) end end
 function FireHud(state)
 	FireBars(state)
+	FireActionBar(state)
 	for _, fn in ipairs(hudCallbacks) do fn(nil, state) end
 end
 CurrentScene = { name = "gamepad_settings" }
@@ -694,6 +699,7 @@ dofile(DIR .. "/SkillBar.lua")
 dofile(DIR .. "/Timers.lua")
 dofile(DIR .. "/Trace.lua")
 dofile(DIR .. "/Plain.lua")
+dofile(DIR .. "/ReturnTrace.lua")
 dofile(DIR .. "/Preview.lua")
 dofile(DIR .. "/Settings.lua")
 

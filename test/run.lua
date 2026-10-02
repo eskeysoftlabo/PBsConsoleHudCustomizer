@@ -28,7 +28,7 @@ print("\n== 1. load ==")
 Fire(EVENT_ADD_ON_LOADED, "PBsConsoleHudCustomizer")
 local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 local health, magicka, stamina = addon.barByKey.health, addon.barByKey.magicka, addon.barByKey.stamina
-check("version read from manifest", addon.version, "1.27.7")
+check("version read from manifest", addon.version, "1.27.8")
 check("slash command registered", type(SLASH_COMMANDS["/pbhud"]), "function")
 check("short slash command registered", type(SLASH_COMMANDS["/pbhc"]), "function")
 check("HUD fragment callback registered", addon.hudRegistered, true)
@@ -383,14 +383,28 @@ check("the row's count too", CreatedControls["PBsConsoleHudCustomizerBack4"].nam
 Row(GetString(SI_PBSCHC_BACKBAR_SCALE)).setFunction(70)
 check("the row is scaled", back3:GetScale(), 0.7)
 
+RunUpdates()
+local gameTimer = _G["ActionButton3"].namedChildren.TimerText
+check("on the HUD the game's own countdown is faded", gameTimer:GetAlpha(), 0)
 FireHud(SCENE_FRAGMENT_HIDDEN)
 check("the loop stops with the HUD", UpdateRegistered("PBsConsoleHudCustomizerTimers"), false)
-check("and everything of ours goes with it", back3:IsHidden(), true)
+-- Paused, not put away: the skill bar is hidden anyway, and putting the game's look back here is
+-- what showed for a moment as the bar faded back in (FINDINGS 64).
+check("the other set's row stays on the hidden bar", back3:IsHidden(), false)
+check("and the game's own countdown stays faded", gameTimer:GetAlpha(), 0)
 -- The settings panel is reached through a menu, with the HUD down: moving a slider there must
--- not start a hundred-millisecond loop behind it.
+-- not start a hundred-millisecond loop behind it, nor put the game's look back.
 Row(GetString(SI_PBSCHC_TIMER_SIZE)).setFunction(30)
 check("a slider moved behind a menu does not start it", UpdateRegistered("PBsConsoleHudCustomizerTimers"), false)
 check("but the font is still set for when it comes back", frontTimer.font, "$(GAMEPAD_BOLD_FONT)|30|thick-outline")
+check("and the game's countdown is still faded", gameTimer:GetAlpha(), 0)
+-- The row switched off in the menu goes at once, so it does not show as the bar fades in.
+Row(GetString(SI_PBSCHC_BACKBAR_ENABLED)).setFunction(false)
+check("the row switched off in a menu goes at once", back3:IsHidden(), true)
+Row(GetString(SI_PBSCHC_BACKBAR_ENABLED)).setFunction(true)
+-- Running again from the first frame of the skill bar's own fade-in, before the HUD has finished.
+FireActionBar(SCENE_FRAGMENT_SHOWING)
+check("back on the first frame of the skill bar's fade-in", UpdateRegistered("PBsConsoleHudCustomizerTimers"), true)
 FireHud(SCENE_FRAGMENT_SHOWN)
 check("and comes back", UpdateRegistered("PBsConsoleHudCustomizerTimers"), true)
 
@@ -2891,6 +2905,65 @@ do
 	check("the report gives the fill's place in its container", report:find("fill: ", 1, true) ~= nil, true)
 	check("and the frame pieces'", report:find("FrameRight: ", 1, true) ~= nil, true)
 	check("and the margins in use", report:find("end margins: left 0 right 0", 1, true) ~= nil, true)
+end
+
+print("\n== the return trace records the bars coming back from a menu ==")
+do
+	local trace = addon.returnTrace
+	addon:Account().enabled = true
+	addon:SetBarStyle("liquidflow")
+	FireHud(SCENE_FRAGMENT_SHOWN)
+	addon:Refresh()
+	RunUpdates()
+	local group = _G.ZO_PlayerAttribute
+	FireHud(SCENE_FRAGMENT_HIDDEN)
+	check("nothing is recorded while the bars are away", trace.running ~= true, true)
+	AdvanceFrame(2000)
+	group:SetAlpha(0)
+	FireBars(SCENE_FRAGMENT_SHOWING)
+	check("it starts on the first frame of the bars' fade", trace.running, true)
+	for frame = 1, 20 do
+		AdvanceFrame(16)
+		group:SetAlpha(math.min(1, frame * 16 / 250))
+		RunUpdates()
+	end
+	-- A flicker: a bar that goes away and comes back after it was shown.
+	_G.ZO_PlayerAttributeStamina:SetHidden(true)
+	AdvanceFrame(16)
+	RunUpdates()
+	_G.ZO_PlayerAttributeStamina:SetHidden(false)
+	AdvanceFrame(16)
+	RunUpdates()
+	local text = table.concat(trace.lines, "\n", 1, trace.count)
+	check("the start is recorded", text:find("bars' fragment SHOWING", 1, true) ~= nil, true)
+	check("the reveal is recorded", text:find("revealed", 1, true) ~= nil, true)
+	check("the fade is recorded", text:find("group alpha", 1, true) ~= nil, true)
+	check("a bar going away after it was shown is recorded", text:find("stamina shown off", 1, true) ~= nil, true)
+	check("and coming back", select(2, text:gsub("stamina shown on", "")) >= 2, true)
+	check("what the add-on wrote is recorded", text:find("wrote ", 1, true) ~= nil, true)
+	for _ = 1, 50 do
+		AdvanceFrame(16)
+		RunUpdates()
+	end
+	check("it stops after its window", trace.running, false)
+	check("and its loop is gone", UpdateRegistered("PBsConsoleHudCustomizerReturnTrace"), false)
+	local before = trace.count
+	AdvanceFrame(16)
+	RunUpdates()
+	check("nothing more is added after it stops", trace.count, before)
+	local from = #Chat + 1
+	SLASH_COMMANDS["/pbhud"]("plain trace")
+	check("the command prints it", #Chat - from + 1 >= 5, true)
+	-- The next return starts a fresh record in the same tables.
+	local lines = trace.lines
+	FireHud(SCENE_FRAGMENT_HIDDEN)
+	FireBars(SCENE_FRAGMENT_SHOWING)
+	check("the next return starts afresh", trace.count < before, true)
+	check("in the same tables", trace.lines, lines)
+	FireHud(SCENE_FRAGMENT_SHOWN)
+	for _ = 1, 50 do AdvanceFrame(16); RunUpdates() end
+	addon:SetBarStyle("standard")
+	addon:Refresh()
 end
 
 print("")

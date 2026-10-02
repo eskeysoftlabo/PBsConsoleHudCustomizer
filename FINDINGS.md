@@ -1484,6 +1484,37 @@ needed. They stay at 0, unset, as the instrument for the next time an end looks 
 the command sets, mirrors one number onto both ends, and clamps; the report carries the fill and
 frame placements and the margins in use. Ignoring the margins fails them.
 
+## 64. The skill bar had the same flaw, and the bars' flicker is measured (1.27.8)
+
+Still a slight flicker coming back to the HUD from a menu.
+
+**The skill bar, found in the source.** It had exactly the flaw §59 took out of the attribute bars:
+on the HUD's `HIDDEN`, `timers:Stop()` hid the countdowns, the other set's row and the shades, and
+put the game's own countdown back to full; and it started again only on the HUD's `SHOWN`. So every
+time a menu closed, the skill bar faded in without this add-on's row and with the game's countdown
+showing, then changed. The skill bar is shown by its own `ACTION_BAR_FRAGMENT`, a
+`ZO_HUDFadeSceneFragment` like the bars', and nothing in `actionbar.lua` re-lays it out on a show
+(`ApplyStyle` runs on a platform change only).
+
+So, as for the bars: hiding **pauses** (`timers:Pause`) and leaves everything on the hidden bar; the
+timers follow `ACTION_BAR_FRAGMENT` and resume on its `SHOWING`. A setting changed in a menu keeps
+them paused and brings the hidden bar up to date -- `Refresh` used to `Stop` there, because
+`Wanted()` is false with the HUD down -- and only switching the skill bar's features off stops them.
+`Enabled()` is the settings half of `Wanted()`.
+
+**The attribute bars, measured.** The user's flicker is on the attribute bars, and nothing more can
+be read out of the source: the client sets the bars' colours once, at start-up (`RefreshColor`), and
+writes neither their anchors nor their hidden state on a show; the add-on's `Apply` on the HUD's
+`SHOWN` compares anchors and writes nothing when they match. Two fixes reasoned from the source
+(§59, §60) have not been enough, so `ReturnTrace.lua` records what really happens: from the bars'
+fragment's `SHOWING`, every frame for 700 ms, whether the group, each bar, its frame, background,
+effect or rectangle are shown, how solid the group, each bar and its fill are, whether the bars are
+held back and drawn, how much of each effect is drawn, and every kind of write this add-on makes --
+keeping only what changes, with the time. `/pbhud plain trace` prints it. A flicker is something
+that goes and comes back, or changes after the bars are showing, and will be a line or two in it.
+
+The trace runs only in that window and stops if the bars hide again; its lines reuse their tables.
+
 ---
 
 ## Still to measure on a PS5
@@ -1596,3 +1627,6 @@ frame placements and the margins in use. Ignoring the margins fails them.
     ~50 ms into the fade, after 2 draw(s)`. If it still flickers, send that line: "by the failsafe", or
     a time far from 50, says the loop did not run as expected; a normal line says the flicker comes
     after the bars are shown, and that is the next thing to look at.
+30. **What do the bars do coming back from a menu?** Open and close the main menu once, then run
+    `/pbhud plain trace` and send the whole of it. Then set the style to Standard, do the same, and
+    say whether the flicker is there in Standard too: if it is, it is the game's, not this add-on's.

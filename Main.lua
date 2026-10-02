@@ -753,6 +753,9 @@ end
 -- client control on console is one of the things FINDINGS.md lists to measure, and status
 -- prints whatever came back.
 function addon:Write(what, fn, ...)
+	if self.returnTrace and self.returnTrace.started then
+		self.returnTrace:Wrote(what)
+	end
 	local ok, err = pcall(fn, ...)
 	if not ok then
 		self.writeErrors = self.writeErrors or {}
@@ -955,12 +958,15 @@ end
 -- measurement may still be waiting for the bars to be at their normal width. Only what no
 -- longer matches is written.
 function addon:OnHudShowing()
+	if self.returnTrace then
+		self.returnTrace:Event("HUD SHOWN")
+	end
 	if not self:BarsReady() then
 		return
 	end
 	self:Apply()
 	self:Watch(true)
-	if self.timers then
+	if self.timers and not self.timersFollowBar then
 		self.timers:OnHudStateChange(true)
 	end
 	if self.plain and not self.plainFollowsBars then
@@ -970,7 +976,7 @@ end
 
 function addon:OnHudHidden()
 	self:Watch(false)
-	if self.timers then
+	if self.timers and not self.timersFollowBar then
 		self.timers:OnHudStateChange(false)
 	end
 	if self.plain and not self.plainFollowsBars then
@@ -982,9 +988,37 @@ end
 -- a 250 ms fade-in, and SHOWN is its end. Waiting for the HUD's SHOWN meant the bars faded in as
 -- the game draws them and changed style afterwards, which read as a flash every time a menu closed
 -- (1.27.3, FINDINGS 59). The same fragment is shown with the siege bar, where the HUD's is not.
+-- The skill bar's own fragment, for what is drawn on it, for the same reason as the attribute
+-- bars' (below): it is a 250 ms fade, and resuming only when the HUD had finished showing let the
+-- skill bar fade in without this add-on's countdowns, row and shades, and with the game's own
+-- countdown back, before changing (1.27.8, FINDINGS 64).
+function addon:OnActionBarFragment(state)
+	if not self.timers then
+		return
+	end
+	if state == SCENE_FRAGMENT_SHOWING or state == SCENE_FRAGMENT_SHOWN then
+		if self:BarsReady() then
+			self.timers:OnHudStateChange(true)
+		end
+	elseif state == SCENE_FRAGMENT_HIDDEN then
+		self.timers:OnHudStateChange(false)
+	end
+end
+
 function addon:OnBarsFragment(state)
 	if not self.plain then
 		return
+	end
+	-- Recorded from the first frame of the fade, whatever the style, so a flicker can be measured
+	-- (FINDINGS 64): before the add-on does anything with the bars.
+	if self.returnTrace then
+		if state == SCENE_FRAGMENT_SHOWING then
+			self.returnTrace:Begin("bars' fragment SHOWING")
+		elseif state == SCENE_FRAGMENT_SHOWN then
+			self.returnTrace:Event("bars' fragment SHOWN")
+		elseif state == SCENE_FRAGMENT_HIDDEN then
+			self.returnTrace:Finish()
+		end
 	end
 	if state == SCENE_FRAGMENT_SHOWING or state == SCENE_FRAGMENT_SHOWN then
 		if self:BarsReady() then
@@ -1138,6 +1172,7 @@ local function Usage()
 	Line("  %s effects                -- the last effect events the game sent", SLASH)
 	Line("  %s trace [on|off|clear]  -- record what the game sends as an ability is cast", SLASH)
 	Line("  %s plain [margin <l> <r>] -- what the plain look is doing, and the end margins", SLASH)
+	Line("  %s plain trace            -- what the bars did coming back from the last menu", SLASH)
 	Line("  %s backbar [on|off|empty|<scale>] -- the other weapon set's row", SLASH)
 	Line("  %s skillbar on|off        -- whether the skill bar is this add-on's to touch", SLASH)
 	Line("  %s on | off               -- switch every change on or off", SLASH)
@@ -1166,6 +1201,12 @@ local function OnSlash(argumentString)
 			addon.trace:Command(args[2])
 		end
 	elseif command == "plain" then
+		if (args[2] or ""):lower() == "trace" then
+			if addon.returnTrace then
+				addon.returnTrace:Print()
+			end
+			return
+		end
 		if (args[2] or ""):lower() == "margin" then
 			local left, right = tonumber(args[3]), tonumber(args[4])
 			if not left then
@@ -1448,6 +1489,13 @@ local function RegisterHud()
 			addon:OnBarsFragment(newState)
 		end)
 		addon.plainFollowsBars = true
+	end
+	local actionBar = ACTION_BAR_FRAGMENT
+	if actionBar and type(actionBar.RegisterCallback) == "function" then
+		actionBar:RegisterCallback("StateChange", function(_, newState)
+			addon:OnActionBarFragment(newState)
+		end)
+		addon.timersFollowBar = true
 	end
 	return true
 end

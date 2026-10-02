@@ -1610,6 +1610,9 @@ function plain:HoldBars()
 end
 
 function plain:RevealBars()
+	if self.holding and addon.returnTrace then
+		addon.returnTrace:Event("revealed")
+	end
 	-- What the last return from a menu looked like, for /pbhud plain: the one measurement to ask for
 	-- if the bars still flicker.
 	if self.holding and self.holdSince then
