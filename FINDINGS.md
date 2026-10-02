@@ -1634,6 +1634,31 @@ So two things are now measured, not reasoned:
 version number. What remains true: the wide pieces of Liquid flicker on the way back from a menu, the
 narrow ones do not, and it is not the add-on writing to them.
 
+## 69. Not drawing the style while the bars fade in: two ways to compare (1.27.14)
+
+What §67 and §68 leave: Liquid's wide pieces flicker on the way back from a menu, the narrow ones do
+not, and it is not the add-on writing to them. What is left that is particular to the way back is
+the fade itself -- 250 ms of the group above the bars at partial alpha, with wide translucent
+textures at another draw tier inside it.
+
+So the style can be kept from being seen during the fade, in either of two ways, switched on for the
+session with `/pbhud plain test <mode> on` to be compared on a PS5 before one is made the default:
+
+- **wait** -- the bars stay held (§60) through the whole fade, and are shown, already drawn, when the
+  bars' fragment reports `SHOWN`. They appear at full strength rather than fading in. The 600 ms
+  failsafe still stands.
+- **late** -- the bars fade in as they do now, and the effect over the fill is drawn but kept hidden
+  until the fade ends. The fill and frame fade in; the liquid appears when the fade is done.
+
+`plain.fadeDone` is false from the bars' fragment's `SHOWING` until its `SHOWN` (or `HIDDEN`), set
+before anything is drawn for that state. With neither mode on, drawing is 1.27.11's. The trace's
+heading names the modes on.
+
+**Tests**: without a mode, the bars show part-way into the fade; with `wait` they are held through it,
+shown with the effect drawn the moment it ends, and the failsafe still works; with `late` the bars
+show during the fade but the effect does not until it ends, and then stays. Ignoring either mode
+fails them.
+
 ---
 
 ## Still to measure on a PS5
@@ -1749,3 +1774,6 @@ narrow ones do not, and it is not the add-on writing to them.
 30. **Is the flicker gone, and if not, what do the bars do coming back from a menu?** Open and close the main menu once, then run
     `/pbhud plain trace` and send the whole of it. Then set the style to Standard, do the same, and
     say whether the flicker is there in Standard too: if it is, it is the game's, not this add-on's.
+31. **wait or late?** With Liquid, `/pbhud plain test wait on`, then open and close the menu a few
+    times; `/pbhud plain test reset`; then the same with `late`. Which one stops the flicker, and
+    which looks better coming back?

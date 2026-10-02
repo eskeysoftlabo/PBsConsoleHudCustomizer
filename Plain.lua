@@ -892,8 +892,28 @@ plain.TEST_PARTS = {
 }
 plain.testOff = {}
 
+-- Ways of coming back from a menu that are off until switched on, to be compared on a PS5 before
+-- one becomes how it is done (FINDINGS 69):
+--   wait   the bars stay hidden through the whole fade, and are shown, already drawn, when it ends
+--   late   the bars fade in, but the effect over the fill is shown only when the fade ends
+-- Liquid's wide pieces flicker while the group above them fades in; neither is drawn while it does.
+plain.TEST_MODES = { "wait", "late" }
+plain.testModes = {}
+
 function plain:TestOn(part)
 	return not self.testOff[part]
+end
+
+-- Whether the bars' own fade has finished: true until their fragment starts to show, false from
+-- then until it reports SHOWN.
+plain.fadeDone = true
+
+function plain:OnFade(state)
+	if state == SCENE_FRAGMENT_SHOWING then
+		self.fadeDone = false
+	elseif state == SCENE_FRAGMENT_SHOWN or state == SCENE_FRAGMENT_HIDDEN then
+		self.fadeDone = true
+	end
 end
 
 -- "/pbhud plain test", "... test <part> on|off", "... test reset". Changing one starts the style
@@ -901,10 +921,21 @@ end
 function plain:TestCommand(part, value)
 	local Line = addon.Line
 	part = part and part:lower() or nil
+	local isMode = false
+	for _, name in ipairs(self.TEST_MODES) do
+		if name == part then
+			isMode = true
+		end
+	end
 	if part == "reset" then
 		for key in pairs(self.testOff) do
 			self.testOff[key] = nil
 		end
+		for key in pairs(self.testModes) do
+			self.testModes[key] = nil
+		end
+	elseif isMode then
+		self.testModes[part] = (tostring(value):lower() == "on") or nil
 	elseif part then
 		local known = false
 		for _, name in ipairs(self.TEST_PARTS) do
@@ -913,7 +944,8 @@ function plain:TestCommand(part, value)
 			end
 		end
 		if not known then
-			Line("unknown part %s -- one of: %s", part, table.concat(self.TEST_PARTS, " "))
+			Line("unknown part %s -- one of: %s, or %s", part, table.concat(self.TEST_PARTS, " "),
+				table.concat(self.TEST_MODES, " "))
 			return false
 		end
 		self.testOff[part] = (tostring(value):lower() == "off") or nil
@@ -928,8 +960,15 @@ function plain:TestCommand(part, value)
 			off[#off + 1] = name
 		end
 	end
-	Line("|cFF69B4%s|r test parts off: %s  (%s plain test <part> on|off, %s plain test reset)", addon.title,
-		#off > 0 and table.concat(off, ", ") or "none", addon.slash, addon.slash)
+	local on = {}
+	for _, name in ipairs(self.TEST_MODES) do
+		if self.testModes[name] then
+			on[#on + 1] = name
+		end
+	end
+	Line("|cFF69B4%s|r test parts off: %s  modes on: %s  (%s plain test <part> on|off, %s plain test reset)",
+		addon.title, #off > 0 and table.concat(off, ", ") or "none", #on > 0 and table.concat(on, ", ") or "none",
+		addon.slash, addon.slash)
 	return true
 end
 
@@ -1452,6 +1491,16 @@ function plain:UpdateLiquid(style)
 				if control and type(control.SetGradientColors) == "function" then
 					self.effectColours[control] = self.effectColours[control] or { r, g, b, a, r2, g2, b2, a2 }
 					local drawEffect, writeColour = self:TestOn("effect"), self:TestOn("colour")
+					local holdEffect = self.testModes.late and not self.fadeDone
+					if drawEffect and holdEffect then
+						-- Drawn, so it is ready, and kept out of sight until the fade ends.
+						if style == "crystal" then
+							self:CrystalFacets(bar, entry, control, fraction, now)
+						else
+							self:LiquidRibbons(bar, entry, control, fraction, now)
+						end
+						drawEffect = false
+					end
 					if not drawEffect then
 						local group = self.effectGroups and self.effectGroups[entry.name]
 						if group then
@@ -1732,8 +1781,11 @@ function plain:CheckReveal(now)
 	if not self.holding then
 		return false
 	end
-	if (self.resumeUpdates or 0) >= REVEAL_AFTER_UPDATES
-		or (self.holdSince and now - self.holdSince >= REVEAL_FAILSAFE_MS) then
+	local drawn = (self.resumeUpdates or 0) >= REVEAL_AFTER_UPDATES
+	if self.testModes.wait then
+		drawn = drawn and self.fadeDone
+	end
+	if drawn or (self.holdSince and now - self.holdSince >= REVEAL_FAILSAFE_MS) then
 		self:RevealBars()
 		return true
 	end

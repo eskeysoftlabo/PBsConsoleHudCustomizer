@@ -28,7 +28,7 @@ print("\n== 1. load ==")
 Fire(EVENT_ADD_ON_LOADED, "PBsConsoleHudCustomizer")
 local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 local health, magicka, stamina = addon.barByKey.health, addon.barByKey.magicka, addon.barByKey.stamina
-check("version read from manifest", addon.version, "1.27.13")
+check("version read from manifest", addon.version, "1.27.14")
 check("slash command registered", type(SLASH_COMMANDS["/pbhud"]), "function")
 check("short slash command registered", type(SLASH_COMMANDS["/pbhc"]), "function")
 check("HUD fragment callback registered", addon.hudRegistered, true)
@@ -3129,11 +3129,88 @@ do
 	FireBars(SCENE_FRAGMENT_SHOWING)
 	local from = #Chat + 1
 	SLASH_COMMANDS["/pbhud"]("plain trace")
-	check("the trace names the parts that were off", Chat[from]:find("off: bubble", 1, true) ~= nil, true)
+	check("the trace names the parts that were off", Chat[from]:find("test: bubble", 1, true) ~= nil, true)
 	FireHud(SCENE_FRAGMENT_SHOWN)
 	for _ = 1, 90 do AdvanceFrame(16); RunUpdates() end
 	SLASH_COMMANDS["/pbhud"]("plain test reset")
 	addon:SetPlainOpacity(100)
+	addon:SetBarStyle("standard")
+	addon:Refresh()
+end
+
+print("\n== wait and late: nothing of the style drawn while the bars fade in (FINDINGS 69) ==")
+do
+	local plain = addon.plain
+	local group = _G.ZO_PlayerAttribute
+	local containers = { "ZO_PlayerAttributeHealth", "ZO_PlayerAttributeMagicka", "ZO_PlayerAttributeStamina" }
+	local function Held()
+		for _, name in ipairs(containers) do
+			if not _G[name]:IsControlHidden() then return false end
+		end
+		return true
+	end
+	local function EffectShown()
+		return not plain.effectGroups[plain.bars[3].controls[1].name].control:IsControlHidden()
+	end
+	group:SetHidden(false); group:SetAlpha(1)
+	addon:Account().enabled = true
+	addon:SetBarStyle("liquidflow")
+	FireHud(SCENE_FRAGMENT_SHOWN)
+	addon:Refresh()
+	SetPower(COMBAT_MECHANIC_FLAGS_STAMINA, 600, 1000)
+	AdvanceFrame(50); RunUpdates()
+	local function Away()
+		group:SetHidden(true)
+		FireHud(SCENE_FRAGMENT_HIDDEN)
+		AdvanceFrame(3000)
+		group:SetHidden(false)
+		group:SetAlpha(0)
+		FireBars(SCENE_FRAGMENT_SHOWING)
+	end
+	local function Fade(frames)
+		for frame = 1, frames do
+			AdvanceFrame(16)
+			group:SetAlpha(math.min(1, frame * 16 / 250))
+			RunUpdates()
+		end
+	end
+
+	-- As it is: shown after two draws, part-way into the fade.
+	Away(); Fade(6)
+	check("as before: the bars are shown part-way into the fade", Held(), false)
+	FireHud(SCENE_FRAGMENT_SHOWN)
+
+	-- wait: hidden through the whole fade, shown -- already drawn -- when it ends.
+	SLASH_COMMANDS["/pbhud"]("plain test wait on")
+	check("wait is on", plain.testModes.wait, true)
+	Away(); Fade(14)
+	check("wait: still held all through the fade", Held(), true)
+	FireBars(SCENE_FRAGMENT_SHOWN)
+	check("wait: shown the moment the fade ends", Held(), false)
+	check("wait: with the effect already drawn", EffectShown(), true)
+	FireHud(SCENE_FRAGMENT_SHOWN)
+	-- The failsafe still stands if the end of the fade is never heard of.
+	Away(); Fade(14)
+	AdvanceFrame(600)
+	plain:CheckReveal(GetFrameTimeMilliseconds())
+	check("wait: the failsafe still shows them", Held(), false)
+	FireHud(SCENE_FRAGMENT_SHOWN)
+	SLASH_COMMANDS["/pbhud"]("plain test reset")
+
+	-- late: the bars fade in, the effect only when the fade ends.
+	SLASH_COMMANDS["/pbhud"]("plain test late on")
+	Away(); Fade(6)
+	check("late: the bars are shown during the fade", Held(), false)
+	check("late: but not the effect", EffectShown(), false)
+	Fade(8)
+	check("late: not through the rest of the fade either", EffectShown(), false)
+	FireBars(SCENE_FRAGMENT_SHOWN)
+	check("late: the effect is shown when the fade ends", EffectShown(), true)
+	FireHud(SCENE_FRAGMENT_SHOWN)
+	AdvanceFrame(50); RunUpdates()
+	check("late: and stays", EffectShown(), true)
+	SLASH_COMMANDS["/pbhud"]("plain test reset")
+	check("reset turns the modes off", next(plain.testModes), nil)
 	addon:SetBarStyle("standard")
 	addon:Refresh()
 end

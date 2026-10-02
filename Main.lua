@@ -1047,6 +1047,8 @@ function addon:OnBarsFragment(state)
 			self.returnTrace:Finish()
 		end
 	end
+	-- Whether the fade has ended, before anything is drawn for this state (FINDINGS 69).
+	self.plain:OnFade(state)
 	if state == SCENE_FRAGMENT_SHOWING or state == SCENE_FRAGMENT_SHOWN then
 		if self:BarsReady() then
 			self.plain:OnHudStateChange(true)
@@ -1201,6 +1203,7 @@ local function Usage()
 	Line("  %s plain [margin <l> <r>] -- what the plain look is doing, and the end margins", SLASH)
 	Line("  %s plain trace            -- what the bars did coming back from the last menu", SLASH)
 	Line("  %s plain test <part> off  -- take one part of a style away, to find a flicker", SLASH)
+	Line("  %s plain test wait|late on -- how the bars come back from a menu, to compare", SLASH)
 	Line("  %s backbar [on|off|empty|<scale>] -- the other weapon set's row", SLASH)
 	Line("  %s skillbar on|off        -- whether the skill bar is this add-on's to touch", SLASH)
 	Line("  %s on | off               -- switch every change on or off", SLASH)
