@@ -1,4 +1,5 @@
--- PB's ConsoleHudCustomizer
+-- PB's ResourceAndSkillBarCustomizer (named PB's ConsoleHudCustomizer until 1.27.16; the add-on's
+-- own name, its folder and its saved variables keep the old one, so nobody's settings are lost)
 -- Author: PinkBanther
 --
 -- Moves and resizes the player's health, magicka and stamina bars on the HUD.
@@ -48,7 +49,7 @@ local addon = {
 -- The display name is a Lua constant and the version comes from the manifest, the same way the
 -- other PB's add-ons do it -- reading the name back out of "## Title" mangles the "PB's "
 -- prefix in the settings library. Typographic apostrophe (U+2019), not ASCII '.
-local DISPLAY_NAME = "PB’s ConsoleHudCustomizer"
+local DISPLAY_NAME = "PB’s ResourceAndSkillBarCustomizer"
 local AUTHOR = "PinkBanther"
 local SLASH = "/pbhud"
 local SHORT_SLASH = "/pbhc"

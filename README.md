@@ -1,4 +1,7 @@
-# PB's ConsoleHudCustomizer
+# PB's ResourceAndSkillBarCustomizer
+
+(Named PB's ConsoleHudCustomizer until 1.27.16. The add-on's folder, manifest and saved variables
+keep that name, so an update keeps every setting; the slash commands are still `/pbhud` and `/pbhc`.)
 
 Moves and resizes the health, magicka, stamina and skill bars on the HUD, can draw the resource
 bars as plain rectangles, shows the weapon set you are not on, and marks how long is left on each ability --

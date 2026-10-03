@@ -116,7 +116,7 @@ body{background:#1b1d22;color:#ddd;font:13px system-ui;margin:0;padding:16px}
 canvas{display:block;background:#2a2d33;border-radius:6px;max-width:100%}
 p{margin:6px 0 12px}
 </style>
-<p>PB's ConsoleHudCustomizer - ]] .. style .. [[, rendered from the add-on's own writes (x4). Magicka regenerates from 88% to full, health is hit at 1.5s, stamina drops at 3.75s. <span id="t"></span></p>
+<p>PB's ResourceAndSkillBarCustomizer - ]] .. style .. [[, rendered from the add-on's own writes (x4). Magicka regenerates from 88% to full, health is hit at 1.5s, stamina drops at 3.75s. <span id="t"></span></p>
 <canvas id="c" width="1000" height="330"></canvas>
 <script>
 const FRAMES=]] .. "[" .. table.concat(frames, ",") .. "]" .. [[;

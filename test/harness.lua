@@ -39,7 +39,7 @@ function AdvanceFrame(ms) frameTime = frameTime + (ms or 1000) end
 function GetAddOnManager()
 	return {
 		GetNumAddOns = function() return 1 end,
-		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ConsoleHudCustomizer|r 1.27.15" end,
+		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ResourceAndSkillBarCustomizer|r 1.27.16" end,
 	}
 end
 
@@ -706,7 +706,7 @@ LibHarvensAddonSettings = {
 			self.selected = true
 		end
 		table.insert(panels, panel)
-		if title:find("ConsoleHudCustomizer", 1, true) then Panel = panel end
+		if title:find("ResourceAndSkillBarCustomizer", 1, true) then Panel = panel end
 		return panel
 	end,
 }

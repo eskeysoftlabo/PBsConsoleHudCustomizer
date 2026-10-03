@@ -1,4 +1,4 @@
--- Behavioural tests for PB's ConsoleHudCustomizer.
+-- Behavioural tests for PB's ResourceAndSkillBarCustomizer.
 --
 -- The add-on runs on a console, where one real test costs a whole session: build, upload, boot
 -- the PS5, log in. harness.lua stubs the part of the client the add-on actually touches -- the
@@ -28,7 +28,7 @@ print("\n== 1. load ==")
 Fire(EVENT_ADD_ON_LOADED, "PBsConsoleHudCustomizer")
 local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 local health, magicka, stamina = addon.barByKey.health, addon.barByKey.magicka, addon.barByKey.stamina
-check("version read from manifest", addon.version, "1.27.15")
+check("version read from manifest", addon.version, "1.27.16")
 check("slash command registered", type(SLASH_COMMANDS["/pbhud"]), "function")
 check("short slash command registered", type(SLASH_COMMANDS["/pbhc"]), "function")
 check("HUD fragment callback registered", addon.hudRegistered, true)

@@ -1671,6 +1671,18 @@ So, of the flicker, what is measured: Liquid's and Crystal's wide pieces flicker
 group above them is fading in, and not once it has finished; nothing the add-on wrote caused it; and
 not showing them during the fade stops it. Why the console draws them so during a fade is not known.
 
+## 71. Renamed PB's ResourceAndSkillBarCustomizer (1.27.16)
+
+The name shown is now **PB's ResourceAndSkillBarCustomizer** -- in the manifest's `## Title`, the
+settings panel and the chat lines (`DISPLAY_NAME` in Main.lua), the README and the store copy.
+Everything that identifies the add-on keeps the old name on purpose: the folder and the manifest
+file (`PBsConsoleHudCustomizer`), `addon.name`, the saved variables (`PBsConsoleHudCustomizer_Data`),
+the global table and every control name. Changing those makes it another add-on to the game -- a new
+install, every setting gone -- for no gain. The slash commands stay `/pbhud` and `/pbhc`.
+
+The in-game add-on browser shows the uploader's name field, not `## Title` (LISTING.md), so that field
+has to be changed by hand on the uploader.
+
 ---
 
 ## Still to measure on a PS5

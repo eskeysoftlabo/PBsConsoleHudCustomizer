@@ -2,13 +2,15 @@
 
 Text for the Bethesda.net / ZOS Console AddOn Uploader entry. Plain text, no markdown —
 paste as-is. The **name** field is what the in-game add-on browser shows, so it must read
-`PB's ConsoleHudCustomizer` there; `## Title` in the manifest does not reach that screen.
+`PB's ResourceAndSkillBarCustomizer` there; `## Title` in the manifest does not reach that screen.
+(Renamed from PB's ConsoleHudCustomizer in 1.27.16; the add-on itself, its folder and its saved
+variables keep the old name, so this is an update to the same entry.)
 
 ---
 
 ## Name
 
-PB's ConsoleHudCustomizer
+PB's ResourceAndSkillBarCustomizer
 
 ## Overview (JP)
 
