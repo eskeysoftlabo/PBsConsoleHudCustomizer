@@ -28,7 +28,7 @@ print("\n== 1. load ==")
 Fire(EVENT_ADD_ON_LOADED, "PBsConsoleHudCustomizer")
 local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 local health, magicka, stamina = addon.barByKey.health, addon.barByKey.magicka, addon.barByKey.stamina
-check("version read from manifest", addon.version, "1.27.16")
+check("version read from manifest", addon.version, "1.27.17")
 check("slash command registered", type(SLASH_COMMANDS["/pbhud"]), "function")
 check("short slash command registered", type(SLASH_COMMANDS["/pbhc"]), "function")
 check("HUD fragment callback registered", addon.hudRegistered, true)
@@ -3195,6 +3195,56 @@ do
 	SLASH_COMMANDS["/pbhud"]("plain test reset")
 	addon:SetBarStyle("standard")
 	addon:Refresh()
+end
+
+print("\n== the effect follows the game fading a bar out of combat (FINDINGS 72) ==")
+-- With "Show resource bars" on automatic the game fades a full bar out of combat by animating its
+-- container's own alpha. On a PS5 the effect stayed visible over a bar faded right out.
+do
+	local plain = addon.plain
+	local group = _G.ZO_PlayerAttribute
+	group:SetHidden(false); group:SetAlpha(1)
+	addon:Account().enabled = true
+	FireHud(SCENE_FRAGMENT_SHOWN)
+	for _, style in ipairs({ "liquidflow", "crystal" }) do
+		addon:SetBarStyle(style)
+		addon:Refresh()
+		SetPower(COMBAT_MECHANIC_FLAGS_STAMINA, 1000, 1000)
+		local container = _G.ZO_PlayerAttributeStamina
+		local effect = plain.effectGroups and plain.effectGroups[plain.bars[3].controls[1].name]
+		container:SetAlpha(1)
+		AdvanceFrame(50); RunUpdates()
+		effect = plain.effectGroups[plain.bars[3].controls[1].name].control
+		check(style .. ": in combat the effect is shown at full", not effect:IsControlHidden() and effect:GetControlAlpha() == 1, true)
+		-- Part-way through the game's fade-out: the effect at the same alpha as the bar.
+		container:SetAlpha(0.4)
+		AdvanceFrame(50); RunUpdates()
+		check(style .. ": part-way out, the effect has the bar's alpha", math.abs(effect:GetControlAlpha() - 0.4) < 0.0001, true)
+		check(style .. ": and is still shown", effect:IsControlHidden(), false)
+		-- Faded right out: the effect is hidden, and not drawn.
+		container:SetAlpha(0)
+		AdvanceFrame(50); RunUpdates()
+		check(style .. ": faded right out, the effect is hidden", effect:IsControlHidden(), true)
+		AdvanceFrame(50); RunUpdates()
+		check(style .. ": and stays hidden", effect:IsControlHidden(), true)
+		-- The other bars are not touched by one bar's fade.
+		check(style .. ": another bar's effect is not", plain.effectGroups[plain.bars[2].controls[1].name].control:IsControlHidden(), false)
+		-- Back in combat: the game fades it in again, and the effect with it.
+		container:SetAlpha(0.6)
+		AdvanceFrame(50); RunUpdates()
+		check(style .. ": fading back in, the effect comes back with it", not effect:IsControlHidden() and math.abs(effect:GetControlAlpha() - 0.6) < 0.0001, true)
+		container:SetAlpha(1)
+		AdvanceFrame(50); RunUpdates()
+		check(style .. ": and is at full when the bar is", effect:GetControlAlpha(), 1)
+	end
+	-- Left part-way faded, then another style chosen: the effect's alpha is put back.
+	_G.ZO_PlayerAttributeStamina:SetAlpha(0.3)
+	AdvanceFrame(50); RunUpdates()
+	local effect = plain.effectGroups[plain.bars[3].controls[1].name].control
+	addon:SetBarStyle("standard")
+	addon:Refresh()
+	check("another style puts the effect's own alpha back", effect:GetControlAlpha(), 1)
+	_G.ZO_PlayerAttributeStamina:SetAlpha(1)
 end
 
 print("")
