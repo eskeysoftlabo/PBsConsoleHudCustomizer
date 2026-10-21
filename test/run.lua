@@ -28,7 +28,7 @@ print("\n== 1. load ==")
 Fire(EVENT_ADD_ON_LOADED, "PBsConsoleHudCustomizer")
 local addon = PBS_CONSOLE_HUD_CUSTOMIZER
 local health, magicka, stamina = addon.barByKey.health, addon.barByKey.magicka, addon.barByKey.stamina
-check("version read from manifest", addon.version, "1.27.17")
+check("version read from manifest", addon.version, "1.27.18")
 check("slash command registered", type(SLASH_COMMANDS["/pbhud"]), "function")
 check("short slash command registered", type(SLASH_COMMANDS["/pbhc"]), "function")
 check("HUD fragment callback registered", addon.hudRegistered, true)
@@ -3245,6 +3245,65 @@ do
 	addon:Refresh()
 	check("another style puts the effect's own alpha back", effect:GetControlAlpha(), 1)
 	_G.ZO_PlayerAttributeStamina:SetAlpha(1)
+end
+
+print("\n== the other set's ultimate shows how full it is (FINDINGS 73) ==")
+do
+	local T = addon.timers
+	local group = _G.ZO_PlayerAttribute
+	group:SetHidden(false); group:SetAlpha(1)
+	addon:Account().enabled = true
+	addon:BackBar().enabled = true
+	FireHud(SCENE_FRAGMENT_SHOWN)
+	addon:Refresh()
+	-- Ultimates of different cost on the two sets.
+	SetSlot(HOTBAR_CATEGORY_PRIMARY, 8, { name = "Front Ult", icon = "fult.dds", id = 300, ultCost = 125 })
+	SetSlot(HOTBAR_CATEGORY_BACKUP, 8, { name = "Back Ult", icon = "bult.dds", id = 301, ultCost = 250 })
+	local function Ult(points)
+		PlayerPower[COMBAT_MECHANIC_FLAGS_ULTIMATE] = { points, 500, 500 }
+		AdvanceFrame(100)
+		RunUpdates()
+	end
+	Ult(0)
+	local entry = T.back[8]
+	local function Coords(texture)
+		local parts = {}
+		for index, value in ipairs(texture.coords) do parts[index] = string.format("%g", value) end
+		return table.concat(parts, ",")
+	end
+	check("the row's ultimate has a gauge", entry ~= nil and entry.ultLeft ~= nil, true)
+	check("shown on both sides", entry.ultLeft:IsControlHidden() == false and entry.ultRight:IsControlHidden() == false, true)
+	check("empty at 0: the first cell", Coords(entry.ultLeft), "0,0.125,0,0.25")
+	check("the right one mirrored", Coords(entry.ultRight), "0.125,0,0,0.25")
+	check("no glow while it fills", entry.ultReady:IsControlHidden(), true)
+	-- 125 of the back ultimate's 250: half way -- though the front one, at 125, is full.
+	Ult(125)
+	check("half of its own cost: cell 16, against the other set's ultimate", Coords(entry.ultLeft), "0,0.125,0.5,0.75")
+	check("not full, though the front one is", entry.ultReady:IsControlHidden(), true)
+	Ult(250)
+	check("full: the last cell", Coords(entry.ultLeft), "0.875,1,0.75,1")
+	check("and the glow of a full ultimate", entry.ultReady:IsControlHidden(), false)
+	check("playing the game's own loop", entry.ultTimeline ~= nil and entry.ultTimeline.name == "UltimateReadyLoop" and entry.ultTimeline.playing, true)
+	check("added over the icon", entry.ultReady.blendMode == nil or entry.ultReady.blendMode == TEX_BLEND_MODE_ADD, true)
+	Ult(300)
+	check("more than it costs stays full", Coords(entry.ultLeft), "0.875,1,0.75,1")
+	Ult(100)
+	check("spent: the glow goes", entry.ultReady:IsControlHidden(), true)
+	check("and its loop stops", entry.ultTimeline.playing, false)
+	check("and the gauge shows 100 of 250: cell 12", Coords(entry.ultLeft), "0.5,0.625,0.25,0.5")
+	-- No ultimate on the other set: no gauge.
+	SetSlot(HOTBAR_CATEGORY_BACKUP, 8, nil)
+	Ult(100)
+	check("an empty ultimate slot has no gauge", entry.ultLeft:IsControlHidden() and entry.ultRight:IsControlHidden(), true)
+	-- The other slots of the row never show one.
+	local others = true
+	for slot = 3, 7 do
+		local back = T.back[slot]
+		if back and (back.ultLeft or not back.control.namedChildren.UltLeft:IsControlHidden()) then others = false end
+	end
+	check("no other slot of the row shows a gauge", others, true)
+	SetSlot(HOTBAR_CATEGORY_BACKUP, 8, { name = "Back Ult", icon = "bult.dds", id = 301, ultCost = 250 })
+	PlayerPower[COMBAT_MECHANIC_FLAGS_ULTIMATE] = { 0, 500, 500 }
 end
 
 print("")

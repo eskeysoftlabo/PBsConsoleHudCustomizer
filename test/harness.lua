@@ -39,7 +39,7 @@ function AdvanceFrame(ms) frameTime = frameTime + (ms or 1000) end
 function GetAddOnManager()
 	return {
 		GetNumAddOns = function() return 1 end,
-		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ResourceAndSkillBarCustomizer|r 1.27.17" end,
+		GetAddOnInfo = function(_, i) return "PBsConsoleHudCustomizer", "|cFF69B4PB\u{2019}s ResourceAndSkillBarCustomizer|r 1.27.18" end,
 	}
 end
 
@@ -51,6 +51,8 @@ INTERFACE_COLOR_TYPE_POWER_START = 1
 CD_TYPE_VERTICAL_REVEAL, CD_TYPE_RADIAL = 1, 2
 CD_TIME_TYPE_TIME_UNTIL, CD_TIME_TYPE_TIME_REMAINING = 1, 2
 COMBAT_MECHANIC_FLAGS_HEALTH, COMBAT_MECHANIC_FLAGS_MAGICKA, COMBAT_MECHANIC_FLAGS_STAMINA = 1, 2, 4
+COMBAT_MECHANIC_FLAGS_ULTIMATE = 8
+TEX_BLEND_MODE_ADD = "add"
 TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP, TEXT_ALIGN_BOTTOM = 1, 2, 3
 DL_OVERLAY, DT_HIGH, DT_MEDIUM = "overlay", "high", "medium"
 SCENE_FRAGMENT_SHOWING, SCENE_FRAGMENT_SHOWN, SCENE_FRAGMENT_HIDING, SCENE_FRAGMENT_HIDDEN = "showing", "shown", "hiding", "hidden"
@@ -236,7 +238,7 @@ function Control:GetTop() local _, t = self:Rect(); return t end
 -- Controls.xml, as far as the add-on reads it back: every template it asks for has an Icon, a
 -- Timer and a Count child, looked up with GetNamedChild.
 local VIRTUAL_CHILDREN = {
-	PBsConsoleHudCustomizerBackBarSlot = { "BG", "Icon", "Overlay", "Shade", "Timer", "Count" },
+	PBsConsoleHudCustomizerBackBarSlot = { "BG", "Icon", "Overlay", "Shade", "Timer", "Count", "UltLeft", "UltRight", "UltReady" },
 	PBsConsoleHudCustomizerSlotLabels = { "Timer", "Count" },
 	PBsConsoleHudCustomizerShade = {},
 	PBsConsoleHudCustomizerPlainBar = { "Track", "Fill", "BorderTop", "BorderBottom", "BorderLeft", "BorderRight" },
@@ -498,7 +500,7 @@ function GetInterfaceColor(colorType, powerType)
 end
 
 -- ---- the player's power -------------------------------------------------------------
-PlayerPower = { [1] = { 1000, 1000, 1000 }, [2] = { 500, 1000, 1000 }, [4] = { 250, 1000, 1000 } }
+PlayerPower = { [1] = { 1000, 1000, 1000 }, [2] = { 500, 1000, 1000 }, [4] = { 250, 1000, 1000 }, [8] = { 0, 500, 500 } }
 function GetUnitPower(unitTag, powerType)
 	local power = PlayerPower[powerType]
 	if not power then return 0, 0, 0 end
@@ -561,6 +563,25 @@ end
 function GetSlotName(slot, hotbar) local s = Slot(slot, hotbar); return s and s.name or "" end
 function GetSlotTexture(slot, hotbar) local s = Slot(slot, hotbar); return s and s.icon or "" end
 function GetSlotBoundId(slot, hotbar) local s = Slot(slot, hotbar); return s and s.id or 0 end
+function IsSlotUsed(slot, hotbar) local s = Slot(slot, hotbar); return s ~= nil and (s.id or 0) ~= 0 end
+-- What a slot's ability costs, for the ultimate: SetSlot(..., { ..., ultCost = n }).
+function GetSlotAbilityCost(slot, mechanic, hotbar)
+	local s = Slot(slot, hotbar)
+	if not s then return 0 end
+	if mechanic == COMBAT_MECHANIC_FLAGS_ULTIMATE then return s.ultCost or 0 end
+	return 0
+end
+-- Timelines made from the client's virtual ones: they only have to be played and stopped.
+ANIMATION_MANAGER = {
+	CreateTimelineFromVirtual = function(_, name, control)
+		local timeline = { name = name, control = control, playing = false }
+		function timeline:PlayFromStart() self.playing = true end
+		function timeline:Stop() self.playing = false end
+		function timeline:IsPlaying() return self.playing end
+		return timeline
+	end,
+}
+function Control:SetBlendMode(mode) self.blendMode = mode end
 -- What the game says an ability lasts. FancyActionBar+ works from this rather than from whatever
 -- effect happens to be longest, and so does this add-on.
 AbilityDurations = {}
